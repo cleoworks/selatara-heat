@@ -121,6 +121,7 @@
       // never share a facade texture.
       var towers = [], shops = [], warehouses = [], villas = [], podiums = [], awnings = [], hotels = [];
       var plazaSpots = [];
+      var parkingPads = [], parkingLines = [];
       var bucketSeq = { tower: 0, shop: 0, warehouse: 0, villa: 0, hotel: 0 };
       var xs = cfg.avenuesX, zs = cfg.streetsZ;
       for (var i = 0; i + 1 < xs.length; i++) {
@@ -131,55 +132,132 @@
           // Cells the diagonal boulevard cuts through stay open: a paved
           // plaza with palms instead of a building the road would pierce.
           if (SH.World.diagCells[i + ',' + j]) { plazaSpots.push({ x: cx, z: cz }); continue; }
+          // The night-market block (1,4) stays open: its tents, bulb
+          // strings and the z=124 alley furnish it — shop rows would
+          // swallow the stalls (they already clipped them pre-Rev 5E).
+          if (i === 1 && j === 4) continue;
           var bw = xs[i + 1] - xs[i] - cfg.roadHalf * 2 - cfg.sidewalk * 2 - 6;
           var bd = zs[j + 1] - zs[j] - cfg.roadHalf * 2 - cfg.sidewalk * 2 - 6;
+          // Rev 5E: no two blocks alike. A seeded per-cell roll decides
+          // the block's fate BEFORE the district recipe runs: ~16% of
+          // blocks are not buildings at all (surface parking or a green
+          // plaza), ~18% merge into one super-lot, and every block gets
+          // its own height character so neighbours stop rhyming.
+          // The safehouse block (0,4) always uses the standard recipe.
+          var cellRoll = (i === 0 && j === 4) ? 0.5 : rng();
+          if (cellRoll < 0.16) {
+            if (rng() < 0.5) {
+              parkingPads.push({ x: cx, y: 0.07, z: cz, sx: bw * 0.94, sy: 0.14, sz: bd * 0.94, color: 0x3f3f46 });
+              for (var pl = 0; pl < 5; pl++) {
+                parkingLines.push({ x: cx - bw * 0.36 + pl * bw * 0.18, y: 0.16, z: cz, sx: 0.35, sy: 0.03, sz: bd * 0.62, color: 0xcfd4d8 });
+              }
+              SH.World.parkingCells.push({ x: cx, z: cz, w: bw * 0.94, d: bd * 0.94 });
+            } else {
+              plazaSpots.push({ x: cx, z: cz });
+            }
+            continue;
+          }
+          var superLot = cellRoll < 0.34;
+          var hScale = 0.78 + rng() * 0.55;
           if (d.id === 'pelita') {
-            // Two towers per block on a shared retail podium: no empty lots.
+            // Towers on a shared retail podium; the count and massing
+            // vary per block (1-2 towers, an L-annex, sometimes a drum).
             podiums.push({ x: cx, y: 2.1, z: cz, sx: bw * 0.86, sy: 4.2, sz: bd * 0.86, bucket: (bucketSeq.shop++) % 8 });
             SH.World.colliders.push({ x: cx, z: cz, hx: bw * 0.43, hz: bd * 0.43 });
-            for (var tw = 0; tw < 2; tw++) {
-              var h = d.minH + rng() * (d.maxH - d.minH);
-              var ox = (tw === 0 ? -1 : 1) * bw * 0.21 + (rng() - 0.5) * 6;
-              var oz = (tw === 0 ? -1 : 1) * bd * 0.18 + (rng() - 0.5) * 6;
-              towers.push({ x: cx + ox, y: 4.2 + h / 2, z: cz + oz, sx: bw * 0.34, sy: h, sz: bd * 0.34, base: 4.2, h: h, bucket: (bucketSeq.tower++) % 10, rotY: (rng() - 0.5) * 0.07 });
+            if (superLot && rng() < 0.3) {
+              var dh = (d.minH + rng() * (d.maxH - d.minH)) * hScale;
+              hotels.push({ x: cx, y: dh / 2 + 4.2, z: cz, sx: bw * 0.4, sy: dh, sz: bw * 0.4, base: 4.2, h: dh, bucket: (bucketSeq.hotel++) % 3 });
+            } else {
+              var nTw = superLot ? 1 : (rng() < 0.3 ? 1 : 2);
+              for (var tw = 0; tw < nTw; tw++) {
+                var h = (d.minH + rng() * (d.maxH - d.minH)) * hScale * (superLot ? 1.12 : 1);
+                var ox = (nTw === 1 ? 0 : (tw === 0 ? -1 : 1) * bw * 0.21) + (rng() - 0.5) * 6;
+                var oz = (nTw === 1 ? 0 : (tw === 0 ? -1 : 1) * bd * 0.18) + (rng() - 0.5) * 6;
+                var tww = bw * (superLot ? 0.46 : 0.34), twd = bd * (superLot ? 0.44 : 0.34);
+                towers.push({ x: cx + ox, y: 4.2 + h / 2, z: cz + oz, sx: tww, sy: h, sz: twd, base: 4.2, h: h, bucket: (bucketSeq.tower++) % 10, rotY: (rng() - 0.5) * 0.07 });
+                if (rng() < 0.35) {
+                  // L-annex: a lower wing fused to the tower's flank,
+                  // growing toward the block centre (never the street).
+                  var ah = h * (0.3 + rng() * 0.25);
+                  var inDir = ox > 1 ? -1 : 1;
+                  towers.push({ x: cx + ox + inDir * (tww * 0.5 + bw * 0.08), y: 4.2 + ah / 2, z: cz + oz + twd * 0.18, sx: bw * 0.16, sy: ah, sz: twd * 0.62, base: 4.2, h: ah, bucket: (bucketSeq.tower++) % 10, rotY: 0 });
+                }
+              }
             }
           } else if (d.id === 'ruko') {
-            // Two shophouse rows per block (street front + back lane), each
-            // with a coloured awning over the pavement.
-            for (var k = 0; k < 4; k++) {
-              var sx = xs[i] + 16 + k * ((xs[i + 1] - xs[i] - 32) / 3);
-              var sh = d.minH + rng() * (d.maxH - d.minH);
-              shops.push({ x: sx, y: sh / 2, z: cz - bd * 0.24, sx: 17, sy: sh, sz: bd * 0.32, base: 0, h: sh, bucket: (bucketSeq.shop++) % 8 });
-              SH.World.colliders.push({ x: sx, z: cz - bd * 0.24, hx: 8.5, hz: bd * 0.16 });
-              awnings.push({ x: sx, y: 3.1, z: cz - bd * 0.24 - bd * 0.16 - 1.6, sx: 16.4, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
-              var sh2 = d.minH + rng() * (d.maxH - d.minH) * 0.8;
-              shops.push({ x: sx, y: sh2 / 2, z: cz + bd * 0.30, sx: 17, sy: sh2, sz: bd * 0.26, base: 0, h: sh2, bucket: (bucketSeq.shop++) % 8 });
-              SH.World.colliders.push({ x: sx, z: cz + bd * 0.30, hx: 8.5, hz: bd * 0.13 });
-              awnings.push({ x: sx, y: 3.1, z: cz + bd * 0.30 + bd * 0.13 + 1.6, sx: 16.4, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+            // Two shophouse rows per block (street front + back lane),
+            // each with a coloured awning. Rev 5E: shop widths are
+            // seeded per unit (13-21 m) and laid end to end, so the
+            // row rhythm stumbles like a real old town; a super-lot
+            // becomes one wide market block per row instead.
+            var rowZ = [cz - bd * 0.24, cz + bd * 0.30];
+            var rowD = [bd * 0.32, bd * 0.26];
+            for (var rrow = 0; rrow < 2; rrow++) {
+              var rz = rowZ[rrow], rd = rowD[rrow];
+              if (superLot) {
+                var shS = (d.minH + rng() * (d.maxH - d.minH)) * hScale * 1.15;
+                shops.push({ x: cx, y: shS / 2, z: rz, sx: bw * 0.72, sy: shS, sz: rd, base: 0, h: shS, bucket: (bucketSeq.shop++) % 8 });
+                SH.World.colliders.push({ x: cx, z: rz, hx: bw * 0.36, hz: rd / 2 });
+                awnings.push({ x: cx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 1.6), sx: bw * 0.7, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+                continue;
+              }
+              var rx = xs[i] + 13;
+              // The safehouse yard (0,4 front row) stays open at the
+              // east end so Mami's car and the rest point keep their plot.
+              var rowLimit = (i === 0 && j === 4 && rrow === 0) ? -384 : xs[i + 1] - 12;
+              while (rx < rowLimit - 11) {
+                var sw = 13 + rng() * 8;
+                if (rx + sw > rowLimit) sw = rowLimit - rx;
+                var shx = rx + sw / 2;
+                var sh = (d.minH + rng() * (d.maxH - d.minH)) * hScale * (rrow === 1 ? 0.85 : 1);
+                shops.push({ x: shx, y: sh / 2, z: rz, sx: sw, sy: sh, sz: rd, base: 0, h: sh, bucket: (bucketSeq.shop++) % 8 });
+                SH.World.colliders.push({ x: shx, z: rz, hx: sw / 2, hz: rd / 2 });
+                awnings.push({ x: shx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 1.6), sx: sw - 0.6, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+                rx += sw + 1.5;
+              }
             }
           } else if (d.id === 'karat') {
-            var wh = d.minH + rng() * (d.maxH - d.minH);
-            warehouses.push({ x: cx, y: wh / 2, z: cz, sx: bw * 0.68, sy: wh, sz: bd * 0.62, base: 0, h: wh, bucket: (bucketSeq.warehouse++) % 4 });
-            SH.World.colliders.push({ x: cx, z: cz, hx: bw * 0.34, hz: bd * 0.31 });
-            warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: bw * 0.3, sy: 6, sz: bd * 0.2, bucket: (bucketSeq.warehouse++) % 4 });
-            SH.World.colliders.push({ x: cx + bw * 0.3, z: cz + bd * 0.38, hx: bw * 0.15, hz: bd * 0.1 });
+            // Warehouses: a super-lot is one long shed; otherwise a main
+            // shed + a smaller annex (sometimes skipped, sometimes
+            // turned so the yard reads differently block to block).
+            var wh = (d.minH + rng() * (d.maxH - d.minH)) * hScale;
+            if (superLot) {
+              warehouses.push({ x: cx, y: wh / 2, z: cz, sx: bw * 0.85, sy: wh, sz: bd * 0.66, base: 0, h: wh, bucket: (bucketSeq.warehouse++) % 4 });
+              SH.World.colliders.push({ x: cx, z: cz, hx: bw * 0.425, hz: bd * 0.33 });
+            } else {
+              warehouses.push({ x: cx, y: wh / 2, z: cz, sx: bw * 0.68, sy: wh, sz: bd * 0.62, base: 0, h: wh, bucket: (bucketSeq.warehouse++) % 4 });
+              SH.World.colliders.push({ x: cx, z: cz, hx: bw * 0.34, hz: bd * 0.31 });
+              if (rng() > 0.25) {
+                var aTurn = rng() < 0.3;
+                var aW = aTurn ? bd * 0.2 : bw * 0.3, aD = aTurn ? bw * 0.3 : bd * 0.2;
+                warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: aW, sy: 6, sz: aD, bucket: (bucketSeq.warehouse++) % 4 });
+                SH.World.colliders.push({ x: cx + bw * 0.3, z: cz + bd * 0.38, hx: aW / 2, hz: aD / 2 });
+              }
+            }
           } else if (d.id === 'mawar') {
-            for (var v2 = 0; v2 < 3; v2++) {
-              var vx = cx + (v2 - 1) * bw * 0.3;
-              var vh = d.minH + rng() * (d.maxH - d.minH);
-              villas.push({ x: vx, y: vh / 2, z: cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14), sx: 20, sy: vh, sz: 18, base: 0, h: vh, bucket: (bucketSeq.villa++) % 6, rotY: (rng() - 0.5) * 0.09 });
-              SH.World.colliders.push({ x: vx, z: cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14), hx: 10, hz: 9 });
+            // Detached villas with garden gaps: 2-4 per block, jittered;
+            // a super-lot is one larger villa on a greener plot.
+            var nV = superLot ? 1 : 2 + ((rng() * 3) | 0);
+            for (var v2 = 0; v2 < nV; v2++) {
+              var vx = cx + (nV === 1 ? 0 : (v2 - (nV - 1) / 2) * bw * 0.3) + (rng() - 0.5) * 5;
+              var vz = cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14) + (rng() - 0.5) * 6;
+              var vh = (d.minH + rng() * (d.maxH - d.minH)) * hScale;
+              var vW = superLot ? 27 : 20, vD = superLot ? 24 : 18;
+              villas.push({ x: vx, y: vh / 2, z: vz, sx: vW, sy: vh, sz: vD, base: 0, h: vh, bucket: (bucketSeq.villa++) % 6, rotY: (rng() - 0.5) * 0.09 });
+              SH.World.colliders.push({ x: vx, z: vz, hx: vW / 2, hz: vD / 2 });
             }
           } else if (d.id === 'kencana') {
-            // Two CYLINDRICAL hotel drums per block — round towers break the
-            // box grid along the beachfront.
-            for (var kh2 = 0; kh2 < 2; kh2++) {
-              var kh = d.minH + rng() * (d.maxH - d.minH);
-              var kx = cx + (kh2 === 0 ? -1 : 1) * bw * 0.22;
-              // Pulled north (cz-17) and slightly slimmer so the bending
-              // beach road's corridor stays clear at its southernmost dip.
-              hotels.push({ x: kx, y: kh / 2, z: cz - 17, sx: bw * 0.36, sy: kh, sz: bw * 0.36, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
-              SH.World.colliders.push({ x: kx, z: cz - 17, hx: bw * 0.18, hz: bw * 0.18 });
+            // CYLINDRICAL hotel drums along the beachfront — one or two
+            // per block, pullback jittered; round towers break the box
+            // grid where the coast road bends past them.
+            var nKh = superLot ? 1 : 2;
+            for (var kh2 = 0; kh2 < nKh; kh2++) {
+              var kh = (d.minH + rng() * (d.maxH - d.minH)) * hScale * (superLot ? 1.1 : 1);
+              var kx = cx + (nKh === 1 ? 0 : (kh2 === 0 ? -1 : 1) * bw * 0.22);
+              var kPull = 14 + rng() * 6;
+              var kW = bw * (superLot ? 0.5 : 0.36);
+              hotels.push({ x: kx, y: kh / 2, z: cz - kPull, sx: kW, sy: kh, sz: kW, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
+              SH.World.colliders.push({ x: kx, z: cz - kPull, hx: kW / 2, hz: kW / 2 });
             }
           }
         }
@@ -255,7 +333,7 @@
       bucketize(towers, towerMats, { tiers: true, roofProps: true, balconies: true });
       bucketize(shops, shopMats, { hipRoof: 0.55, roofProps: true });
       bucketize(warehouses, wareMats, { hipRoof: 0.4, roofProps: true });
-      bucketize(villas, villaMats, { hipRoof: 0.75, balconies: true });
+      bucketize(villas, villaMats, { hipRoof: 0.9, balconies: true });
       bucketize(podiums, shopMats, {});
       // Cylindrical hotel drums, some with a narrower crown drum.
       var hotelBuckets = hotelMats.map(function () { return []; });
@@ -263,12 +341,15 @@
         var hb = hotels[hi];
         hotelBuckets[hb.bucket % hotelMats.length].push(hb);
         if (rng() < 0.55) {
-          hotelBuckets[hb.bucket % hotelMats.length].push({ x: hb.x, y: hb.h + hb.h * 0.14, z: hb.z, sx: hb.sx * 0.66, sy: hb.h * 0.28, sz: hb.sx * 0.66 });
+          hotelBuckets[hb.bucket % hotelMats.length].push({ x: hb.x, y: (hb.base || 0) + hb.h + hb.h * 0.14, z: hb.z, sx: hb.sx * 0.66, sy: hb.h * 0.28, sz: hb.sx * 0.66 });
         }
       }
       var drumGeo = new THREE.CylinderGeometry(0.5, 0.54, 1, 16);
       for (var hm = 0; hm < hotelMats.length; hm++) makeInstanced(drumGeo, hotelMats[hm], hotelBuckets[hm], scene, true);
       makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), awnings, scene, false);
+      // Rev 5E open lots: asphalt parking pads + painted bay lines.
+      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), parkingPads, scene, false);
+      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), parkingLines, scene, false);
       makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), roofProps, scene, false);
       makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), tanks, scene, false);
       makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), hipRoofs, scene, false);
@@ -331,6 +412,31 @@
           }
         }
       }
+      // Rev 5D: corner plazas at six major intersections — a stone pad
+      // + planter + tree on each corner cuts the 90-degree block corner
+      // visually, from the street and from the air. The 10.2 m offset
+      // keeps pads clear of every district recipe (the nearest building
+      // faces sit >= 18 m from the centrelines).
+      (function cornerPlazas() {
+        var spots = [[0, -60], [-120, -180], [120, -300], [-360, 60], [240, 60], [360, -180]];
+        var pads = [], planters = [];
+        for (var ci = 0; ci < spots.length; ci++) {
+          for (var cq = 0; cq < 4; cq++) {
+            var qx = spots[ci][0] + (cq % 2 ? 10.2 : -10.2);
+            var qz = spots[ci][1] + (cq < 2 ? 10.2 : -10.2);
+            pads.push({ x: qx, y: 0.07, z: qz, sx: 7.5, sy: 0.14, sz: 7.5, color: 0x9a8f7c });
+            if ((ci + cq) % 2 === 0) {
+              planters.push({ x: qx, y: 0.45, z: qz, sx: 2.6, sy: 0.9, sz: 2.6, color: 0x7a4a38 });
+              parkTrees.push({ x: qx, z: qz, s: 0.8 + ((ci * 4 + cq) % 3) * 0.15 });
+            } else {
+              planters.push({ x: qx, y: 0.3, z: qz, sx: 3.4, sy: 0.6, sz: 1.1, color: 0x6b5a48 });
+            }
+          }
+        }
+        makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), pads, scene, false);
+        makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), planters, scene, false);
+      })();
+
       // Palm trunk (Art Bible v2): a tapered stack look — the bend is
       // quadratic (offset = bend * t^2, total lean ~0.95 m over a 6 m
       // trunk with a flared base), and a canvas ring texture bands the

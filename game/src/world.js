@@ -327,6 +327,7 @@
     diagCells: diagCells,
     graph: { nodes: nodes, edges: edges },
     nearestNode: nearestNode,
-    colliders: []  // filled by buildings.js: {x, z, hx, hz} AABBs
+    colliders: [],  // filled by buildings.js: {x, z, hx, hz} AABBs
+    parkingCells: []  // filled by buildings.js (Rev 5E): open parking blocks {x, z, w, d} for the map
   };
 })(window.SH = window.SH || {});
