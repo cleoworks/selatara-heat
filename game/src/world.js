@@ -125,14 +125,46 @@
   (function buildGraph() {
     var xs = cfg.avenuesX, zs = cfg.streetsZ, i, j;
     var lastRow = zs.length - 1;
+    // District-character jitter (user order: the streets themselves
+    // must stop being a lattice): every grid intersection shifts by a
+    // seeded offset sized by its district — Ruko Senja's old town
+    // leans hardest (varied skew angles, uneven blocks), Bukit Mawar
+    // is gently irregular, Pelita's CBD only varies its block widths,
+    // Karat's port grid stays near-true. The beach row (already a
+    // spline), the ring, the alley spine and the island keep exact
+    // coordinates. Buildings stay on the array cells; the jitter is
+    // smaller than the building inset, so skewed roads read as varied
+    // setbacks, never as overlaps (colprobe verifies).
+    var jrng = makeRng(31337);
+    var jitMag = { ruko: 10, mawar: 7, pelita: 4, karat: 3, taman: 4, kencana: 5 };
+    var jit = {}; // "x,z" in array coords -> jittered [x, z]
+    for (i = 0; i < xs.length; i++) {
+      for (j = 0; j + 1 < zs.length; j++) {
+        var mag = jitMag[districtAt(xs[i], zs[j])] || 4;
+        jit[xs[i] + ',' + zs[j]] = [
+          Math.round((xs[i] + (jrng() * 2 - 1) * mag) * 10) / 10,
+          Math.round((zs[j] + (jrng() * 2 - 1) * mag) * 10) / 10
+        ];
+      }
+    }
+    function jPos(x, z) { return jit[x + ',' + z] || [x, z]; }
     // Nodes: the southern street row bends with beachRoadZ.
     for (i = 0; i < xs.length; i++) {
       for (j = 0; j < zs.length; j++) {
-        addNode(xs[i], j === lastRow ? beachRoadZ(xs[i]) : zs[j]);
+        if (j === lastRow) addNode(xs[i], beachRoadZ(xs[i]));
+        else { var jp0 = jPos(xs[i], zs[j]); addNode(jp0[0], jp0[1]); }
       }
     }
     function gridNode(i2, j2) {
-      return nodeAt(xs[i2], j2 === lastRow ? beachRoadZ(xs[i2]) : zs[j2]);
+      if (j2 === lastRow) return nodeAt(xs[i2], beachRoadZ(xs[i2]));
+      var jp2 = jPos(xs[i2], zs[j2]);
+      return nodeAt(jp2[0], jp2[1]);
+    }
+    // Literal array coords -> the (possibly jittered) node id. Points
+    // that are not grid intersections pass through unchanged.
+    function gridNodeAt(x, z) {
+      var jp3 = jPos(x, z);
+      return nodeAt(jp3[0], jp3[1]);
     }
     // Vertical avenue edges (with the Ruko alley split at z=124 on the
     // three western avenues, between the z=60 and z=180 streets).
@@ -163,6 +195,12 @@
             prevC = subN;
           }
           addEdge(prevC, gridNode(i + 1, j), false);
+        } else if (i === 0 && j === 3) {
+          // Split the z=-60 street at x=-420: the steep Ruko alley
+          // below lands mid-block here (varied angle, not 45 degrees).
+          var splitN = addNode(-420, -60);
+          addEdge(gridNode(i, j), splitN, false);
+          addEdge(splitN, gridNode(i + 1, j), false);
         } else {
           addEdge(gridNode(i, j), gridNode(i + 1, j), false);
         }
@@ -183,10 +221,15 @@
       { cell: '0,3', a: [-480, 60], b: [-360, -60] },
       { cell: '1,1', a: [-360, -180], b: [-240, -300] },
       { cell: '1,2', a: [-360, -60], b: [-240, -180] },
-      { cell: '0,0', a: [-480, -300], b: [-360, -420] }
+      { cell: '0,0', a: [-480, -300], b: [-360, -420] },
+      // District pass: a steep cut landing mid-block on the split
+      // z=-60 street (60 wide, 120 deep — nothing like the 45-degree
+      // cuts), and a zig-zag continuation east of the existing chain.
+      { cell: '0,2', a: [-420, -60], b: [-360, -180] },
+      { cell: '2,2', a: [-120, -60], b: [-240, -180] }
     ];
     for (i = 0; i < alleyCuts.length; i++) {
-      addEdge(nodeAt(alleyCuts[i].a[0], alleyCuts[i].a[1]), nodeAt(alleyCuts[i].b[0], alleyCuts[i].b[1]), false, 'alley');
+      addEdge(gridNodeAt(alleyCuts[i].a[0], alleyCuts[i].a[1]), gridNodeAt(alleyCuts[i].b[0], alleyCuts[i].b[1]), false, 'alley');
       diagCells[alleyCuts[i].cell] = true;
     }
 
@@ -197,14 +240,51 @@
       [[-240, -180], [-120, -60]], [[-120, -60], [0, 60]],
       [[0, 60], [120, 180]], [[120, 180], [240, beachRoadZ(240)]],
       [[480, -180], [360, -60]], [[360, 60], [480, 180]],
-      [[240, -420], [360, -300]] // Rev 5C: angled contour lane in Bukit Mawar
+      [[240, -420], [360, -300]], // Rev 5C: angled contour lane in Bukit Mawar
+      // District pass: two long interior connectors crossing district
+      // seams — Ruko/Taman west (through the park's west block) and
+      // Pelita/Karat (through the port's north blocks). Each spans two
+      // cells; both crossed cells are registered underneath.
+      [[-240, 180], [0, 60]],
+      [[120, -60], [360, 60]]
     ];
     for (i = 0; i < diagPairs.length; i++) {
       var pa = diagPairs[i][0], pb = diagPairs[i][1];
-      addEdge(nodeAt(pa[0], pa[1]), nodeAt(pb[0], pb[1]), false, 'diag');
+      addEdge(gridNodeAt(pa[0], pa[1]), gridNodeAt(pb[0], pb[1]), false, 'diag');
       var ci = xs.indexOf(Math.min(pa[0], pb[0]));
       var zi = zs.indexOf(Math.min(pa[1], pb[1]));
       if (ci >= 0 && zi >= 0) diagCells[ci + ',' + zi] = true;
+    }
+    diagCells['3,4'] = true; // second cell crossed by the Taman connector
+    diagCells['6,3'] = true; // second cell crossed by the Karat connector
+
+    // Bukit Mawar crescents: two curved residential arcs — short
+    // chained 'grid' segments bowing through their blocks (the cells
+    // stay open green via diagCells). Semi-regular suburbia, but the
+    // lattice is broken where people actually live.
+    var crescents = [
+      { cell: '7,1', pts: [[360, -180], [410, -210], [450, -250], [480, -300]] },
+      { cell: '6,2', pts: [[240, -60], [290, -90], [330, -130], [360, -180]] }
+    ];
+    for (i = 0; i < crescents.length; i++) {
+      var cps = crescents[i].pts, prevCn = gridNodeAt(cps[0][0], cps[0][1]);
+      for (j = 1; j < cps.length; j++) {
+        var cn = (j === cps.length - 1) ? gridNodeAt(cps[j][0], cps[j][1]) : addNode(cps[j][0], cps[j][1]);
+        addEdge(prevCn, cn, false, 'grid');
+        prevCn = cn;
+      }
+      diagCells[crescents[i].cell] = true;
+    }
+
+    // Taman Arus curved collector: a gentle arc across the park,
+    // following the pond's contour and crossing the canal where the
+    // park paths converge (the z=180 street sets the precedent).
+    var parkArc = [[-120, 60], [-64, 92], [0, 118], [64, 148], [120, 180]];
+    var prevPk = gridNodeAt(parkArc[0][0], parkArc[0][1]);
+    for (i = 1; i < parkArc.length; i++) {
+      var pkn = (i === parkArc.length - 1) ? gridNodeAt(parkArc[i][0], parkArc[i][1]) : addNode(parkArc[i][0], parkArc[i][1]);
+      addEdge(prevPk, pkn, false, 'grid');
+      prevPk = pkn;
     }
 
     // Ring highway: a curved loop — cut corners, bulged side midpoints, and
@@ -242,8 +322,8 @@
       addEdge(prevR, ring[(i + 1) % nRing], false, 'ring');
     }
     // Connectors from the grid corners to the ring.
-    addEdge(nodeAt(-480, -420), ring[12], true);
-    addEdge(nodeAt(480, -420), ring[2], true);
+    addEdge(gridNodeAt(-480, -420), ring[12], true);
+    addEdge(gridNodeAt(480, -420), ring[2], true);
     addEdge(gridNode(8, lastRow), ring[5], true);
     addEdge(gridNode(0, lastRow), ring[9], true);
 
