@@ -289,7 +289,8 @@
         var ped = {
           mesh: built.group, parts: built, lod: lod, far: false,
           x: 0, z: 0, heading: 0, speed: 0, cycle: this.rng() * 6,
-          tx: 0, tz: 0, state: 'walk', timer: this.rng() * 3, panic: 0, down: 0
+          tx: 0, tz: 0, state: 'walk', timer: this.rng() * 3, panic: 0, down: 0,
+          market: i < 8 // Rev 6: the first eight walkers belong to the night market
         };
         this.list.push(ped);
         this.respawn(ped, true);
@@ -297,6 +298,19 @@
     },
 
     respawn: function (ped, anywhere) {
+      // Market regulars always (re)spawn inside the market block, so
+      // the stalls keep their crowd at any hour (Rev 6).
+      if (ped.market) {
+        ped.x = -352 + this.rng() * 96;
+        ped.z = 74 + this.rng() * 46;
+        ped.down = 0; ped.state = 'walk';
+        ped.mesh.rotation.x = 0;
+        this.pickTarget(ped);
+        ped.far = false;
+        if (ped.lod) ped.lod.visible = false;
+        ped.mesh.visible = true;
+        return;
+      }
       var g = SH.World.graph;
       var focus = SH.State.player;
       for (var tries = 0; tries < 10; tries++) {
@@ -319,6 +333,18 @@
     },
 
     pickTarget: function (ped) {
+      // Market regulars stroll the stall bands (walkway + the gaps
+      // between the two tent rows), never leaving the block.
+      if (ped.market) {
+        var bands = [77, 92, 110];
+        // Step to the same or a neighbouring band, so strolls mostly
+        // run along the rows instead of cutting through the tents.
+        var bi = ped.z < 84 ? 0 : (ped.z < 101 ? 1 : 2);
+        bi = Math.max(0, Math.min(2, bi + ((this.rng() * 3) | 0) - 1));
+        ped.tx = -352 + this.rng() * 96;
+        ped.tz = bands[bi] + (this.rng() - 0.5) * 5;
+        return;
+      }
       // Walk to a point near another intersection, offset to a sidewalk.
       var g = SH.World.graph;
       var ni = SH.World.nearestNode(ped.x, ped.z);

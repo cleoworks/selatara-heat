@@ -648,16 +648,42 @@
       this.tentMaterial = tentMat;
       makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), tentMat, tents, scene, false);
 
-      // String bulbs over the market (Art Pass 3): instanced warm bulbs
-      // on sagging spans between the tent tops of both rows, plus three
-      // cross spans. setNightGlow switches them on; every eighth bulb
-      // also carries a soft additive glow sprite.
+      // Rev 6: the market stands on a packed-earth pad (not lawn), and
+      // every tent is a working stall — a counter facing the walkway,
+      // bright goods on top, crates stacked beside it.
+      var marketPad = new THREE.Mesh(new THREE.BoxGeometry(108, 0.07, 58), new THREE.MeshLambertMaterial({ color: 0x8a6f4d }));
+      marketPad.position.set(-303, 0.035, 91);
+      marketPad.receiveShadow = true;
+      scene.add(marketPad);
+      var counters = [], stallGoods = [], stallCrates = [];
+      var goodsColors = [0xff5a4e, 0xffc93c, 0x7dd069, 0xff8c42, 0x4ecdc4, 0xff6b9d];
+      for (pi = 0; pi < 26; pi++) {
+        var smx = -352 + (pi % 13) * 7.6, smz = 84 + ((pi / 13) | 0) * 16;
+        var faceDir = smz === 84 ? 1 : -1; // counters face the z=92 walkway
+        counters.push({ x: smx, y: 0.45, z: smz + faceDir * 5.1, sx: 3.4, sy: 0.9, sz: 0.95, color: 0x8a6844 });
+        for (var gi = 0; gi < 3; gi++) {
+          stallGoods.push({ x: smx - 1.1 + gi * 1.1, y: 1.06, z: smz + faceDir * 5.1, sx: 0.34, sy: 0.3, sz: 0.34, color: goodsColors[(rng() * goodsColors.length) | 0] });
+        }
+        stallCrates.push({ x: smx + 3.6, y: 0.3, z: smz + (rng() - 0.5) * 2, sx: 0.6, sy: 0.6, sz: 0.6, color: rng() < 0.5 ? 0xa8763e : 0x7d5a38 });
+        if (rng() < 0.6) stallCrates.push({ x: smx + 3.6, y: 0.9, z: smz + (rng() - 0.5) * 2, sx: 0.52, sy: 0.52, sz: 0.52, color: 0xa8763e });
+        if (rng() < 0.5) stallCrates.push({ x: smx - 3.6, y: 0.3, z: smz + (rng() - 0.5) * 2, sx: 0.6, sy: 0.6, sz: 0.6, color: 0x5f7a8a });
+      }
+      var stallMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+      makeInstanced(box, stallMat, counters, scene, false);
+      makeInstanced(box, stallMat, stallGoods, scene, false);
+      makeInstanced(box, stallMat, stallCrates, scene, false);
+
+      // String bulbs over the market: instanced warm bulbs on sagging
+      // spans between the tent tops of both rows, three cross spans,
+      // and a festoon line down the central walkway (Rev 6 rework —
+      // spans ride lower, in the gaps between the tent cones, so the
+      // bulbs read against the stalls instead of hiding on the canvas).
       var bulbPts = [];
       function bulbSpan(x1, z1, x2, z2) {
         var n = Math.max(3, Math.round(Math.hypot(x2 - x1, z2 - z1) / 1.9));
         for (var bi = 0; bi <= n; bi++) {
           var bt = bi / n;
-          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.9 - Math.sin(bt * Math.PI) * 0.5, z: z1 + (z2 - z1) * bt });
+          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.3 - Math.sin(bt * Math.PI) * 0.55, z: z1 + (z2 - z1) * bt });
         }
       }
       for (var brow = 0; brow < 2; brow++) {
@@ -667,11 +693,12 @@
       bulbSpan(-336.8, 84, -336.8, 100);
       bulbSpan(-306.4, 84, -306.4, 100);
       bulbSpan(-276.0, 84, -276.0, 100);
+      for (var bfi = 0; bfi < 12; bfi++) bulbSpan(-352 + bfi * 7.6, 92, -352 + (bfi + 1) * 7.6, 92);
       var bulbMat = new THREE.MeshBasicMaterial({ color: 0x665533 });
       this.bulbMaterial = bulbMat;
       this.bulbOffColor = new THREE.Color(0x665533);
       this.bulbOnColor = new THREE.Color(0xffd9a0);
-      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 5), bulbMat, bulbPts.length);
+      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 5), bulbMat, bulbPts.length);
       var bDummy = new THREE.Object3D();
       for (pi = 0; pi < bulbPts.length; pi++) {
         bDummy.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
@@ -686,9 +713,9 @@
       bg2.fillStyle = bgrad; bg2.fillRect(0, 0, 64, 64);
       var bulbGlowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(bgc), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
       this.bulbGlowMaterial = bulbGlowMat;
-      for (pi = 0; pi < bulbPts.length; pi += 8) {
+      for (pi = 0; pi < bulbPts.length; pi += 5) {
         var bsp = new THREE.Sprite(bulbGlowMat);
-        bsp.scale.set(1.5, 1.5, 1);
+        bsp.scale.set(1.9, 1.9, 1);
         bsp.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
         scene.add(bsp);
       }
@@ -832,7 +859,7 @@
       // warm up and their glow sprites fade in.
       if (this.tentMaterial) this.tentMaterial.emissiveIntensity = amount * 0.5;
       if (this.bulbMaterial) this.bulbMaterial.color.copy(this.bulbOffColor).lerp(this.bulbOnColor, amount);
-      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.55;
+      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.85;
     }
   };
 
