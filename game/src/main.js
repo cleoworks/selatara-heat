@@ -381,6 +381,7 @@
     setHour: function (h) { State.hour = h; },
     getScene: function () { return scene; },
     getCamera: function () { return camera; },
+    getRenderer: function () { return renderer; }, // perf audits (draw calls)
     boot: boot
   };
 

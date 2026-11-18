@@ -77,12 +77,12 @@
 
     // ---- Vehicles: arcade bicycle-model parameters per type ----
     vehicleTypes: {
-      sedan: { label: 'Kijang Sedan', maxSpeed: 33, accel: 11, brake: 22, grip: 9, turn: 1.9, length: 4.4, width: 1.9, height: 1.45, mass: 1200, colors: [0xc94f4f, 0x4f7ac9, 0xe8e3d8, 0x3a3f4a, 0x7ac94f] },
-      sport: { label: 'Arus GT Sport', maxSpeed: 47, accel: 17, brake: 26, grip: 11, turn: 2.3, length: 4.3, width: 1.95, height: 1.15, mass: 1050, colors: [0xffb020, 0xff4fa3, 0x37e0ff, 0xe83a3a, 0x22242c] },
+      sedan: { label: 'Kijang Sedan', maxSpeed: 33, accel: 11, brake: 22, grip: 9, turn: 1.9, length: 4.4, width: 1.82, height: 1.45, mass: 1200, colors: [0xc94f4f, 0x4f7ac9, 0xe8e3d8, 0x3a3f4a, 0x7ac94f] },
+      sport: { label: 'Arus GT Sport', maxSpeed: 47, accel: 17, brake: 26, grip: 11, turn: 2.3, length: 4.3, width: 1.88, height: 1.15, mass: 1050, colors: [0xffb020, 0xff4fa3, 0x37e0ff, 0xe83a3a, 0x22242c] },
       truck: { label: 'Bara Container Truck', maxSpeed: 24, accel: 7, brake: 17, grip: 7, turn: 1.4, length: 7.6, width: 2.5, height: 3.1, mass: 3200, colors: [0xd8d3c8, 0x7a8894, 0xc97a3a] },
       motor: { label: 'Selat Scooter', maxSpeed: 36, accel: 15, brake: 24, grip: 10, turn: 2.8, length: 2.1, width: 0.7, height: 1.15, mass: 220, colors: [0x37b24d, 0xff6b4a, 0x4f7ac9, 0xf2e3c6] },
       boat: { label: 'Kencana Speedboat', maxSpeed: 26, accel: 9, brake: 12, grip: 5, turn: 1.5, length: 6.4, width: 2.3, height: 1.5, mass: 900, colors: [0xffffff, 0xff8c5a] },
-      police: { label: 'Selatara Patrol', maxSpeed: 40, accel: 14, brake: 24, grip: 10, turn: 2.1, length: 4.5, width: 1.95, height: 1.5, mass: 1250, colors: [0xf2f2f2] }
+      police: { label: 'Selatara Patrol', maxSpeed: 40, accel: 14, brake: 24, grip: 10, turn: 2.1, length: 4.5, width: 1.85, height: 1.5, mass: 1250, colors: [0xf2f2f2] }
     },
 
     // ---- Weapons (combat lands in a later slice; data lives here) ----

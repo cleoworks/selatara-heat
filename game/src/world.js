@@ -215,9 +215,53 @@
     return best;
   }
 
+  // ---- shared geometry merging (draw-call budget, Art Bible v2) --------
+  // Merge a list of geometries into one BufferGeometry. Everything is
+  // converted to non-indexed and position/normal/uv (+color when the
+  // first part has it) are concatenated. Used to fuse the static trim of
+  // each vehicle and the rigid parts of each figure into single meshes.
+  function mergeGeos(list) {
+    var parts = [], total = 0, i, g;
+    for (i = 0; i < list.length; i++) {
+      g = list[i].index ? list[i].toNonIndexed() : list[i];
+      parts.push(g);
+      total += g.attributes.position.count;
+    }
+    var hasColor = parts.length && parts[0].attributes.color != null;
+    var pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), uv = new Float32Array(total * 2);
+    var col = hasColor ? new Float32Array(total * 3) : null;
+    var off = 0;
+    for (i = 0; i < parts.length; i++) {
+      g = parts[i];
+      pos.set(g.attributes.position.array, off * 3);
+      nor.set(g.attributes.normal.array, off * 3);
+      if (g.attributes.uv) uv.set(g.attributes.uv.array, off * 2);
+      if (col && g.attributes.color) col.set(g.attributes.color.array, off * 3);
+      off += g.attributes.position.count;
+    }
+    var out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return out;
+  }
+
+  // Clone a geometry with a position + Euler rotation baked in, so parts
+  // can be merged in their placed pose.
+  function xformGeo(geo, x, y, z, rx, ry, rz) {
+    var m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0));
+    m.setPosition(x, y, z);
+    var out = geo.clone();
+    out.applyMatrix4(m);
+    return out;
+  }
+
   SH.World = {
     rng: makeRng(20261124),
     makeRng: makeRng,
+    mergeGeos: mergeGeos,
+    xformGeo: xformGeo,
     districtAt: districtAt,
     coastZ: coastZ,
     beachRoadZ: beachRoadZ,
