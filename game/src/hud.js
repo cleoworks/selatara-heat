@@ -73,7 +73,7 @@
       var roles = {
         'Mami Ratna': 'ARUS SYNDICATE', 'Raka': 'GETAWAY DRIVER', 'Courier': 'COURIER',
         'Boutique Owner': 'BUTIK KENCANA', 'Narrator': 'SELATARA', 'Commissioner Varga': 'POLICE COMMISSIONER',
-        'Dario Latu': 'RIVAL BOSS'
+        'Dario Latu': 'RIVAL BOSS', 'Bengkel Arus': 'WORKSHOP', 'Unknown': 'UNKNOWN CALLER'
       };
       if (el.subRole) el.subRole.textContent = roles[name] || '';
       this.drawPortrait(name);

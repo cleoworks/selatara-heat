@@ -96,6 +96,13 @@
     // ---- Pickups ----
     pickups: { health: 35, armor: 50, cashMin: 40, cashMax: 120 },
 
+    // ---- Shops (economy.js reads every price from here) ----
+    shops: {
+      pistolAmmo: 60, smgAmmo: 90, shotgunAmmo: 110,
+      smg: 1400, shotgun: 2100, armor: 500,
+      repairPerHp: 6, spray: 350, meal: 45, rest: 0, save: 0, outfit: 150
+    },
+
     // ---- Loop / performance ----
     loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 34, activeRadius: 340, despawnRadius: 420 },
     day: { startHour: 17.4, minutesPerSecond: 1.6 }

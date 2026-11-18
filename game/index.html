@@ -124,6 +124,23 @@
   .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
   #map-stats { font-size: 13px; opacity: .9; }
+  /* ---------- Shop panel + credits ---------- */
+  #shop-panel { position: fixed; right: var(--safe); top: 50%; transform: translateY(-50%); z-index: 18;
+    width: 300px; display: flex; flex-direction: column; gap: 7px; pointer-events: auto; }
+  #shop-panel .shop-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .1em;
+    color: var(--yellow); font-size: 14px; margin-bottom: 2px; }
+  #shop-panel .shop-cash { color: var(--green); }
+  #shop-panel .shop-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    text-align: left; padding: 9px 13px; letter-spacing: .02em; }
+  #shop-panel .shop-item .shop-detail { font-size: 12px; font-weight: 400; opacity: .85; letter-spacing: 0; }
+  #shop-panel .shop-item:disabled { opacity: .45; cursor: default; }
+  #shop-panel .shop-hint { font-size: 11.5px; opacity: .75; margin-top: 2px; }
+  #credits { position: fixed; inset: 0; z-index: 30; background: rgba(4, 4, 12, .82); display: flex;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; cursor: pointer; }
+  #credits .cr-title { font-size: clamp(30px, 6vmin, 54px); font-weight: 800; letter-spacing: .16em; color: var(--yellow);
+    text-shadow: 0 4px 22px rgba(0,0,0,.9); }
+  #credits .cr-line { font-size: clamp(13px, 2vmin, 17px); letter-spacing: .12em; opacity: .92; }
+  #credits .cr-small { font-size: 12px; letter-spacing: .2em; opacity: .6; margin-top: 14px; }
   #loading { position: fixed; inset: 0; z-index: 40; background: #0b1030; display: flex;
     flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
   #loading .bar { width: min(420px, 70vw); height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
@@ -178,6 +195,17 @@
   <div id="hud-subtitle" class="hidden"><canvas id="sub-portrait" width="108" height="108"></canvas><div><div><span id="sub-name"></span><span id="sub-role"></span></div><div id="sub-text"></div></div></div>
   <div id="hud-prompt" class="hidden"></div>
 </div>
+<div id="shop-panel" class="panel hidden"></div>
+<div id="credits" class="hidden">
+  <div class="cr-title">SELATARA HEAT</div>
+  <div class="cr-line">STORY COMPLETE — THE DEBT IS PAID</div>
+  <div class="cr-line">Raka Pramudya — driver</div>
+  <div class="cr-line">Mami Ratna — fixer, Arus Syndicate</div>
+  <div class="cr-line">Commissioner Varga — Selatara Police</div>
+  <div class="cr-line">Dario &ldquo;Kapten&rdquo; Latu — rival boss</div>
+  <div class="cr-line">Free roam unlocked — the strait is yours.</div>
+  <div class="cr-small">CLICK OR PRESS ESC TO KEEP DRIVING</div>
+</div>
 <div id="hud-marker" class="hidden"></div>
 <div id="hud-crosshair" class="hidden"></div>
 <div id="hud-hitmark" class="hidden">✕</div>
@@ -212,6 +240,7 @@
       <b>Shift</b><span>Sprint</span>
       <b>Space</b><span>Jump / handbrake</span>
       <b>F</b><span>Enter / exit vehicle</span>
+      <b>E</b><span>Use shop / safehouse (at the green map blips)</span>
       <b>Right mouse</b><span>Aim</span>
       <b>Left mouse</b><span>Shoot / punch</span>
       <b>Q</b><span>Next weapon</span>
@@ -271,6 +300,7 @@
 <script src="./src/combat.js"></script>
 <script src="./src/missions.js"></script>
 <script src="./src/economy.js"></script>
+<script src="./src/weather.js"></script>
 <script src="./src/hud.js"></script>
 <script src="./src/minimap.js"></script>
 <script src="./src/menus.js"></script>

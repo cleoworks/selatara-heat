@@ -2,8 +2,8 @@
 // The mission runner: a data-driven step state machine (goTo / enterVehicle /
 // deliver / chasePed / kill / escape / survive / driveTo) with dialogue
 // playback, checkpoints, fail + retry, cash rewards and autosave, plus the
-// opening cinematic. Missions 1-4 of the Arus Syndicate arc are fully built
-// here; 5-8 unlock in the next content slice.
+// opening cinematic. All eight missions of the Arus Syndicate arc are built
+// here, ending with the ferry finale, credits and the free-roam unlock.
 // Public API: SH.Missions { list[], currentIndex, startIntro(), startMission(i),
 //   update(dt), updateCutscene(dt, camera), setObjective(), clearObjective() }.
 (function (SH) {
@@ -42,13 +42,18 @@
       var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z); m.castShadow = true; g.add(m); return m;
     }
-    var legL = box(0.2, 0.78, 0.24, pants, -0.15, 0.78, 0); legL.geometry.translate(0, -0.3, 0);
-    var legR = box(0.2, 0.78, 0.24, pants, 0.15, 0.78, 0); legR.geometry.translate(0, -0.3, 0);
-    box(0.56, 0.64, 0.3, shirt, 0, 1.1, 0);
+    var legL = box(0.19, 0.8, 0.23, pants, -0.13, 0.82, 0); legL.geometry.translate(0, -0.34, 0);
+    var legR = box(0.19, 0.8, 0.23, pants, 0.13, 0.82, 0); legR.geometry.translate(0, -0.34, 0);
+    box(0.54, 0.6, 0.3, shirt, 0, 1.13, 0);
     box(0.4, 0.44, 0.18, new THREE.MeshLambertMaterial({ color: 0xc94f4f, flatShading: true }), 0, 1.18, -0.26); // parcel backpack
-    var armL = box(0.16, 0.6, 0.2, shirt, -0.38, 1.38, 0); armL.geometry.translate(0, -0.24, 0);
-    var armR = box(0.16, 0.6, 0.2, shirt, 0.38, 1.38, 0); armR.geometry.translate(0, -0.24, 0);
-    box(0.32, 0.36, 0.32, skin, 0, 1.62, 0);
+    var armL = box(0.14, 0.42, 0.18, shirt, -0.35, 1.4, 0); armL.geometry.translate(0, -0.17, 0);
+    var armR = box(0.14, 0.42, 0.18, shirt, 0.35, 1.4, 0); armR.geometry.translate(0, -0.17, 0);
+    var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.15), skin);
+    foreL.position.set(0, -0.44, 0); foreL.castShadow = true; armL.add(foreL);
+    var foreR = foreL.clone(); armR.add(foreR);
+    box(0.14, 0.1, 0.14, skin, 0, 1.47, 0);
+    box(0.27, 0.3, 0.27, skin, 0, 1.64, 0);
+    box(0.29, 0.09, 0.29, new THREE.MeshLambertMaterial({ color: 0x14100c, flatShading: true }), 0, 1.81, 0);
     return { group: g, legL: legL, legR: legR, armL: armL, armR: armR };
   }
 
@@ -112,10 +117,74 @@
             say: [['Mami Ratna', 'Still breathing. You drive like the old days, Raka.', 3.6]] }
         ]
       },
-      { id: 'hilltop-repo', title: 'HILLTOP REPO', giver: 'Bengkel Arus', reward: 1100, brief: 'Repossess a sport car from a Bukit Mawar villa, through the roadblocks.', locked: true },
-      { id: 'kencana-heist', title: 'THE KENCANA HEIST', giver: 'Mami Ratna', reward: 2000, brief: 'Rob the boardwalk jewellery store and escape by boat.', locked: true },
-      { id: 'double-cross', title: 'DOUBLE CROSS', giver: 'Unknown', reward: 1800, brief: 'Survive Commissioner Varga\u2019s trap in a port warehouse.', locked: true },
-      { id: 'last-ferry', title: 'LAST FERRY OUT', giver: 'Mami Ratna', reward: 3000, brief: 'Chase Dario \u201CKapten\u201D Latu to the last ferry and end this.', locked: true }
+      {
+        id: 'hilltop-repo', title: 'HILLTOP REPO', giver: 'Bengkel Arus', reward: 1100,
+        brief: 'Repossess a sport car from a Bukit Mawar villa and deliver it to Bengkel Arus.',
+        steps: [
+          { type: 'goTo', x: 330, z: -240, r: 7, text: 'Reach the villa in Bukit Mawar',
+            say: [['Bengkel Arus', 'A client in Bukit Mawar stopped paying for his Arus GT. The car is ours — go take it back.', 4.2],
+                  ['Raka', 'Rich hill, quiet streets. What could go wrong.', 3]] },
+          { type: 'enterVehicle', vehicle: 'repoCar', text: 'Take the Arus GT (F)',
+            say: [['Raka', 'Keys in the visor. Amateurs.', 2.6]] },
+          { type: 'driveTo', x: 246, z: 66, r: 9, text: 'Deliver the car to Bengkel Arus',
+            say: [['Bengkel Arus', 'The owner called Varga\u2019s men. Expect roadblocks — bring her home anyway.', 4]] },
+          { type: 'escape', text: 'Lose the police completely',
+            say: [['Raka', 'One repo, two stars. The hill keeps its secrets.', 3]] }
+        ]
+      },
+      {
+        id: 'kencana-heist', title: 'THE KENCANA HEIST', giver: 'Mami Ratna', reward: 2000,
+        brief: 'Rob the boardwalk jewellery store and escape by boat.',
+        setHour: 19.2,
+        steps: [
+          { type: 'goTo', x: 60, z: 214, r: 6, text: 'Case the jewellery store on the boardwalk',
+            say: [['Mami Ratna', 'Permata Kencana, on the boardwalk. Dario\u2019s stones in the window, my name on the lease. Take them back.', 4.6],
+                  ['Raka', 'Smash, grab, and the boat at the pier. Loud and simple.', 3.2]] },
+          { type: 'goTo', x: 60, z: 388, r: 7, text: 'Run to the speedboat at the end of the pier',
+            say: [['Mami Ratna', 'The alarm is singing, Raka. The boat. Now.', 3.2]] },
+          { type: 'enterVehicle', vehicle: 'heistBoat', text: 'Take the speedboat (F)',
+            say: [['Raka', 'Water has no roadblocks.', 2.4]] },
+          { type: 'driveTo', x: -420, z: 330, r: 16, text: 'Cross the bay to the west hideout',
+            say: [['Mami Ratna', 'Across the strait, to the old boathouse. Do not stop for the harbour lights.', 4]] },
+          { type: 'escape', text: 'Lose the police completely',
+            say: [['Raka', 'Salt air and quiet water. Done.', 3]] }
+        ]
+      },
+      {
+        id: 'double-cross', title: 'DOUBLE CROSS', giver: 'Unknown', reward: 1800,
+        brief: 'Survive Commissioner Varga\u2019s trap in a port warehouse.',
+        setHour: 21.1,
+        steps: [
+          { type: 'goTo', x: 330, z: 120, r: 9, text: 'Meet the contact at the east warehouse',
+            say: [['Unknown', 'Come alone to the east warehouse, Raka. Varga wants to settle accounts.', 4],
+                  ['Raka', 'A midnight meeting in a warehouse. Nothing about this smells right.', 3.6]] },
+          { type: 'survive', seconds: 45, text: 'Survive the ambush',
+            say: [['Commissioner Varga', 'You should have stayed in prison, Pramudya. Boys — take him.', 4],
+                  ['Raka', 'A trap. Of course it is a trap!', 2.6]] },
+          { type: 'kill', text: 'Finish Varga\u2019s crew',
+            say: [['Raka', 'Tell Varga the strait settles its own accounts!', 3.2]] },
+          { type: 'escape', text: 'Lose the police completely',
+            say: [['Mami Ratna', 'Varga played his hand and lost. Come home, Raka.', 3.6]] }
+        ]
+      },
+      {
+        id: 'last-ferry', title: 'LAST FERRY OUT', giver: 'Mami Ratna', reward: 3000,
+        brief: 'Chase Dario \u201CKapten\u201D Latu to the last ferry and end this.',
+        setHour: 18.05,
+        steps: [
+          { type: 'goTo', x: 60, z: 300, r: 8, text: 'Reach the ferry pier — Dario is leaving',
+            say: [['Mami Ratna', 'Dario is running for the last ferry with the Syndicate\u2019s strongbox. End this, Raka — and the debt dies with it.', 4.8]] },
+          { type: 'chaseCar', seconds: 75, timeLimit: 170, text: 'Run Dario\u2019s car down (stay on him)',
+            say: [['Dario Latu', 'The strait is mine, driver! You are just the help!', 3.4],
+                  ['Raka', 'Not tonight, Kapten.', 2.4]] },
+          { type: 'goTo', x: 60, z: 384, r: 8, text: 'Confront Dario at the ferry ramp',
+            say: [['Dario Latu', 'You want the strongbox? Come and take it — my boys are hungry!', 3.6]] },
+          { type: 'kill', text: 'End Dario\u2019s crew',
+            say: [['Raka', 'It ends here, Kapten.', 2.6]] },
+          { type: 'escape', text: 'Lose the police completely',
+            say: [['Mami Ratna', 'It is over, Raka. The ferry, the strait, the debt — all of it. You are free.', 4.4]] }
+        ]
+      }
     ];
   }
 
@@ -234,6 +303,10 @@
       this.syncObjective(step);
       if (run.def.id === 'port-of-lies') this.portStepSetup(run, step);
       if (run.def.id === 'escort-mami') this.escortStepSetup(run, step);
+      if (run.def.id === 'hilltop-repo') this.repoStepSetup(run, step);
+      if (run.def.id === 'kencana-heist') this.heistStepSetup(run, step);
+      if (run.def.id === 'double-cross') this.crossStepSetup(run, step);
+      if (run.def.id === 'last-ferry') this.ferryStepSetup(run, step);
       if (run.def.id === 'night-market' && step.type === 'chasePed') this.spawnCourier();
     },
 
@@ -250,23 +323,45 @@
     completeMission: function () {
       var run = this.active;
       var st = SH.State;
+      var finishedIndex = this.currentIndex;
       this.active = null;
       this.removeCourier();
       if (SH.Combat) SH.Combat.clearEnemies();
-      st.stats.missionsDone = Math.max(st.stats.missionsDone, this.currentIndex + 1);
+      st.stats.missionsDone = Math.max(st.stats.missionsDone, finishedIndex + 1);
       SH.Economy.addCash(run.def.reward);
       if (SH.Audio) SH.Audio.cash();
       if (SH.HUD) SH.HUD.banner('MISSION COMPLETE', run.def.title + ' — $' + run.def.reward, 3.4, false);
-      this.currentIndex = Math.min(this.currentIndex + 1, this.list.length - 1);
+      this.currentIndex = Math.min(finishedIndex + 1, this.list.length - 1);
+      // Finale: the story is done — credits roll, free roam unlocks, and the
+      // save carries the "story complete" mark from here on.
+      if (finishedIndex >= this.list.length - 1) {
+        st.storyComplete = true;
+        this.phase = 'free';
+        this.setObjective('FREE ROAM', 'Story complete — Selatara is yours. The city never sleeps.', SAFEHOUSE.x, SAFEHOUSE.z);
+        if (SH.Save) SH.Save.saveGame();
+        this.showCredits();
+        return;
+      }
       if (SH.Save) SH.Save.saveGame();
       // Chain: the next briefing waits at the safehouse.
-      if (this.currentIndex <= 3) {
-        this.phase = 'briefing';
-        this.setObjective(this.list[this.currentIndex].title, 'Meet Mami Ratna at the safehouse', SAFEHOUSE.x, SAFEHOUSE.z);
-      } else {
-        this.phase = 'free';
-        this.setObjective('FREE ROAM', 'All current jobs done — more chapters coming to Selatara', SAFEHOUSE.x, SAFEHOUSE.z);
-      }
+      this.phase = 'briefing';
+      this.setObjective(this.list[this.currentIndex].title, 'Meet Mami Ratna at the safehouse', SAFEHOUSE.x, SAFEHOUSE.z);
+    },
+
+    // End-of-story credits overlay (DOM, dismissed with a click / Esc).
+    showCredits: function () {
+      var el = document.getElementById('credits');
+      if (!el) return;
+      el.classList.remove('hidden');
+      if (SH.HUD) SH.HUD.banner('STORY COMPLETE', 'LAST FERRY OUT — the debt is paid', 4, false);
+      var hide = function () {
+        el.classList.add('hidden');
+        window.removeEventListener('keydown', onKey);
+      };
+      var onKey = function (e) { if (e.code === 'Escape' || e.code === 'Space') hide(); };
+      el.addEventListener('click', hide);
+      window.addEventListener('keydown', onKey);
+      setTimeout(hide, 14000);
     },
 
     failMission: function (reason) {
@@ -318,17 +413,149 @@
     escortStepSetup: function (run, step) {
       if (step.type === 'enterVehicle') {
         var scene = SH.Main.getScene();
-        if (!run.stepData.mamiCar && scene) {
+        if (!run.eventFlags.mamiCar && scene) {
           var car = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xff4fa3, -358, 100, Math.PI / 2);
           car.driver = 'parked';
-          run.stepData.targetVeh = car;
-          run.stepData.mamiCar = car;
+          run.eventFlags.mamiCar = car;
+        }
+        if (run.eventFlags.mamiCar) {
+          run.stepData.targetVeh = run.eventFlags.mamiCar;
+          run.stepData.mamiCar = run.eventFlags.mamiCar;
           this.syncObjective(step);
         }
       }
-      if (step.type === 'goTo' && run.stepData.mamiCar) {
-        // She drives herself home if the player walks off; nothing else to do.
+    },
+
+    // Hilltop Repo: the target GT waits at the villa; taking it raises 2 stars.
+    repoStepSetup: function (run, step) {
+      if (step.type === 'enterVehicle') {
+        // stepData resets every step, so the car itself is kept on
+        // eventFlags (persistent) and re-pointed into stepData here.
+        if (!run.eventFlags.repoCar) {
+          var scene = SH.Main.getScene();
+          if (!scene) return;
+          var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0xffb020, 330, -240, Math.PI);
+          car.driver = 'parked';
+          run.eventFlags.repoCar = car;
+        }
+        run.stepData.targetVeh = run.eventFlags.repoCar;
+        this.syncObjective(step);
       }
+      if (step.type === 'driveTo' && !run.eventFlags.repoAlarm) {
+        run.eventFlags.repoAlarm = true;
+        if (SH.Police) SH.Police.forceWanted(2);
+      }
+    },
+
+    // Kencana Heist: the getaway boat waits at the pier end from the start.
+    heistStepSetup: function (run, step) {
+      if (!run.eventFlags.boat) {
+        var scene = SH.Main.getScene();
+        if (scene) {
+          var boat = SH.Vehicles.spawnVehicle(scene, 'boat', 0xffffff, 60, 394, 0);
+          boat.driver = 'parked';
+          run.eventFlags.boat = boat;
+        }
+      }
+      if (step.type === 'enterVehicle') {
+        run.stepData.boat = run.eventFlags.boat;
+        run.stepData.targetVeh = run.eventFlags.boat;
+        this.syncObjective(step);
+      }
+      if (step.type === 'driveTo' && !run.eventFlags.heistAlarm) {
+        run.eventFlags.heistAlarm = true;
+        if (SH.Police) SH.Police.forceWanted(3);
+        Dialog.play([['Raka', 'Harbour lights behind me. Open water ahead.', 3]]);
+      }
+    },
+
+    // Double Cross: Varga's ambush — two shootout waves during SURVIVE, a
+    // reinforcement wave for the KILL step, police heat from the gunfire.
+    crossStepSetup: function (run, step) {
+      if (step.type === 'survive' && !run.eventFlags.dcAmbush) {
+        run.eventFlags.dcAmbush = true;
+        if (SH.Police) SH.Police.forceWanted(3);
+        for (var i = 0; i < 4; i++) {
+          SH.Combat.spawnEnemy(330 + (i - 1.5) * 9, 120 + (i % 2) * 22 - 11, { color: 0x2a3f8f, hp: 50, damage: 7, name: 'Varga\u2019s men' });
+        }
+        if (SH.HUD) SH.HUD.notify('Ambush! Survive the warehouse shootout');
+      }
+      if (step.type === 'kill' && !run.eventFlags.dcWave2) {
+        run.eventFlags.dcWave2 = true;
+        for (var j = 0; j < 3; j++) {
+          SH.Combat.spawnEnemy(316 + j * 14, 138, { color: 0x2a3f8f, hp: 50, damage: 7, name: 'Varga\u2019s men' });
+        }
+      }
+    },
+
+    crossEvents: function (run, dt) {
+      var step = run.def.steps[run.stepIndex];
+      if (step.type !== 'survive') return;
+      var t = run.stepData.t;
+      if (!run.eventFlags.dcWaveB && t > 22) {
+        run.eventFlags.dcWaveB = true;
+        for (var i = 0; i < 3; i++) {
+          SH.Combat.spawnEnemy(344 - i * 12, 104, { color: 0x274b4f, hp: 45, damage: 7, name: 'Varga\u2019s men' });
+        }
+        Dialog.play([['Commissioner Varga', 'More men! He does not leave this warehouse!', 3.2]]);
+      }
+    },
+
+    // Last Ferry Out: Dario's car flees around the bay road; stay on him to
+    // run him down, then his crew makes a stand at the ferry ramp.
+    ferryStepSetup: function (run, step) {
+      if (step.type === 'chaseCar' && !run.eventFlags.darioCar) {
+        var scene = SH.Main.getScene();
+        if (!scene) return;
+        var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0x22242c, 60, 306, 0);
+        car.driver = 'parked';
+        run.eventFlags.darioCar = car;
+        run.stepData.darioCar = car;
+        run.stepData.chaseT = 0;
+        this.syncObjective(step);
+      }
+      if (step.type === 'kill' && !run.eventFlags.dcFinale) {
+        run.eventFlags.dcFinale = true;
+        if (SH.Police) SH.Police.forceWanted(4);
+        for (var i = 0; i < 4; i++) {
+          SH.Combat.spawnEnemy(48 + i * 8, 372 + (i % 2) * 10, { color: 0x1f6f6f, hp: 55, damage: 8, name: 'Dario\u2019s crew' });
+        }
+        if (SH.HUD) SH.HUD.notify('Dario\u2019s last stand — finish it');
+      }
+    },
+
+    // Dario drives a loop around the bay streets; the chase completes when
+    // Raka keeps him in reach long enough (cumulative pressure) or the car
+    // is wrecked. Losing him for good fails the step.
+    updateDarioCar: function (run, dt) {
+      var car = run.eventFlags.darioCar || run.stepData.darioCar;
+      if (!car) return false;
+      var st = SH.State;
+      var route = [
+        { x: 60, z: 306 }, { x: 114, z: 228 }, { x: 60, z: 120 }, { x: -114, z: 66 },
+        { x: -234, z: 120 }, { x: -114, z: 228 }, { x: 6, z: 234 }, { x: 60, z: 306 }
+      ];
+      if (car.dead) return true;
+      if (run.stepData.darioWp === undefined) run.stepData.darioWp = 1;
+      var wp = route[run.stepData.darioWp % route.length];
+      var dx = wp.x - car.x, dz = wp.z - car.z;
+      var dist = Math.hypot(dx, dz);
+      if (dist < 12) run.stepData.darioWp++;
+      var targetHeading = Math.atan2(dx / (dist || 1), dz / (dist || 1));
+      var diff = ((targetHeading - car.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      car.heading += Math.max(-1.7 * dt, Math.min(1.7 * dt, diff));
+      var spd = car.spec.maxSpeed * 0.62;
+      car.speed += Math.max(-14 * dt, Math.min(10 * dt, spd - car.speed));
+      car.x += Math.sin(car.heading) * car.speed * dt;
+      car.z += Math.cos(car.heading) * car.speed * dt;
+      SH.Vehicles.collideWorld(car, dt);
+      SH.Vehicles.syncMesh(car);
+      // Pressure: time spent within 26 m of Dario's tail.
+      var f = st.driving ? st.vehiclePos : st.player;
+      var pd = Math.hypot(f.x - car.x, f.z - car.z);
+      if (pd < 26) run.stepData.chaseT += dt;
+      this.setObjective(run.def.title, run.def.steps[run.stepIndex].text + ' (' + Math.round(run.stepData.chaseT) + 's pressure)', car.x, car.z);
+      return run.stepData.chaseT >= (run.def.steps[run.stepIndex].seconds || 75) * 0.34;
     },
 
     spawnCourier: function () {
@@ -381,8 +608,8 @@
     // Escort ambushes: teal rival crews at two choke points on the route east.
     escortEvents: function (run, dt) {
       var st = SH.State;
-      if (!st.driving || !run.stepData.mamiCar) return;
-      var car = run.stepData.mamiCar;
+      var car = run.eventFlags.mamiCar || run.stepData.mamiCar;
+      if (!st.driving || !car) return;
       if (car.dead) { this.failMission('Mami\u2019s car was destroyed'); return; }
       var stage = this.ambushStage;
       var triggers = [
@@ -428,6 +655,7 @@
       }
 
       if (run.def.id === 'escort-mami') this.escortEvents(run, dt);
+      if (run.def.id === 'double-cross') this.crossEvents(run, dt);
 
       switch (step.type) {
         case 'goTo': {
@@ -453,6 +681,13 @@
         case 'chasePed': {
           if (this.updateCourier(dt)) {
             Dialog.play([['Courier', 'Enough! I give up — take it!', 2.6]]);
+            this.advance();
+          }
+          break;
+        }
+        case 'chaseCar': {
+          if (this.updateDarioCar(run, dt)) {
+            Dialog.play([['Dario Latu', 'Enough! The ferry ramp — settle it like men!', 3.2]]);
             this.advance();
           }
           break;

@@ -113,6 +113,7 @@
       var edges = SH.World.graph.edges, nodes = SH.World.graph.nodes;
       var roadMat = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, shininess: 26, specular: 0x8a6a4a });
       this.roadMaterial = roadMat;
+      this.roadMaterials = [];
       var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk, map: walkTexture() });
       this.walkMaterial = walkMat;
       var lampEvery = 26;
@@ -126,6 +127,7 @@
         t2.repeat.set(1, Math.max(1, Math.round(len / 16)));
         if (!edges[i].vertical) t2.rotation = Math.PI / 2, t2.center.set(0.5, 0.5);
         var mat = new THREE.MeshPhongMaterial({ map: t2, shininess: 26, specular: 0x8a6a4a });
+        this.roadMaterials.push(mat);
         var road = new THREE.Mesh(new THREE.PlaneGeometry(wRoad, len + wRoad), mat);
         road.rotation.x = -Math.PI / 2;
         if (!edges[i].vertical) road.rotation.z = Math.PI / 2;

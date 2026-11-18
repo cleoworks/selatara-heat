@@ -62,20 +62,39 @@
     if (type === 'motor') {
       box(0.34, 0.4, 1.7, paint, 0, 0.62, 0);
       box(0.3, 0.34, 0.5, dark, 0, 0.86, -0.3);
+      var fork = box(0.07, 0.75, 0.07, dark, 0, 0.5, 0.78); fork.rotation.x = 0.42; // front fork
+      box(0.36, 0.06, 0.3, glass, 0, 1.06, 0.52);                 // tiny windscreen
       wheel(0, 0.82, 0.34); wheel(0, -0.82, 0.34);
     } else if (type === 'truck') {
       box(W * 0.92, 1.1, 1.9, paint, 0, 1.05, L * 0.32);            // cab
       box(W * 0.8, 0.5, 0.9, glass, 0, 1.42, L * 0.28);
+      box(W * 1.02, 0.3, 0.24, dark, 0, 0.32, L * 0.47);           // front bumper
+      box(0.09, 0.12, 0.2, dark, -W * 0.52, 1.35, L * 0.3);        // mirrors
+      box(0.09, 0.12, 0.2, dark, W * 0.52, 1.35, L * 0.3);
       box(W, H - 0.7, L * 0.58, new THREE.MeshLambertMaterial({ color: 0xd8d3c8, flatShading: true }), 0, (H - 0.7) / 2 + 0.55, -L * 0.18); // cargo
       wheel(-W / 2, L * 0.3, 0.5); wheel(W / 2, L * 0.3, 0.5);
       wheel(-W / 2, -L * 0.32, 0.5); wheel(W / 2, -L * 0.32, 0.5);
     } else if (type === 'boat') {
-      box(W, 0.7, L, paint, 0, 0.45, 0);
-      box(W * 0.7, 0.5, L * 0.4, glass, 0, 0.95, L * 0.08);
+      box(W, 0.7, L * 0.78, paint, 0, 0.45, -L * 0.08);            // hull
+      var bow = box(W * 0.72, 0.7, W * 0.72, paint, 0, 0.45, L * 0.38); bow.rotation.y = Math.PI / 4; // tapered bow
+      box(W * 0.62, 0.42, 0.08, glass, 0, 1.02, L * 0.14);         // windscreen
+      box(W * 0.5, 0.34, L * 0.3, dark, 0, 0.78, -L * 0.18);       // bench seat
+      box(0.5, 0.62, 0.3, dark, 0, 0.62, -L * 0.52);               // outboard motor
     } else {
-      box(W, H * 0.52, L, paint, 0, H * 0.42, 0);                    // body
-      box(W * 0.84, H * 0.42, L * 0.48, glass, 0, H * 0.82, -L * 0.04); // cabin
-      if (type === 'sport') box(W * 0.9, 0.09, 0.5, dark, 0, H * 0.78, -L * 0.46); // spoiler
+      box(W, H * 0.5, L, paint, 0, H * 0.4, 0);                    // lower body
+      box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, L / 2 + 0.05);       // front bumper
+      box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05);      // rear bumper
+      var hood = box(W * 0.86, 0.09, L * 0.26, paint, 0, H * 0.66, L * 0.32); hood.rotation.x = -0.1; // sloped hood
+      box(W * 0.88, 0.09, L * 0.2, paint, 0, H * 0.65, -L * 0.37); // trunk deck
+      box(W * 0.8, H * 0.4, L * 0.46, glass, 0, H * 0.8, -L * 0.05); // cabin (narrower than body)
+      box(W * 0.7, 0.07, L * 0.4, paint, 0, H * 1.02, -L * 0.05);  // roof panel
+      box(0.07, 0.07, 0.18, dark, -W * 0.45, H * 0.88, L * 0.14);  // mirrors
+      box(0.07, 0.07, 0.18, dark, W * 0.45, H * 0.88, L * 0.14);
+      if (type === 'sport') {
+        box(W * 0.9, 0.09, 0.5, dark, 0, H * 0.78, -L * 0.46);     // spoiler
+        box(0.08, 0.16, L * 0.66, dark, -W * 0.49, 0.2, 0);       // side skirts
+        box(0.08, 0.16, L * 0.66, dark, W * 0.49, 0.2, 0);
+      }
       if (type === 'police') {
         // Two-tone lightbar: red left, blue right, each with its own glow
         // sprite; materials are per-car so the flash phase can alternate.
@@ -247,8 +266,15 @@
         }
       }
       var cfg = SH.Config.world;
+      if (v.type === 'boat') {
+        // Boats live on the water: free range across the bay, but the hull
+        // grounds on the beach line and cannot climb onto land.
+        v.x = Math.max(-cfg.halfX - 260, Math.min(cfg.halfX + 260, v.x));
+        v.z = Math.max(cfg.beachZ + 16, Math.min(cfg.waterZ + 320, v.z));
+        return;
+      }
       v.x = Math.max(-cfg.halfX - 20, Math.min(cfg.halfX + 20, v.x));
-      if (v.type !== 'boat') v.z = Math.min(cfg.waterZ + 2, v.z);
+      v.z = Math.min(cfg.waterZ + 2, v.z);
       v.z = Math.max(-cfg.halfZ - 20, v.z);
     },
 
@@ -288,7 +314,8 @@
       v.speed = Math.max(-spec.maxSpeed * 0.32, Math.min(spec.maxSpeed, v.speed));
 
       v.steer += (steerIn * 0.55 - v.steer) * Math.min(1, dt * 8);
-      var grip = handbrake ? spec.grip * 0.35 : spec.grip;
+      var wetGrip = SH.Weather ? SH.Weather.gripFactor : 1;
+      var grip = (handbrake ? spec.grip * 0.35 : spec.grip) * wetGrip;
       var yawRate = v.steer * spec.turn * (v.speed / (Math.abs(v.speed) + 6)) * (grip / spec.grip);
       v.heading += yawRate * dt * (v.speed >= 0 ? 1 : -1) * (Math.abs(v.speed) > 0.2 ? 1 : 0);
 
@@ -296,10 +323,13 @@
       v.z += Math.cos(v.heading) * v.speed * dt;
       this.collideWorld(v, dt);
 
-      // Sync mesh + visuals.
-      v.mesh.position.set(v.x, 0, v.z);
+      // Sync mesh + visuals. A boat rides the swell: bob + roll on the water
+      // instead of sitting glued to y=0.
+      var bobY = 0;
+      if (v.type === 'boat') bobY = Math.sin(SH.State.time * 1.7 + v.x * 0.05) * 0.14 - 0.1;
+      v.mesh.position.set(v.x, bobY, v.z);
       v.mesh.rotation.y = v.heading;
-      v.mesh.rotation.z = -v.steer * Math.min(1, Math.abs(v.speed) / 20) * 0.06;
+      v.mesh.rotation.z = -v.steer * Math.min(1, Math.abs(v.speed) / 20) * (v.type === 'boat' ? 0.16 : 0.06) + (v.type === 'boat' ? Math.sin(SH.State.time * 1.3) * 0.02 : 0);
       v.mesh.rotation.x = (throttle > 0 ? -0.012 : throttle < 0 ? 0.014 : 0) * Math.min(1, Math.abs(v.speed) / 12);
       for (var i = 0; i < v.wheels.length; i++) v.wheels[i].rotation.x += v.speed * dt / 0.4;
       this.setBrakeLights(v, throttle < 0 || handbrake);

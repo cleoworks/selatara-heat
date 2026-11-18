@@ -98,7 +98,7 @@
     newGame: function () {
       var st = SH.State;
       SH.Save.clear();
-      st.cash = 250; st.wanted = 0;
+      st.cash = 250; st.wanted = 0; st.storyComplete = false;
       if (st.driving) SH.Vehicles.exit();
       st.player.x = SH.Config.world.spawn.x; st.player.z = SH.Config.world.spawn.z;
       st.player.health = 100; st.player.armor = 0;

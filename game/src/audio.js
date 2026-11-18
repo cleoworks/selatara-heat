@@ -132,6 +132,13 @@
         { title: 'Ombak Tengah Malam', artist: 'Laras Malam' },
         { title: 'Lampu Dermaga', artist: 'Kapten Sunyi' },
         { title: 'Dansa di Atap Ruko', artist: 'Melati Sintetis' }
+      ] },
+      { name: 'PASAR FM 104.7', root: 87, mode: [0, 4, 5, 9, 11], tracks: [
+        { title: 'Tenda Sebelah', artist: 'Bu Tini & The Stalls' },
+        { title: 'Diskon Tengah Malam', artist: 'Ruko Ramai' },
+        { title: 'Sate dan Sintetis', artist: 'DJ Gerobak' },
+        { title: 'Antrean Panjang', artist: 'Pasar Pagi' },
+        { title: 'Lampu Tenda Kuning', artist: 'Senja Elektrik' }
       ] }
     ],
     trackInfo: function () {

@@ -63,9 +63,10 @@
       }
       var cfg = SH.Config.world;
       p.x = Math.max(-cfg.halfX - 30, Math.min(cfg.halfX + 30, p.x));
-      p.z = Math.min(cfg.waterZ + 4, p.z);
-      // Pier deck is walkable over the water.
-      if (p.x > 53 && p.x < 67 && p.z > cfg.waterZ) p.z = Math.min(392, p.z);
+      // The pier deck is walkable over the water: its exception must be
+      // decided BEFORE the shoreline clamp, or the clamp eats it first.
+      var onPier = p.x > 53 && p.x < 67 && p.z > cfg.waterZ;
+      p.z = Math.min(onPier ? 392 : cfg.waterZ + 4, p.z);
       p.z = Math.max(-cfg.halfZ - 30, p.z);
     },
 

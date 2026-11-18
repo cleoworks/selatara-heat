@@ -13,6 +13,7 @@
     aiming: false, speedKmh: 0,
     cash: 250, wanted: 0, weapon: 'fist', ammo: 0, ammoReserve: 0,
     radioStation: 'RADIO SELATARA FM', stun: 0, _dmgFlash: 0, cutscene: false,
+    shopOpen: false, shopKind: null, storyComplete: false,
     district: null, districtTimer: 0,
     objective: null, // { title, text, x, z }
     outfit: { shirt: 0xc94f4f, pants: 0x2a3550 },
@@ -176,6 +177,7 @@
     if (SH.Traffic) SH.Traffic.init(scene);
     if (SH.Pedestrians) SH.Pedestrians.init(scene);
     if (SH.Effects) SH.Effects.init(scene);
+    if (SH.Weather) SH.Weather.init(scene);
     applyLighting();
   }
 
@@ -204,6 +206,8 @@
     if (SH.Police) SH.Police.update(dt);
     if (SH.Combat) SH.Combat.update(dt);
     if (SH.Missions) SH.Missions.update(dt);
+    if (SH.Economy) SH.Economy.update(dt);
+    if (SH.Weather) SH.Weather.update(dt);
     if (input.wasPressed('KeyQ') && SH.Combat) SH.Combat.cycleWeapon();
     if (input.wasPressed('KeyK') && SH.Audio && SH.Audio.ctx) {
       State.radioStation = SH.Audio.cycleStation();
