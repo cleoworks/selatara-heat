@@ -47,29 +47,36 @@
     return false;
   }
 
-  // Breadth-first path over the road graph; returns a list of node indices.
+  // Shortest path over the road graph, weighted by edge length. (Plain
+  // hop-count BFS started picking scenic routes once the coast artery
+  // and the ring were subdivided into short segments in Rev 5 — a hop
+  // no longer correlates with distance.) Returns node indices.
   function graphPath(fromNode, toNode) {
     if (fromNode === toNode) return [toNode];
     var g = SH.World.graph;
-    var prev = {}, seen = {};
-    var queue = [fromNode]; seen[fromNode] = true;
-    while (queue.length) {
-      var cur = queue.shift();
+    var dist = {}, prev = {}, done = {};
+    dist[fromNode] = 0;
+    while (true) {
+      var cur = -1, best = Infinity;
+      for (var k in dist) {
+        if (!done[k] && dist[k] < best) { best = dist[k]; cur = +k; }
+      }
+      if (cur < 0 || cur === toNode) break;
+      done[cur] = true;
       var node = g.nodes[cur];
       for (var i = 0; i < node.edges.length; i++) {
         var e = g.edges[node.edges[i]];
         var nxt = e.a === cur ? e.b : e.a;
-        if (seen[nxt]) continue;
-        seen[nxt] = true; prev[nxt] = cur;
-        if (nxt === toNode) {
-          var path = [toNode], p = toNode;
-          while (p !== fromNode) { p = prev[p]; path.unshift(p); }
-          return path;
-        }
-        queue.push(nxt);
+        if (done[nxt]) continue;
+        var w = Math.hypot(g.nodes[nxt].x - node.x, g.nodes[nxt].z - node.z);
+        var nd = best + w;
+        if (dist[nxt] === undefined || nd < dist[nxt]) { dist[nxt] = nd; prev[nxt] = cur; }
       }
     }
-    return [toNode];
+    if (dist[toNode] === undefined) return [toNode];
+    var path = [toNode], p = toNode;
+    while (p !== fromNode) { p = prev[p]; path.unshift(p); }
+    return path;
   }
 
   // Officers use the shared figure builder (Art Pass 3): navy uniform,
@@ -176,6 +183,13 @@
         var x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
         var d = Math.hypot(x - f.x, z - f.z);
         var want = nearFocus ? 55 : cfgP.spawnDist;
+        // Never stack two units on the same spot: coincident spawns
+        // pin each other in the vehicle collision solver forever.
+        var tooClose = false;
+        for (var ui = 0; ui < this.units.length; ui++) {
+          if (Math.hypot(this.units[ui].veh.x - x, this.units[ui].veh.z - z) < 14) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
         if (Math.abs(d - want) < bd) { bd = Math.abs(d - want); best = { x: x, z: z, h: Math.atan2(b.x - a.x, b.z - a.z) }; }
         if (d > want - 25 && d < want + 45) break;
       }
@@ -476,7 +490,34 @@
         }
         var cruise = veh.spec.maxSpeed * (st.wanted >= 4 ? 0.99 : 0.9);
         if (this.searching) cruise *= 0.55;
+        // Unstick: a unit that barely moves while its target is far
+        // away is pinned (nose-in against a collider after a corner
+        // cut, or overlapped with another car). Steer it back to the
+        // nearest road node — always on a centreline — until it rolls.
+        if (unit.recover > 0) {
+          unit.recover -= dt;
+          var rni = SH.World.nearestNode(veh.x, veh.z);
+          var rn = SH.World.graph.nodes[rni];
+          // A node within a few metres is useless as a recover target
+          // (driveCar stops inside 3.2 m): aim past it, at its most
+          // distant neighbour, so the car actually rolls out.
+          if (Math.hypot(rn.x - veh.x, rn.z - veh.z) < 12) {
+            var rBest = rn, rBd = -1;
+            for (var rei = 0; rei < rn.edges.length; rei++) {
+              var re = SH.World.graph.edges[rn.edges[rei]];
+              var ro = SH.World.graph.nodes[re.a === rni ? re.b : re.a];
+              var rd = Math.hypot(ro.x - veh.x, ro.z - veh.z);
+              if (rd > rBd) { rBd = rd; rBest = ro; }
+            }
+            rn = rBest;
+          }
+          tx = rn.x; tz = rn.z;
+        }
         this.driveCar(unit, dt, tx, tz, cruise);
+        if (Math.abs(veh.speed) < 0.6 && distP > 15) {
+          unit.stuckT = (unit.stuckT || 0) + dt;
+          if (unit.stuckT > 1.4) { unit.recover = 1.6; unit.stuckT = 0; unit.path = null; unit.pathTimer = 0; }
+        } else unit.stuckT = 0;
 
         // Officers bail out when close and the player is slow / on foot.
         if (!unit.officersOut && st.wanted >= 2 && distP < 15 && playerSpeed < 3.2) {

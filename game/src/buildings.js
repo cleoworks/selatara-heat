@@ -230,10 +230,15 @@
               if (rng() > 0.25) {
                 var aTurn = rng() < 0.3;
                 var aW = aTurn ? bd * 0.2 : bw * 0.3, aD = aTurn ? bw * 0.3 : bd * 0.2;
+                // Clamp the annex inside its cell: in the shallow
+                // beachfront row a turned annex otherwise spills onto
+                // the coast road (found by the collider audit).
+                aD = Math.min(aD, bd * 0.22 + 6);
+                var aZ = cz + Math.min(bd * 0.38, bd / 2 - aD / 2 - 1);
                 // h is required: bucketize derives roof/prop heights
                 // from base + h (a missing h made those instances NaN).
-                warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: aW, sy: 6, sz: aD, base: 0, h: 6, bucket: (bucketSeq.warehouse++) % 4 });
-                SH.World.colliders.push({ x: cx + bw * 0.3, z: cz + bd * 0.38, hx: aW / 2, hz: aD / 2 });
+                warehouses.push({ x: cx + bw * 0.3, y: 3, z: aZ, sx: aW, sy: 6, sz: aD, base: 0, h: 6, bucket: (bucketSeq.warehouse++) % 4 });
+                SH.World.colliders.push({ x: cx + bw * 0.3, z: aZ, hx: aW / 2, hz: aD / 2 });
               }
             }
           } else if (d.id === 'mawar') {
@@ -250,16 +255,21 @@
             }
           } else if (d.id === 'kencana') {
             // CYLINDRICAL hotel drums along the beachfront — one or two
-            // per block, pullback jittered; round towers break the box
-            // grid where the coast road bends past them.
+            // per block. The beachfront strip is shallow (street z=180
+            // on one side, the bending coast road on the other), so the
+            // drum is centred in the strip and its diameter is capped
+            // by the strip depth AT THIS x: an uncapped drum swallows
+            // the z=180 carriageway (Rev 5E bug — it pinned a police
+            // car inside its collider).
             var nKh = superLot ? 1 : 2;
             for (var kh2 = 0; kh2 < nKh; kh2++) {
               var kh = (d.minH + rng() * (d.maxH - d.minH)) * hScale * (superLot ? 1.1 : 1);
               var kx = cx + (nKh === 1 ? 0 : (kh2 === 0 ? -1 : 1) * bw * 0.22);
-              var kPull = 14 + rng() * 6;
-              var kW = bw * (superLot ? 0.5 : 0.36);
-              hotels.push({ x: kx, y: kh / 2, z: cz - kPull, sx: kW, sy: kh, sz: kW, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
-              SH.World.colliders.push({ x: kx, z: cz - kPull, hx: kW / 2, hz: kW / 2 });
+              var stripN = 188, stripS = SH.World.beachRoadZ(kx) - 8;
+              var kz = (stripN + stripS) / 2;
+              var kW = Math.min(bw * (superLot ? 0.5 : 0.36), stripS - stripN - 4);
+              hotels.push({ x: kx, y: kh / 2, z: kz, sx: kW, sy: kh, sz: kW, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
+              SH.World.colliders.push({ x: kx, z: kz, hx: kW / 2, hz: kW / 2 });
             }
           }
         }
