@@ -59,9 +59,13 @@
     g.fillStyle = '#4d8a48';
     g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx - 12) / WORLD_W * MAP, (isl.rz - 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
 
-    // Taman Arus parkland around the pond (drawn under the road net).
+    // Taman Arus parkland: a rounded rectangle that follows the park's
+    // own blocks (Rev 5 — no more green blob), drawn under the road net.
     g.fillStyle = 'rgba(93,145,83,0.6)';
-    g.beginPath(); g.ellipse(w2mx(0), w2my(58), 108 / WORLD_W * MAP, 82 / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+    var pkX = w2mx(-124), pkY = w2my(-64), pkW = w2mx(124) - pkX, pkH = w2my(184) - pkY;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(pkX, pkY, pkW, pkH, 14); else g.rect(pkX, pkY, pkW, pkH);
+    g.fill();
     // Sand stroke tracing the curved shoreline.
     g.strokeStyle = '#e8cf9a';
     g.lineWidth = 15 / WORLD_W * MAP;
@@ -84,6 +88,17 @@
     for (i = 0; i < cols.length; i++) {
       var c = cols[i];
       g.fillRect(w2mx(c.x - c.hx), w2my(c.z - c.hz), (c.hx * 2) / WORLD_W * MAP, (c.hz * 2) / WORLD_H * MAP);
+    }
+    // Rev 5E open parking blocks: dark pad + painted bay stripes.
+    var pkCells = SH.World.parkingCells || [];
+    for (i = 0; i < pkCells.length; i++) {
+      var pk = pkCells[i];
+      g.fillStyle = 'rgba(52,52,60,0.85)';
+      g.fillRect(w2mx(pk.x - pk.w / 2), w2my(pk.z - pk.d / 2), pk.w / WORLD_W * MAP, pk.d / WORLD_H * MAP);
+      g.fillStyle = 'rgba(230,235,240,0.8)';
+      for (var pb = 0; pb < 5; pb++) {
+        g.fillRect(w2mx(pk.x - pk.w * 0.36 + pb * pk.w * 0.18) - 1, w2my(pk.z - pk.d * 0.31), 2, pk.d * 0.62 / WORLD_H * MAP);
+      }
     }
     // Roads from the shared graph, drawn in passes (Art Bible v2 layer
     // order): a dark casing under a lighter centre line. Weights follow
@@ -115,17 +130,19 @@
     g.lineCap = 'round';
     roadPath('casing');
     roadPath('centre');
-    // District tint OVER the road network (alpha 0.13, inside the
-    // bible's 0.08-0.15 range): districts read as washes of colour and
-    // the streets stay visible through them.
+    // District tint OVER the road network (Rev 5: alpha raised to 0.30
+    // on the user's order — district identity must read at a glance;
+    // the road centre lines are redrawn over the tint right after, so
+    // the network stays crisp through the stronger wash).
     var districts = SH.Config.districts;
     for (i = 0; i < districts.length; i++) {
       var d = districts[i];
       g.fillStyle = d.map;
-      g.globalAlpha = 0.15;
+      g.globalAlpha = 0.30;
       g.fillRect(w2mx(d.x0), w2my(d.z0), w2mx(d.x1) - w2mx(d.x0), w2my(d.z1) - w2my(d.z0));
     }
     g.globalAlpha = 1;
+    roadPath('centre');
     roadPath('accent');
     // Foam lines: a bright waterline right on the shore, a fainter
     // second line seaward, and a foam ring around Pulau Seberang.
