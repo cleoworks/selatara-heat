@@ -174,13 +174,30 @@
     var alleyNodes = [nodeAt(-480, 124), addNode(-420, 124), nodeAt(-360, 124), addNode(-300, 124), nodeAt(-240, 124)];
     for (i = 0; i + 1 < alleyNodes.length; i++) addEdge(alleyNodes[i], alleyNodes[i + 1], false, 'alley');
 
+    // Rev 5C: diagonal pedestrian alleys cutting four Ruko blocks
+    // corner-to-corner. Each crossed cell is marked in diagCells, so
+    // buildings.js leaves it open as a plaza and the lane is genuinely
+    // walkable; traffic never routes into 'alley' edges. Two of them
+    // chain into a zig-zag lane through the old town.
+    var alleyCuts = [
+      { cell: '0,3', a: [-480, 60], b: [-360, -60] },
+      { cell: '1,1', a: [-360, -180], b: [-240, -300] },
+      { cell: '1,2', a: [-360, -60], b: [-240, -180] },
+      { cell: '0,0', a: [-480, -300], b: [-360, -420] }
+    ];
+    for (i = 0; i < alleyCuts.length; i++) {
+      addEdge(nodeAt(alleyCuts[i].a[0], alleyCuts[i].a[1]), nodeAt(alleyCuts[i].b[0], alleyCuts[i].b[1]), false, 'alley');
+      diagCells[alleyCuts[i].cell] = true;
+    }
+
     // Diagonal boulevard: corner-to-corner edges cutting eight blocks.
     // Each crossed cell is recorded so buildings.js leaves it a plaza.
     var diagPairs = [
       [[-480, -420], [-360, -300]], [[-360, -300], [-240, -180]],
       [[-240, -180], [-120, -60]], [[-120, -60], [0, 60]],
       [[0, 60], [120, 180]], [[120, 180], [240, beachRoadZ(240)]],
-      [[480, -180], [360, -60]], [[360, 60], [480, 180]]
+      [[480, -180], [360, -60]], [[360, 60], [480, 180]],
+      [[240, -420], [360, -300]] // Rev 5C: angled contour lane in Bukit Mawar
     ];
     for (i = 0; i < diagPairs.length; i++) {
       var pa = diagPairs[i][0], pb = diagPairs[i][1];
