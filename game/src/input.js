@@ -22,7 +22,12 @@
       window.addEventListener('keyup', function (e) { self.keys[e.code] = false; });
       window.addEventListener('blur', function () { self.keys = {}; self.mouseDown = false; self.aimDown = false; });
       canvas.addEventListener('click', function () {
-        if (!self.locked && SH.State && SH.State.mode === 'playing') canvas.requestPointerLock();
+        if (!self.locked && SH.State && SH.State.mode === 'playing') {
+          try {
+            var r = canvas.requestPointerLock();
+            if (r && r.catch) r.catch(function () { /* cooldown; click again */ });
+          } catch (err) { /* pointer lock unavailable */ }
+        }
       });
       document.addEventListener('pointerlockchange', function () {
         self.locked = document.pointerLockElement === canvas;

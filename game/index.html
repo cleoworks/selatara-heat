@@ -7,22 +7,98 @@
 <style>
   :root {
     --ink: #f4efe6; --panel: rgba(10, 12, 20, .55); --line: rgba(255, 255, 255, .35);
-    --neon-pink: #ff4fa3; --neon-cyan: #37e0ff; --neon-yellow: #ffd23f; --danger: #e83a3a;
+    --pink: #ff4fa3; --cyan: #37e0ff; --yellow: #ffd23f; --danger: #e83a3a; --green: #51e07a;
+    --safe: 24px;
   }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1030; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1030; color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 3;
     background: radial-gradient(ellipse at center, transparent 58%, rgba(5, 4, 16, .42) 100%); }
   #damage-flash { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
     background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 20, 30, .5) 100%); }
+  .hidden { display: none !important; }
+  button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 22px; cursor: pointer; letter-spacing: .12em; font-weight: 700; }
+  button:hover { border-color: var(--cyan); color: var(--cyan); }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    backdrop-filter: blur(4px); padding: 10px 14px; }
+  #hud-left { position: absolute; left: var(--safe); bottom: var(--safe); display: flex; align-items: flex-end; gap: 14px; }
+  #minimap { width: clamp(150px, 24vmin, 210px); height: clamp(150px, 24vmin, 210px); border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.75); box-shadow: 0 4px 18px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
+  #hud-district { position: absolute; left: var(--safe); bottom: calc(var(--safe) + clamp(150px, 24vmin, 210px) + 10px);
+    font-weight: 800; letter-spacing: .3em; font-size: clamp(13px, 2vmin, 19px); text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+  #hud-district.fade { animation: districtFade 3.2s forwards; }
+  @keyframes districtFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+  #hud-bars { width: 170px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 12px; font-weight: 700; }
+  .bar { flex: 1; height: 9px; background: rgba(255,255,255,.14); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; transition: width .18s; }
+  #bar-health { background: var(--danger); } #bar-armor { background: var(--cyan); }
+  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; }
+  #hud-cash { font-size: clamp(19px, 3vmin, 27px); font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+  #hud-clock { font-size: 13px; letter-spacing: .18em; opacity: .9; margin-top: 2px; }
+  #hud-stars { font-size: clamp(17px, 2.6vmin, 24px); margin-top: 2px; }
+  #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  #hud-stars .star.on { color: var(--yellow); }
+  #hud-stars .star.searching { animation: starBlink .5s infinite alternate; }
+  @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
+  #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 170px; }
+  #weapon-name { font-weight: 800; letter-spacing: .08em; font-size: 14px; }
+  #weapon-ammo { font-size: clamp(19px, 3vmin, 26px); font-weight: 800; font-variant-numeric: tabular-nums; }
+  #hud-speedo { text-align: right; }
+  #speed-num { font-size: clamp(30px, 5vmin, 44px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  #hud-speedo .unit { font-size: 12px; letter-spacing: .2em; opacity: .8; }
+  .gauge { height: 7px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .gauge i { display: block; height: 100%; }
+  #veh-damage { background: var(--green); }
+  #speed-bar { background: var(--cyan); width: 0%; }
+  #hud-radio { font-size: 11px; letter-spacing: .14em; color: var(--cyan); margin-top: 5px; }
+  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 300px; }
+  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 13px; }
+  #obj-text { font-size: 13.5px; margin-top: 2px; }
+  #obj-dist { font-size: 12px; opacity: .85; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  #hud-notes { position: absolute; left: var(--safe); top: 118px; display: flex; flex-direction: column; gap: 6px; }
+  .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 6px 12px; font-size: 13px; animation: noteIn .25s; }
+  @keyframes noteIn { from { transform: translateX(-8px); opacity: 0; } }
+  #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 640px; width: max-content;
+    background: rgba(5, 6, 12, .68); border-radius: 6px; padding: 9px 18px; text-align: center; font-size: clamp(14px, 2vmin, 17px); }
+  #sub-name { color: var(--cyan); font-weight: 800; margin-right: 8px; }
+  #hud-prompt { position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; }
+  #hud-marker { position: fixed; left: 0; top: 0; z-index: 5; color: var(--yellow); font-weight: 800; font-size: 13px;
+    text-shadow: 0 1px 5px rgba(0,0,0,.85); pointer-events: none; }
+  #hud-crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px;
+    border: 1.6px solid rgba(255,255,255,.9); border-radius: 50%; z-index: 5; pointer-events: none; }
+
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; background: linear-gradient(180deg, rgba(6,6,18,.25), rgba(6,6,18,.72)); }
+  .logo { font-size: clamp(36px, 8vmin, 76px); font-weight: 800; letter-spacing: .12em; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
+  .logo span { color: var(--pink); }
+  .tagline { letter-spacing: .3em; font-size: clamp(11px, 1.8vmin, 14px); opacity: .85; margin-top: -8px; }
+  .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; min-width: 250px; }
+  .menu-buttons button { font-size: 16px; padding: 12px 22px; }
+  .panel-screen { background: rgba(8, 10, 18, .88); border: 1px solid var(--line); border-radius: 10px;
+    padding: 22px 28px; max-width: min(680px, 92vw); max-height: 86vh; overflow: auto; }
+  .panel-screen h2 { margin: 0 0 12px; letter-spacing: .2em; font-size: 18px; color: var(--cyan); }
+  .panel-screen label { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin: 10px 0; font-size: 14px; }
+  .panel-screen input[type="range"] { width: 180px; }
+  .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; font-size: 14px; }
+  .controls-grid b { color: var(--yellow); font-variant-numeric: tabular-nums; }
+  #bigmap { width: min(78vmin, 860px); height: min(78vmin, 860px); border: 2px solid var(--line); border-radius: 8px; cursor: crosshair; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+  #map-stats { font-size: 13px; opacity: .9; }
   #loading { position: fixed; inset: 0; z-index: 40; background: #0b1030; display: flex;
     flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
-  #loading .logo { font-size: clamp(30px, 6vmin, 58px); font-weight: 800; letter-spacing: .14em; }
-  #loading .logo span { color: var(--neon-pink); }
   #loading .bar { width: min(420px, 70vw); height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
-  #loading .bar i { display: block; height: 100%; width: 40%; background: var(--neon-cyan); border-radius: 3px; transition: width .3s; }
+  #loading .bar i { display: block; height: 100%; width: 68%; background: var(--cyan); border-radius: 3px; }
   #loading p { opacity: .75; letter-spacing: .22em; font-size: 12px; margin: 0; }
-  .hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -30,9 +106,112 @@
 <div id="vignette"></div>
 <div id="damage-flash"></div>
 
+<!-- ================= HUD ================= -->
+<div id="hud" class="hidden">
+  <div id="hud-objective" class="panel hidden">
+    <div id="obj-title">FIRST RUN</div>
+    <div id="obj-text">Meet Mami Ratna</div>
+    <div id="obj-dist">0 m</div>
+  </div>
+  <div id="hud-notes"></div>
+  <div id="hud-district" class="hidden">SELATARA</div>
+  <div id="hud-left">
+    <canvas id="minimap" width="380" height="380"></canvas>
+    <div id="hud-bars">
+      <div class="bar-row"><span>HP</span><div class="bar"><i id="bar-health"></i></div><span id="bar-health-num">100</span></div>
+      <div class="bar-row"><span>AR</span><div class="bar"><i id="bar-armor"></i></div><span></span></div>
+    </div>
+  </div>
+  <div id="hud-top">
+    <div id="hud-cash">$0</div>
+    <div id="hud-clock">17:24</div>
+    <div id="hud-stars"></div>
+  </div>
+  <div id="hud-right">
+    <div id="hud-weapon" class="panel">
+      <div id="weapon-name">Fists</div>
+      <div id="weapon-ammo">—</div>
+    </div>
+    <div id="hud-speedo" class="hidden">
+      <div><span id="speed-num">0</span> <span class="unit">KM/H</span></div>
+      <div class="gauge"><i id="speed-bar"></i></div>
+      <div class="gauge"><i id="veh-damage"></i></div>
+      <div id="hud-radio">RADIO SELATARA FM</div>
+    </div>
+  </div>
+  <div id="hud-subtitle" class="hidden"><span id="sub-name"></span><span id="sub-text"></span></div>
+  <div id="hud-prompt" class="hidden"></div>
+</div>
+<div id="hud-marker" class="hidden"></div>
+<div id="hud-crosshair" class="hidden"></div>
+
+<!-- ================= TITLE ================= -->
+<div id="title-screen" class="screen">
+  <div class="logo">SELATARA <span>HEAT</span></div>
+  <div class="tagline">KOTA SELAT • PORT CITY • AN ORIGINAL OPEN-WORLD CRIME GAME</div>
+  <div class="menu-buttons">
+    <button id="btn-continue" class="hidden">CONTINUE</button>
+    <button id="btn-new">NEW GAME</button>
+    <button id="btn-settings">SETTINGS</button>
+    <button id="btn-controls">CONTROLS</button>
+  </div>
+  <div id="settings-panel" class="panel-screen hidden">
+    <h2>SETTINGS</h2>
+    <label>Master volume <input type="range" id="set-volume" min="0" max="100"></label>
+    <label>Music <input type="range" id="set-music" min="0" max="100"></label>
+    <label>Effects <input type="range" id="set-sfx" min="0" max="100"></label>
+    <label>Mouse sensitivity <input type="range" id="set-sens" min="30" max="220"></label>
+    <label>Graphics <select id="set-quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+    <button data-back="1">BACK</button>
+  </div>
+  <div id="controls-panel" class="panel-screen hidden">
+    <h2>CONTROLS</h2>
+    <div class="controls-grid">
+      <b>W A S D</b><span>Move / drive</span>
+      <b>Mouse</b><span>Look (click the game to capture the mouse)</span>
+      <b>Shift</b><span>Sprint</span>
+      <b>Space</b><span>Jump / handbrake</span>
+      <b>F</b><span>Enter / exit vehicle</span>
+      <b>Right mouse</b><span>Aim</span>
+      <b>Left mouse</b><span>Shoot / punch</span>
+      <b>Q</b><span>Next weapon</span>
+      <b>R</b><span>Reload</span>
+      <b>H</b><span>Horn</span>
+      <b>K</b><span>Switch radio station</span>
+      <b>M</b><span>City map</span>
+      <b>Esc</b><span>Pause</span>
+    </div>
+    <button data-back="1" style="margin-top:14px">BACK</button>
+  </div>
+</div>
+
+<!-- ================= PAUSE ================= -->
+<div id="pause-menu" class="screen hidden">
+  <div class="logo" style="font-size:clamp(28px,5vmin,48px)">PAUSED</div>
+  <div class="menu-buttons">
+    <button id="btn-resume">RESUME</button>
+    <button id="btn-openmap">CITY MAP</button>
+    <button id="btn-save">SAVE GAME</button>
+    <button id="btn-quit-title">QUIT TO TITLE</button>
+  </div>
+</div>
+
+<!-- ================= MAP ================= -->
+<div id="map-screen" class="screen hidden">
+  <canvas id="bigmap" width="900" height="900"></canvas>
+  <div class="legend">
+    <span><i style="background:#fff"></i>You / waypoint</span>
+    <span><i style="background:#ffd23f"></i>Mission objective</span>
+    <span><i style="background:#51e07a"></i>Shops &amp; safehouse</span>
+    <span>Click the map to set a waypoint</span>
+  </div>
+  <div id="map-stats">SELATARA — six districts, one strait, no way out but the ferry.</div>
+  <button id="btn-map-close">CLOSE (M)</button>
+</div>
+
 <div id="loading">
   <div class="logo">SELATARA <span>HEAT</span></div>
-  <div class="bar"><i id="load-fill"></i></div>
+  <div class="bar"><i></i></div>
   <p>MEMUAT KOTA • LOADING THE CITY</p>
 </div>
 
@@ -48,6 +227,14 @@
 <script src="./src/traffic.js"></script>
 <script src="./src/pedestrians.js"></script>
 <script src="./src/player.js"></script>
+<script src="./src/police.js"></script>
+<script src="./src/combat.js"></script>
+<script src="./src/missions.js"></script>
+<script src="./src/economy.js"></script>
+<script src="./src/hud.js"></script>
+<script src="./src/minimap.js"></script>
+<script src="./src/menus.js"></script>
+<script src="./src/save.js"></script>
 <script src="./src/shots.js"></script>
 <script src="./src/main.js"></script>
 </body>

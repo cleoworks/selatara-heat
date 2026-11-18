@@ -17,6 +17,7 @@
       if (!name) return;
       var st = SH.State;
       st.mode = 'playing';
+      if (SH.Missions) SH.Missions.startIntroObjective();
       if (name === 'drive') {
         SH.Main.setHour(17.9);
         var veh = SH.Vehicles.list[0];

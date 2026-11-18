@@ -144,6 +144,10 @@
     else SH.Player.update(dt);
     if (SH.Traffic) SH.Traffic.update(dt);
     if (SH.Pedestrians) SH.Pedestrians.update(dt);
+    if (SH.Police) SH.Police.update(dt);
+    if (input.wasPressed('KeyQ') && SH.Combat) SH.Combat.cycleWeapon();
+    State._autosave = (State._autosave || 0) + dt;
+    if (State._autosave > 60) { State._autosave = 0; if (SH.Save) SH.Save.saveGame(); }
     SH.Roads.update(dt, State.time);
     SH.Player.updateCamera(dt, camera);
     if (SH.Effects) SH.Effects.update(dt, camera);
@@ -212,6 +216,12 @@
   }
 
   SH.Main = {
+    applyQuality: function (q) {
+      if (!renderer || !sun) return;
+      if (q === 'low') { sun.castShadow = false; renderer.setPixelRatio(1); }
+      else if (q === 'medium') { sun.castShadow = true; renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); }
+      else { sun.castShadow = true; renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); }
+    },
     setHour: function (h) { State.hour = h; },
     getScene: function () { return scene; },
     getCamera: function () { return camera; },
