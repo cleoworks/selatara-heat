@@ -10,12 +10,34 @@
     var g = c.getContext('2d');
     g.fillStyle = '#3d3835'; g.fillRect(0, 0, 128, 128);
     var rng = SH.World.makeRng(77);
-    for (var i = 0; i < 900; i++) {
-      g.fillStyle = rng() > 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
-      g.fillRect(rng() * 128, rng() * 128, 2, 2);
+    // Fine aggregate noise.
+    for (var i = 0; i < 2400; i++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.055)';
+      g.fillRect(rng() * 128, rng() * 128, 1.6, 1.6);
     }
-    g.fillStyle = '#e8c95a';
-    for (var y = 8; y < 128; y += 32) g.fillRect(61, y, 6, 18); // centre dashes (vertical flow)
+    // Repair patches: darker rectangles with soft edges.
+    for (var p = 0; p < 5; p++) {
+      var px = rng() * 96, py = rng() * 96, pw = 18 + rng() * 26, ph = 12 + rng() * 22;
+      g.fillStyle = 'rgba(12,10,12,0.16)';
+      g.fillRect(px - 2, py - 2, pw + 4, ph + 4);
+      g.fillStyle = 'rgba(10,9,11,0.22)';
+      g.fillRect(px, py, pw, ph);
+    }
+    // Hairline cracks.
+    g.strokeStyle = 'rgba(8,8,10,0.35)'; g.lineWidth = 1;
+    for (var cr = 0; cr < 3; cr++) {
+      g.beginPath();
+      var cx0 = rng() * 128, cy0 = rng() * 128;
+      g.moveTo(cx0, cy0);
+      for (var cs = 0; cs < 4; cs++) { cx0 += (rng() - 0.5) * 22; cy0 += rng() * 14; g.lineTo(cx0, cy0); }
+      g.stroke();
+    }
+    // Edge lines (the texture spans the full road width).
+    g.fillStyle = 'rgba(240,240,235,0.55)';
+    g.fillRect(3, 0, 2.4, 128); g.fillRect(122.6, 0, 2.4, 128);
+    // Centre dashes, brighter and chunkier.
+    g.fillStyle = '#f7d95e';
+    for (var y = 6; y < 128; y += 32) g.fillRect(60.5, y, 7, 19);
     var t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 4;
@@ -44,13 +66,27 @@
     var g = c.getContext('2d');
     g.fillStyle = '#cfc4b4'; g.fillRect(0, 0, 128, 128);
     var rng = SH.World.makeRng(97);
-    for (var i = 0; i < 500; i++) {
-      g.fillStyle = rng() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-      g.fillRect(rng() * 128, rng() * 128, 2, 2);
+    // Four paving slabs per tile, each with its own tint, a bevel highlight
+    // on the top-left and grout lines between.
+    for (var sy = 0; sy < 2; sy++) {
+      for (var sx = 0; sx < 2; sx++) {
+        var tint = (rng() - 0.5) * 0.14;
+        g.fillStyle = tint > 0 ? 'rgba(255,250,235,' + tint + ')' : 'rgba(40,30,20,' + (-tint) + ')';
+        g.fillRect(sx * 64 + 2, sy * 64 + 2, 60, 60);
+        g.fillStyle = 'rgba(255,255,255,0.20)';
+        g.fillRect(sx * 64 + 2, sy * 64 + 2, 60, 3);
+        g.fillRect(sx * 64 + 2, sy * 64 + 2, 3, 60);
+        g.fillStyle = 'rgba(50,40,30,0.25)';
+        g.fillRect(sx * 64 + 2, sy * 64 + 59, 60, 3);
+      }
     }
-    g.strokeStyle = 'rgba(60,50,40,0.5)'; g.lineWidth = 2;
+    for (var i = 0; i < 900; i++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+      g.fillRect(rng() * 128, rng() * 128, 1.6, 1.6);
+    }
+    g.strokeStyle = 'rgba(60,50,40,0.6)'; g.lineWidth = 2.4;
     g.strokeRect(1, 1, 126, 126);
-    g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.stroke();
+    g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.moveTo(0, 64); g.lineTo(128, 64); g.stroke();
     var t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 4;
@@ -124,7 +160,7 @@
         var mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
         var wRoad = cfg.roadHalf * 2;
         var t2 = tex.clone(); t2.needsUpdate = true;
-        t2.repeat.set(1, Math.max(1, Math.round(len / 16)));
+        t2.repeat.set(1, Math.max(1, Math.round(len / 9)));
         if (!edges[i].vertical) t2.rotation = Math.PI / 2, t2.center.set(0.5, 0.5);
         var mat = new THREE.MeshPhongMaterial({ map: t2, shininess: 26, specular: 0x8a6a4a });
         this.roadMaterials.push(mat);

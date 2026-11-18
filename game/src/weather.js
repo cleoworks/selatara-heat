@@ -58,9 +58,10 @@
       this.gripFactor += (targetGrip - this.gripFactor) * Math.min(1, dt * 0.8);
       if (SH.Roads && SH.Roads.roadMaterials) {
         var mats = SH.Roads.roadMaterials;
+        var baseShine = SH.Roads.baseShininess || 14;
         for (var mi = 0; mi < mats.length; mi++) {
           mats[mi].color.setHex(raining ? 0x848b96 : 0xffffff); // wet asphalt darkens
-          mats[mi].shininess = raining ? 60 : 26;               // and turns glossy
+          mats[mi].shininess = raining ? baseShine + 42 : baseShine; // and turns glossy
         }
       }
       if (!drops) return;

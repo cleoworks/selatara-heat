@@ -47,8 +47,8 @@
       w.position.set(x, r, z);
       w.castShadow = true;
       g.add(w); wheels.push(w);
-      // Pale hubcap disc so the wheel reads as a wheel, not a blob.
-      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.45, r * 0.45, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0xb9c0c9, flatShading: true }));
+      // Bright hub disc so the wheel reads as a rim, not a blob.
+      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.52, r * 0.52, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0xd7dde6, flatShading: true }));
       hub.rotation.z = Math.PI / 2;
       hub.position.set(x, r, z);
       g.add(hub); wheels.push(hub);
@@ -59,18 +59,47 @@
     var tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
     var brakeMat = new THREE.MeshBasicMaterial({ color: 0xff6060 });
 
+    // ---- Art Pass 2: car bodies are EXTRUDED SIDE PROFILES, not stacked
+    // boxes. One silhouette carries hood slope, beltline and trunk; a
+    // narrower glasshouse extrusion sits on top with a paint roof panel,
+    // so from any screenshot distance the car reads as a shaped body.
+    // Points are [z as a fraction of length, height in metres].
+    var SEDAN_BELT = [[-0.50, 0.30], [-0.50, 0.90], [-0.45, 0.99], [-0.20, 1.04], [0.26, 1.02], [0.44, 0.90], [0.50, 0.83], [0.50, 0.30]];
+    var SEDAN_GLASS = [[-0.175, 1.01], [-0.055, 1.36], [0.125, 1.38], [0.27, 1.00]];
+    var SPORT_BELT = [[-0.50, 0.28], [-0.50, 0.76], [-0.43, 0.85], [-0.18, 0.91], [0.24, 0.87], [0.43, 0.70], [0.50, 0.60], [0.50, 0.28]];
+    var SPORT_GLASS = [[-0.16, 0.88], [-0.04, 1.13], [0.13, 1.14], [0.245, 0.85]];
+    var TRUCK_CAB = [[-0.50, 0.30], [-0.50, 2.10], [-0.30, 2.18], [0.28, 1.50], [0.47, 0.95], [0.50, 0.85], [0.50, 0.30]];
+    function profileMesh(pts, width, mat, lenScale) {
+      var shape = new THREE.Shape();
+      for (var i = 0; i < pts.length; i++) {
+        var px = pts[i][0] * lenScale, py = pts[i][1];
+        if (i === 0) shape.moveTo(px, py); else shape.lineTo(px, py);
+      }
+      shape.lineTo(pts[0][0] * lenScale, pts[0][1]);
+      var geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+      geo.rotateY(-Math.PI / 2); // shape X (forward) -> world +Z, extrusion -> width
+      geo.translate(width / 2, 0, 0);
+      var m = new THREE.Mesh(geo, mat);
+      m.castShadow = true;
+      g.add(m);
+      return m;
+    }
+
     if (type === 'motor') {
       box(0.34, 0.4, 1.7, paint, 0, 0.62, 0);
+      var tank = box(0.3, 0.22, 0.62, paint, 0, 0.88, 0.18); tank.rotation.x = 0.28; // sloped fuel tank
       box(0.3, 0.34, 0.5, dark, 0, 0.86, -0.3);
       var fork = box(0.07, 0.75, 0.07, dark, 0, 0.5, 0.78); fork.rotation.x = 0.42; // front fork
       box(0.36, 0.06, 0.3, glass, 0, 1.06, 0.52);                 // tiny windscreen
       wheel(0, 0.82, 0.34); wheel(0, -0.82, 0.34);
     } else if (type === 'truck') {
-      box(W * 0.92, 1.1, 1.9, paint, 0, 1.05, L * 0.32);            // cab
-      box(W * 0.8, 0.5, 0.9, glass, 0, 1.42, L * 0.28);
+      var cab = profileMesh(TRUCK_CAB, W * 0.92, paint, 2.0);   // sloped-windshield cab
+      cab.position.z = L * 0.5 - 1.0;
+      var cabGlass = box(W * 0.76, 0.66, 0.07, glass, 0, 1.86, L * 0.5 - 0.28);
+      cabGlass.rotation.x = -0.6;                                // laid onto the windshield slope
       box(W * 1.02, 0.3, 0.24, dark, 0, 0.32, L * 0.47);           // front bumper
-      box(0.09, 0.12, 0.2, dark, -W * 0.52, 1.35, L * 0.3);        // mirrors
-      box(0.09, 0.12, 0.2, dark, W * 0.52, 1.35, L * 0.3);
+      box(0.09, 0.12, 0.2, dark, -W * 0.52, 1.7, L * 0.36);        // mirrors
+      box(0.09, 0.12, 0.2, dark, W * 0.52, 1.7, L * 0.36);
       box(W, H - 0.7, L * 0.58, new THREE.MeshLambertMaterial({ color: 0xd8d3c8, flatShading: true }), 0, (H - 0.7) / 2 + 0.55, -L * 0.18); // cargo
       wheel(-W / 2, L * 0.3, 0.5); wheel(W / 2, L * 0.3, 0.5);
       wheel(-W / 2, -L * 0.32, 0.5); wheel(W / 2, -L * 0.32, 0.5);
@@ -81,35 +110,46 @@
       box(W * 0.5, 0.34, L * 0.3, dark, 0, 0.78, -L * 0.18);       // bench seat
       box(0.5, 0.62, 0.3, dark, 0, 0.62, -L * 0.52);               // outboard motor
     } else {
-      box(W, H * 0.5, L, paint, 0, H * 0.4, 0);                    // lower body
+      // Cars (sedan / sport / taxi / police): extruded beltline + glasshouse.
+      var isSport = type === 'sport';
+      profileMesh(isSport ? SPORT_BELT : SEDAN_BELT, W * 0.94, paint, L);
+      profileMesh(isSport ? SPORT_GLASS : SEDAN_GLASS, W * 0.8, glass, L);
+      var roofY = isSport ? 1.15 : 1.4;
+      box(W * 0.74, 0.07, L * 0.32, paint, 0, roofY, -L * 0.03);   // roof panel
+      box(W * 0.83, 0.36, 0.07, paint, 0, roofY - 0.2, L * 0.045); // B-pillar band
       box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, L / 2 + 0.05);       // front bumper
       box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05);      // rear bumper
-      var hood = box(W * 0.86, 0.09, L * 0.26, paint, 0, H * 0.66, L * 0.32); hood.rotation.x = -0.1; // sloped hood
-      box(W * 0.88, 0.09, L * 0.2, paint, 0, H * 0.65, -L * 0.37); // trunk deck
-      box(W * 0.8, H * 0.4, L * 0.46, glass, 0, H * 0.8, -L * 0.05); // cabin (narrower than body)
-      box(W * 0.7, 0.07, L * 0.4, paint, 0, H * 1.02, -L * 0.05);  // roof panel
-      box(0.07, 0.07, 0.18, dark, -W * 0.45, H * 0.88, L * 0.14);  // mirrors
-      box(0.07, 0.07, 0.18, dark, W * 0.45, H * 0.88, L * 0.14);
-      if (type === 'sport') {
-        box(W * 0.9, 0.09, 0.5, dark, 0, H * 0.78, -L * 0.46);     // spoiler
+      box(0.07, 0.07, 0.18, dark, -W * 0.5, 1.02, L * 0.16);       // mirrors
+      box(0.07, 0.07, 0.18, dark, W * 0.5, 1.02, L * 0.16);
+      if (isSport) {
+        box(0.09, 0.22, 0.09, dark, -W * 0.3, 0.92, -L * 0.47);    // spoiler struts
+        box(0.09, 0.22, 0.09, dark, W * 0.3, 0.92, -L * 0.47);
+        box(W * 0.96, 0.08, 0.42, dark, 0, 1.05, -L * 0.47);       // rear wing
         box(0.08, 0.16, L * 0.66, dark, -W * 0.49, 0.2, 0);       // side skirts
         box(0.08, 0.16, L * 0.66, dark, W * 0.49, 0.2, 0);
       }
+      if (type === 'taxi') {
+        box(0.62, 0.16, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd23f }), 0, roofY + 0.11, -L * 0.03); // roof sign
+      }
       if (type === 'police') {
+        // Contrast door panels over the white body + the lightbar.
+        var doorMat = new THREE.MeshLambertMaterial({ color: 0x1c2f6e, flatShading: true });
+        box(0.05, 0.36, L * 0.46, doorMat, -W * 0.485, 0.64, -L * 0.02);
+        box(0.05, 0.36, L * 0.46, doorMat, W * 0.485, 0.64, -L * 0.02);
         // Two-tone lightbar: red left, blue right, each with its own glow
         // sprite; materials are per-car so the flash phase can alternate.
-        var barBase = box(W * 0.72, 0.1, 0.42, dark, 0, H * 1.04, 0);
+        var barBase = box(W * 0.72, 0.1, 0.42, dark, 0, roofY + 0.05, -L * 0.03);
         var redMat = new THREE.MeshBasicMaterial({ color: 0xff2a4a });
         var blueMat = new THREE.MeshBasicMaterial({ color: 0x2a6aff });
-        var rb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), redMat); rb.position.set(-W * 0.18, H * 1.13, 0); g.add(rb);
-        var bb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), blueMat); bb.position.set(W * 0.18, H * 1.13, 0); g.add(bb);
+        var rb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), redMat); rb.position.set(-W * 0.18, roofY + 0.17, -L * 0.03); g.add(rb);
+        var bb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), blueMat); bb.position.set(W * 0.18, roofY + 0.17, -L * 0.03); g.add(bb);
         var rg = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xff3a5a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-        rg.scale.set(3.4, 2.2, 1); rg.position.set(-W * 0.18, H * 1.16, 0); g.add(rg);
+        rg.scale.set(3.4, 2.2, 1); rg.position.set(-W * 0.18, roofY + 0.2, -L * 0.03); g.add(rg);
         var bg = new THREE.Sprite(rg.material.clone()); bg.material.color = new THREE.Color(0x3a7aff);
-        bg.scale.set(3.4, 2.2, 1); bg.position.set(W * 0.18, H * 1.16, 0); g.add(bg);
+        bg.scale.set(3.4, 2.2, 1); bg.position.set(W * 0.18, roofY + 0.2, -L * 0.03); g.add(bg);
         g.userData.lightbar = { redMat: redMat, blueMat: blueMat, redGlow: rg, blueGlow: bg };
       }
-      var r = type === 'sport' ? 0.36 : 0.4;
+      var r = isSport ? 0.36 : 0.4;
       wheel(-W / 2, L * 0.31, r); wheel(W / 2, L * 0.31, r);
       wheel(-W / 2, -L * 0.31, r); wheel(W / 2, -L * 0.31, r);
     }
@@ -124,9 +164,9 @@
     if (type !== 'boat') {
       var hg1 = new THREE.Sprite(getHeadGlowMat()); hg1.scale.set(1.05, 0.75, 1); hg1.position.set(-hw, H * 0.5, L / 2 + 0.25); g.add(hg1);
       var hg2 = new THREE.Sprite(getHeadGlowMat()); hg2.scale.set(1.05, 0.75, 1); hg2.position.set(hw, H * 0.5, L / 2 + 0.25); g.add(hg2);
-      var cone = new THREE.Mesh(new THREE.ConeGeometry(1.35, 6.5, 12, 1, true), getConeMat());
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(1.1, 5.5, 12, 1, true), getConeMat());
       cone.rotation.x = Math.PI / 2 + 0.06;
-      cone.position.set(0, H * 0.42, L / 2 + 3.2);
+      cone.position.set(0, H * 0.42, L / 2 + 2.7);
       g.add(cone);
       g.userData.cone = cone;
     }
@@ -371,9 +411,9 @@
     // cones + glows on every car at once through the shared materials.
     setLightLevel: function (level) {
       this._lightLevel = level;
-      if (coneMatShared) coneMatShared.opacity = level * level * 0.09;
-      if (this.playerConeMat) this.playerConeMat.opacity = level * level * 0.05;
-      if (headGlowMatShared) headGlowMatShared.opacity = level * 0.5;
+      if (coneMatShared) coneMatShared.opacity = level * level * 0.045;
+      if (this.playerConeMat) this.playerConeMat.opacity = level * level * 0.03;
+      if (headGlowMatShared) headGlowMatShared.opacity = level * 0.38;
       if (this.headlight) this.headlight.intensity = level * 1.6;
     },
 

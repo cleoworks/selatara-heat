@@ -28,7 +28,7 @@
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
   function lerpPalette(a, b, t, out) {
-    var keys = ['skyTop', 'skyMid', 'skyLow', 'fog', 'sun', 'hemiSky', 'hemiGround', 'water', 'sand', 'asphalt', 'sidewalk', 'grass'];
+    var keys = ['skyTop', 'skyBand', 'skyMid', 'skyLow', 'fog', 'sun', 'hemiSky', 'hemiGround', 'water', 'sand', 'asphalt', 'sidewalk', 'grass'];
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       tmpColorA.setHex(a[k]); tmpColorB.setHex(b[k]);
@@ -92,6 +92,11 @@
     SH.Buildings.setNightGlow(Math.max(lamp, nightAmount(State.hour) * 0.9));
     if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
     updateSunSprite(pal, elev, sunAngle);
+    updateClouds(pal, SH.Config.loop.step);
+    // Wet-sheen roads at golden hour: the lower the sun, the glossier the
+    // asphalt (fake wet-street reflection, strongest looking into the sun).
+    var sheen = 12 + Math.max(0, 1 - Math.abs(elev) * 2.2) * 34 * (1 - nightAmount(State.hour)) + lamp * 8;
+    if (SH.Roads) SH.Roads.baseShininess = sheen;
   }
 
   // Big soft sun glow on the horizon (fake bloom): a radial-gradient sprite
@@ -110,10 +115,10 @@
   function updateSunSprite(pal, elev, sunAngle) {
     if (!sunSprite) {
       sunSprite = makeGlowSprite('rgba(255,230,180,0.95)', 'rgba(255,130,50,0.55)');
-      sunSprite.scale.set(620, 620, 1);
+      sunSprite.scale.set(820, 820, 1);
       scene.add(sunSprite);
       sunCore = makeGlowSprite('rgba(255,255,240,1)', 'rgba(255,180,90,0.6)');
-      sunCore.scale.set(150, 150, 1);
+      sunCore.scale.set(210, 210, 1);
       scene.add(sunCore);
     }
     var focus = State.driving ? State.vehiclePos : State.player;
@@ -140,10 +145,54 @@
     var g = skyCanvas.getContext('2d');
     var grad = g.createLinearGradient(0, 0, 0, 256);
     tmpColorA.setHex(pal.skyTop); grad.addColorStop(0, '#' + tmpColorA.getHexString());
-    tmpColorA.setHex(pal.skyMid); grad.addColorStop(0.55, '#' + tmpColorA.getHexString());
+    tmpColorA.setHex(pal.skyBand); grad.addColorStop(0.38, '#' + tmpColorA.getHexString());
+    tmpColorA.setHex(pal.skyMid); grad.addColorStop(0.66, '#' + tmpColorA.getHexString());
     tmpColorA.setHex(pal.skyLow); grad.addColorStop(1, '#' + tmpColorA.getHexString());
     g.fillStyle = grad; g.fillRect(0, 0, 4, 256);
     skyTexture.needsUpdate = true;
+  }
+
+  // Procedural thin clouds: soft elongated sprites parked high on the sky
+  // dome so the sky is never a bare gradient. One shared texture + material;
+  // the whole group follows the camera focus like the sky dome does, drifts
+  // slowly, and is tinted by the palette (white day, pink dusk, slate night).
+  var cloudGroup = null, cloudMat = null;
+  function buildClouds() {
+    var c = document.createElement('canvas'); c.width = 256; c.height = 64;
+    var g = c.getContext('2d');
+    var blobs = [[70, 36, 44], [120, 30, 56], [176, 38, 42], [100, 42, 34], [150, 44, 30]];
+    for (var i = 0; i < blobs.length; i++) {
+      var gr = g.createRadialGradient(blobs[i][0], blobs[i][1], 2, blobs[i][0], blobs[i][1], blobs[i][2]);
+      gr.addColorStop(0, 'rgba(255,255,255,0.55)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 256, 64);
+    }
+    var tex = new THREE.CanvasTexture(c);
+    cloudMat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.75, depthWrite: false, fog: false });
+    cloudGroup = new THREE.Group();
+    var rng = SH.World.makeRng(1234);
+    for (var k = 0; k < 16; k++) {
+      var sp = new THREE.Sprite(cloudMat);
+      var ang = rng() * Math.PI * 2, dist = 620 + rng() * 420;
+      sp.position.set(Math.cos(ang) * dist, 130 + rng() * 190, Math.sin(ang) * dist);
+      sp.scale.set(300 + rng() * 320, 52 + rng() * 46, 1);
+      sp.userData.drift = 1.2 + rng() * 2.2;
+      cloudGroup.add(sp);
+    }
+    scene.add(cloudGroup);
+  }
+  function updateClouds(pal, dt) {
+    if (!cloudGroup) buildClouds();
+    var focus = State.driving ? State.vehiclePos : State.player;
+    cloudGroup.position.set(focus.x, 0, focus.z);
+    cloudMat.color.setHex(pal.skyLow);
+    cloudMat.opacity = 0.28 + 0.5 * (1 - nightAmount(State.hour));
+    for (var i = 0; i < cloudGroup.children.length; i++) {
+      var sp = cloudGroup.children[i];
+      sp.position.x += sp.userData.drift * dt;
+      if (sp.position.x > 1150) sp.position.x = -1150;
+    }
   }
 
   function buildWorld() {

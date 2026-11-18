@@ -19,21 +19,23 @@
     // ---- Palette: one controlled set, day and night variants ----
     palette: {
       day: {
-        skyTop: 0x1f8fe0, skyMid: 0x6ec3f2, skyLow: 0xd9f2ff, fog: 0xcfe9f7,
+        skyTop: 0x1f8fe0, skyBand: 0x4db2ec, skyMid: 0x6ec3f2, skyLow: 0xd9f2ff, fog: 0xcfe9f7,
         sun: 0xfff0d0, sunIntensity: 1.35, hemiSky: 0xbfe3ff, hemiGround: 0x6a5a4a,
         hemiIntensity: 0.8, ambient: 0.35, water: 0x1f9ec4, sand: 0xf2dca6,
         asphalt: 0x4a4442, sidewalk: 0xb0a496, grass: 0x4db356
       },
       dusk: {
-        skyTop: 0x7ec8e3, skyMid: 0xff8c5a, skyLow: 0xffb37a, fog: 0xffa06a,
+        // Four-stop sunset: violet crown, a pink-magenta band, then the
+        // orange melt at the horizon (the top-1 look).
+        skyTop: 0x35235e, skyBand: 0xd84f8e, skyMid: 0xff8c5a, skyLow: 0xffc37a, fog: 0xf78e63,
         sun: 0xff7a33, sunIntensity: 1.35, hemiSky: 0xffc98a, hemiGround: 0x4a3049,
         hemiIntensity: 0.88, ambient: 0.3, water: 0x2a7ab0, sand: 0xe8b57e,
         asphalt: 0x3d333a, sidewalk: 0x8a6a62, grass: 0x3f7a3a
       },
       night: {
-        skyTop: 0x0b1030, skyMid: 0x2a1b4a, skyLow: 0x241a4a, fog: 0x1c1838,
-        sun: 0x8aa8ff, sunIntensity: 0.12, hemiSky: 0x33406e, hemiGround: 0x14101e,
-        hemiIntensity: 0.35, ambient: 0.18, water: 0x14384f, sand: 0x6a5f4d,
+        skyTop: 0x070a24, skyBand: 0x1c1440, skyMid: 0x2a1b4a, skyLow: 0x2c2058, fog: 0x241d42,
+        sun: 0x8aa8ff, sunIntensity: 0.22, hemiSky: 0x3d4c7d, hemiGround: 0x1a1426,
+        hemiIntensity: 0.52, ambient: 0.3, water: 0x14384f, sand: 0x6a5f4d,
         asphalt: 0x23202b, sidewalk: 0x3d3a4a, grass: 0x1e4028
       }
     },
