@@ -461,12 +461,14 @@
       }
       var barkTex = new THREE.CanvasTexture(barkCv);
       barkTex.colorSpace = THREE.SRGBColorSpace;
-      // Fronds (Art Bible v2): SOLID shaped blades, no alpha. One blade
-      // is a 6x2 plane reshaped by hand: width peaks ~0.5 m at t=0.45
-      // and closes to a point, edges zig-zag notched on alternating
-      // rows, a V-fold lifts the centre rib, and the length curve rises
-      // ~30 degrees before falling past horizontal at the tip. Vertex
-      // colours run yellow-green at the base to deep green at the tip.
+      // Fronds (Art Bible v2 + Rev 5 widening): SOLID shaped blades, no
+      // alpha. One blade is a 6x2 plane reshaped by hand: width peaks
+      // ~0.62 m on a broad shoulder (fu^0.7) and closes to a point,
+      // edges zig-zag notched on alternating rows, a deeper V-fold
+      // gives the blade cross-section so it catches light on both
+      // faces, and the length curve rises ~30 degrees before falling
+      // past horizontal at the tip. Vertex colours run yellow-green
+      // at the base to deep green at the tip.
       function makeFrondGeo(len, fall) {
         var fg = new THREE.PlaneGeometry(len, 1, 6, 2);
         fg.translate(len / 2, 0, 0);
@@ -477,12 +479,12 @@
         for (var qi = 0; qi < fp2.count; qi++) {
           var fu = fp2.getX(qi) / len;
           var row = Math.round(fu * 6);
-          var wHalf = (0.03 + 0.55 * Math.sin(Math.PI * Math.pow(fu, 0.85)) * (1 - 0.25 * fu)) / 2;
+          var wHalf = (0.03 + 0.66 * Math.sin(Math.PI * Math.pow(fu, 0.7)) * (1 - 0.25 * fu)) / 2;
           var zn = fp2.getZ(qi) * 2; // -1 / 0 / +1 across the 3 columns
           var edge = Math.abs(zn) > 0.5;
-          var zNew = zn * wHalf * (edge && row % 2 === 1 ? 0.78 : 1); // zig-zag notches
+          var zNew = zn * wHalf * (edge && row % 2 === 1 ? 0.86 : 1); // zig-zag notches
           fp2.setZ(qi, zNew);
-          var yNew = len * (0.55 * fu - fall * fu * fu) + (edge ? -0.06 : 0.05);
+          var yNew = len * (0.55 * fu - fall * fu * fu) + (edge ? -0.10 : 0.07);
           fp2.setY(qi, yNew);
           cTmp.copy(cBase).lerp(cTip, fu);
           if (!edge) cTmp.multiplyScalar(1.12);
@@ -492,18 +494,19 @@
         fg.computeVertexNormals();
         return fg;
       }
-      var frondGeoA = makeFrondGeo(2.3, 1.02); // lower tier: longer, falls past horizontal
-      var frondGeoB = makeFrondGeo(2.0, 0.78); // upper tier: shorter, held higher
+      var frondGeoA = makeFrondGeo(2.45, 1.02); // lower tier: longer, falls past horizontal
+      var frondGeoB = makeFrondGeo(2.1, 0.78); // upper tier: shorter, held higher
       var palmTrunks = [], frondsA = [], frondsB = [], coconuts = [], treeTrunks = [], canopies = [];
       for (pi = 0; pi < palms.length; pi++) {
         var pm = palms[pi];
         palmTrunks.push({ x: pm.x, y: 0, z: pm.z, sx: pm.s, sy: pm.s, sz: pm.s, rotY: pm.lean });
         // Crown sits at the top of the bent trunk (local +0.95x, 6y).
-        // 8-9 fronds in two tiers: even slots take the long drooping
-        // tier, odd slots the shorter upright tier (bible v2).
+        // 10-11 fronds in two tiers (Rev 5: fuller crowns): even slots
+        // take the long drooping tier, odd slots the shorter upright
+        // tier (bible v2).
         var ccx = pm.x + 0.95 * pm.s * Math.cos(pm.lean);
         var ccz = pm.z - 0.95 * pm.s * Math.sin(pm.lean);
-        var nFr = 8 + ((rng() * 2) | 0);
+        var nFr = 10 + ((rng() * 2) | 0);
         for (var fi = 0; fi < nFr; fi++) {
           var lowerTier = fi % 2 === 0;
           var frondP = {
