@@ -83,7 +83,8 @@
       for (var dy = 186; dy < 250; dy += 10) g.fillRect(W * 0.28, dy, W * 0.44, 2);
     }
     var t = new THREE.CanvasTexture(c);
-    if (THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    else if (THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
     t.anisotropy = 4;
     if (wide) { t.wrapS = THREE.RepeatWrapping; t.repeat.x = 2; }
     return t;
@@ -286,6 +287,15 @@
         return mats;
       }
       var towerMats = facadePool(100, 10, 'tower');
+      // Step 5: Pelita glass towers ride Phong + the procedural env
+      // map (registered through setEnvMap when Main builds it) — a
+      // glassy sheen over the facade texture. The concrete districts
+      // stay matte Lambert, which is exactly the contrast the brief
+      // asks for.
+      towerMats = towerMats.map(function (m) {
+        return new THREE.MeshPhongMaterial({ map: m.map, shininess: 70, specular: 0xaaccee, envMapIntensity: 0.6 });
+      });
+      this._envMats = towerMats;
       var shopMats = facadePool(200, 8, 'shop');
       var wareMats = facadePool(400, 4, 'warehouse');
       var villaMats = facadePool(300, 6, 'villa');
@@ -816,6 +826,14 @@
         sm.position.set(s.x, 18, s.z);
         sm.rotation.y = (pi % 2) ? Math.PI / 2 : 0;
         scene.add(sm);
+        // Fake-bloom halo (Step 5): a slightly larger additive plane
+        // in the sign's own colour behind the board. No post chain.
+        var halo = new THREE.Mesh(new THREE.PlaneGeometry(31, 16),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(s.color), transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        halo.position.set(s.x, 18, s.z);
+        halo.rotation.y = sm.rotation.y;
+        halo.translateZ(-0.4);
+        scene.add(halo);
         var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 12, 5), new THREE.MeshLambertMaterial({ color: 0x3a3f4a }));
         pole.position.set(s.x, 6, s.z);
         scene.add(pole);
@@ -860,6 +878,16 @@
       if (this.tentMaterial) this.tentMaterial.emissiveIntensity = amount * 0.5;
       if (this.bulbMaterial) this.bulbMaterial.color.copy(this.bulbOffColor).lerp(this.bulbOnColor, amount);
       if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.85;
+    },
+
+    // Step 5: Main hands over the procedural environment texture so
+    // the Pelita glass towers can reflect the sky.
+    setEnvMap: function (tex) {
+      if (!this._envMats) return;
+      for (var i = 0; i < this._envMats.length; i++) {
+        this._envMats[i].envMap = tex;
+        this._envMats[i].needsUpdate = true;
+      }
     }
   };
 

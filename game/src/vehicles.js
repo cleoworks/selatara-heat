@@ -50,7 +50,7 @@
     g2.beginPath(); g2.arc(64, 64, 4.5, 0, Math.PI * 2); g2.fill();
     rimTex = new THREE.CanvasTexture(c);
     rimTex.colorSpace = THREE.SRGBColorSpace;
-    rimMatShared = new THREE.MeshLambertMaterial({ map: rimTex });
+    rimMatShared = new THREE.MeshStandardMaterial({ map: rimTex, metalness: 1.0, roughness: 0.22, envMapIntensity: 1.25 });
     return rimMatShared;
   }
   var coneMatShared = null, headGlowMatShared = null;
@@ -80,10 +80,14 @@
   function buildMesh(type, colorHex) {
     var spec = SH.Config.vehicleTypes[type];
     var g = new THREE.Group();
-    var paint = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 68, specular: 0x888888, flatShading: true });
+    // Step 5 polish: real metallic paint (clearcoat physical material
+    // fed by the procedural sky env), deep glass, true chrome. The far
+    // LOD keeps its cheap Phong shell — only near cars pay for this.
+    var paint = new THREE.MeshPhysicalMaterial({ color: colorHex, metalness: 0.72, roughness: 0.3, clearcoat: 0.9, clearcoatRoughness: 0.28, envMapIntensity: 0.9, flatShading: true });
     var dark = new THREE.MeshLambertMaterial({ color: 0x14151a, flatShading: true });
-    var glass = new THREE.MeshPhongMaterial({ color: 0x2a4a5e, shininess: 90, specular: 0xaaddff, flatShading: true });
-    var chromeMat = new THREE.MeshLambertMaterial({ color: 0xb9c1cc, flatShading: true });
+    var tireMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0, roughness: 0.94 });
+    var glass = new THREE.MeshStandardMaterial({ color: 0x18242f, metalness: 0.9, roughness: 0.07, transparent: true, opacity: 0.74, envMapIntensity: 1.3, flatShading: true });
+    var chromeMat = new THREE.MeshStandardMaterial({ color: 0xd6dde6, metalness: 1.0, roughness: 0.16, envMapIntensity: 1.3, flatShading: true });
     var L = spec.length, W = spec.width, H = spec.height;
     var wheels = [];
 
@@ -97,7 +101,7 @@
     }
     function wheel(x, z, r, width) {
       var wWidth = width || 0.3;
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, wWidth, 14), dark);
+      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, wWidth, 14), tireMat);
       w.rotation.z = Math.PI / 2;
       w.position.set(x, r, z);
       w.castShadow = true;

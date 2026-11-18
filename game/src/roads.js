@@ -39,6 +39,7 @@
     g.fillStyle = '#f7d95e';
     for (var y = 6; y < 128; y += 32) g.fillRect(60.5, y, 7, 19);
     var t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 4;
     return t;
@@ -66,6 +67,7 @@
       g.fillRect(rng() * 512, rng() * 512, 3 + rng() * 9, 3 + rng() * 9);
     }
     var t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(34, 30);
     t.anisotropy = 4;
@@ -127,6 +129,7 @@
     g.strokeRect(1, 1, 126, 126);
     g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.moveTo(0, 64); g.lineTo(128, 64); g.stroke();
     var t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = 4;
     return t;

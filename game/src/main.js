@@ -88,6 +88,10 @@
       skyMesh.position.set(focus.x, 0, focus.z);
     }
     SH.Roads.applyPalette(pal, nightAmount(State.hour));
+    // Environment reflections refresh only when the light PHASE
+    // changes (Step 5) — a PMREM build is far too heavy for per-frame.
+    var pk = phaseKey(State.hour);
+    if (pk !== envPhase) { envPhase = pk; buildEnvironment(pal); }
     var lamp = lampAmount(State.hour);
     SH.Buildings.setNightGlow(Math.max(lamp, nightAmount(State.hour) * 0.9));
     // Night exposure + the player fill light ride the same curve: the
@@ -112,6 +116,51 @@
     // asphalt (fake wet-street reflection, strongest looking into the sun).
     var sheen = 12 + Math.max(0, 1 - Math.abs(elev) * 2.2) * 34 * (1 - nightAmount(State.hour)) + lamp * 8;
     if (SH.Roads) SH.Roads.baseShininess = sheen;
+  }
+
+  // ---- Procedural environment reflections (Step 5) ----
+  // A tiny gradient-sky scene with an HDR-bright sun ball, rendered
+  // through PMREM once per light phase and installed as
+  // scene.environment. Without it, metalness has nothing to reflect
+  // and car paint reads as coloured plastic.
+  var envRT = null, envPhase = '';
+  function phaseKey(hour) {
+    if (hour < 5.5) return 'night';
+    if (hour < 7) return 'dawn';
+    if (hour < 15.5) return 'day';
+    if (hour < 18.6) return 'golden';
+    if (hour < 20) return 'duskfall';
+    return 'night';
+  }
+  function buildEnvironment(pal) {
+    if (!renderer || !scene) return;
+    var es = new THREE.Scene();
+    var geo = new THREE.SphereGeometry(60, 16, 12);
+    var posA = geo.attributes.position;
+    var cols = new Float32Array(posA.count * 3);
+    var top = new THREE.Color(pal.hemiSky), hor = new THREE.Color(pal.fog), gnd = new THREE.Color(pal.hemiGround);
+    var cc = new THREE.Color();
+    for (var i = 0; i < posA.count; i++) {
+      var ny = posA.getY(i) / 60;
+      if (ny >= 0) cc.copy(hor).lerp(top, Math.pow(ny, 0.6));
+      else cc.copy(hor).lerp(gnd, Math.min(1, -ny * 2));
+      cols[i * 3] = cc.r; cols[i * 3 + 1] = cc.g; cols[i * 3 + 2] = cc.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    es.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false })));
+    var sunMat = new THREE.MeshBasicMaterial({ fog: false });
+    sunMat.color.setRGB(5, 4.4, 3.4);
+    var sunBall = new THREE.Mesh(new THREE.SphereGeometry(4, 12, 8), sunMat);
+    var sa = ((State.hour - 6) / 12) * Math.PI;
+    sunBall.position.set(Math.cos(sa) * 45, Math.max(6, Math.sin(sa) * 38), 20);
+    es.add(sunBall);
+    var pm = new THREE.PMREMGenerator(renderer);
+    var rt = pm.fromScene(es, 0.04);
+    if (envRT) envRT.dispose();
+    envRT = rt;
+    scene.environment = rt.texture;
+    if (SH.Buildings && SH.Buildings.setEnvMap) SH.Buildings.setEnvMap(rt.texture);
+    pm.dispose();
   }
 
   // Big soft sun glow on the horizon (fake bloom): a radial-gradient sprite
@@ -347,9 +396,13 @@
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
     // Saturated filmic grade: sRGB output + ACES curve lifts the flat
     // Lambert colours toward the saturated reference look.
-    if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+    if (THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
+    else if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
+    // CSS-side grade (Step 5): a gentle contrast/saturation lift on the
+    // 3D canvas only (the DOM HUD keeps its own colours).
+    canvas.style.filter = 'contrast(1.08) saturate(1.15)';
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
