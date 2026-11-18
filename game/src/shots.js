@@ -150,21 +150,28 @@
         stagePeds([[-127.5, -150], [-112.5, -96]]);
         if (SH.HUD) SH.HUD.subtitle('Raka', 'Four stars. Great. Hold on—', 30);
       } else if (name === 'combat') {
-        // On-foot shootout staging in the Ruko Senja night market at dusk.
+        // On-foot shootout staging INSIDE the Ruko Senja night market
+        // at dusk: Raka stands in the z=92 walkway aiming EAST along
+        // it — the corridor between the tent rows — so the stalls flank
+        // the fight and the enemies read in a row, unobstructed.
         SH.Main.setHour(18.35);
-        st.player.x = -320; st.player.z = 63;
-        st.camYaw = Math.PI * 0.94; st.camPitch = 0.04;
+        st.player.x = -330; st.player.z = 92;
+        st.player.heading = Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = 0.04;
         snapCamera();
         st.player.health = 72; st.player.armor = 40;
         st.weapon = 'pistol'; st.ammo = 9; st.ammoReserve = 24;
         if (SH.Combat) {
           SH.Combat.owned.pistol = true;
-          // Enemies at mid-range (11-17 m) ahead of the aim camera, spread
-          // laterally so they read around Raka's silhouette, in bright rival
-          // colours that survive the dusk light.
-          SH.Combat.spawnEnemy(-323, 74, { color: 0x2a8a8a, hp: 45 });
-          SH.Combat.spawnEnemy(-317, 77, { color: 0xc96f2a, hp: 45 });
-          SH.Combat.spawnEnemy(-326, 80, { color: 0x2a8a8a, hp: 45 });
+          // Enemies at close-mid range (7-12 m) ahead of the aim camera,
+          // spread laterally so they read around Raka's silhouette, in
+          // bright rival colours that survive the dusk light. (An earlier
+          // 11-17 m staging rendered them as specks in the official shot;
+          // the fight has to read at thumbnail size.)
+          SH.Combat.spawnEnemy(-317, 90, { color: 0x2a8a8a, hp: 45 });
+          SH.Combat.spawnEnemy(-311, 94, { color: 0xc96f2a, hp: 45 });
+          SH.Combat.spawnEnemy(-321, 95, { color: 0x2a8a8a, hp: 45 });
+          SH.Combat.spawnEnemy(-306, 91, { color: 0xc92a6a, hp: 45 });
           // Freeze the firing frame: persistent additive flash sprites at
           // the nearest enemy's muzzle and at Raka's gun (the live particle
           // flash lasts 0.12 s and would almost never land in a still).
@@ -179,13 +186,13 @@
             sp.scale.set(s, s, 1); sp.position.set(x, y, z);
             scene.add(sp);
           }
-          flash(-322.4, 1.45, 72.6, 1.5);   // nearest enemy's muzzle, aimed at Raka
-          SH.Effects.tracer(-322.4, 1.45, 72.6, -320.1, 1.3, 64.2, true);
+          flash(-317.6, 1.45, 90.4, 1.5);   // nearest enemy's muzzle, aimed at Raka
+          SH.Effects.tracer(-317.6, 1.45, 90.4, -329, 1.3, 92, true);
         }
         st._shotAim = true;
-        st._shotAimDist = 4.8; // pull the aim camera back so Raka doesn't fill the frame
-        st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -322, z: 92 };
-        stagePeds([[-306, 62], [-336, 74]]);
+        st._shotAimDist = 4.2; // pull the aim camera back so Raka doesn't fill the frame
+        st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -308, z: 92 };
+        stagePeds([[-300, 88], [-338, 96], [-314, 99], [-324, 86]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
