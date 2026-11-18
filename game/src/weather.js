@@ -3,6 +3,8 @@
 // showers. Rain is one THREE.Points sheet of streaks that follows the
 // player; while it rains the road material darkens and loses a little grip
 // (handled in vehicles via SH.Weather.gripFactor), and the sky grade greys.
+// Rain also lifts the road materials' shininess, so wet streets pick up
+// neon and headlight sheen under the night lighting rig.
 // Public API: SH.Weather { init(scene), update(dt), setWeather(w), gripFactor }.
 (function (SH) {
   'use strict';

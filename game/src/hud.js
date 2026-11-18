@@ -2,6 +2,8 @@
 // The in-game HUD as DOM over the canvas: cash, clock, wanted stars, health /
 // armour bars, weapon + ammo or driving speedometer, objective panel,
 // notification queue, subtitles, interaction prompt, 3D objective marker.
+// Everything here is DOM, never canvas-drawn: text stays crisp at any
+// resolution and the WebGL canvas remains purely the 3D view.
 // Public API: SH.HUD { init(), refresh(), notify(text), setPrompt(text), showDistrict(name), subtitle(name, text, seconds), flashCash(n) }.
 (function (SH) {
   'use strict';

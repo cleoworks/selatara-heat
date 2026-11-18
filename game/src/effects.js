@@ -1,6 +1,8 @@
 // SELATARA HEAT — effects.js
 // Pooled particles (smoke, sparks, explosion, dust) on one THREE.Points cloud,
 // plus trauma-based screen shake applied to the camera after it is positioned.
+// The pool is allocated once at init; bursts recycle the oldest slots, so the
+// effect system never allocates (or stalls the frame) mid-game.
 // Public API: SH.Effects { init(scene), update(dt, camera), burst(x,y,z,opts), smoke(x,y,z), shake(amount) }.
 (function (SH) {
   'use strict';

@@ -4,6 +4,8 @@
 (function (SH) {
   'use strict';
 
+  // The schema version rides in the key itself: bump the suffix whenever
+  // the saved shape changes and old saves are simply ignored, never migrated.
   var KEY = 'selatara-heat-save-v1';
 
   var Save = {

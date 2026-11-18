@@ -6,6 +6,8 @@
 // to morning + manual save) and the boutique (outfit colours).
 // Public API: SH.Economy { places[], addCash(n), spend(n), buy(id), openShop(kind),
 //   closeShop(), update(dt) }.
+// All money movement routes through addCash/spend so the HUD cash flash,
+// the mission ledger and the save file never disagree about the balance.
 (function (SH) {
   'use strict';
 

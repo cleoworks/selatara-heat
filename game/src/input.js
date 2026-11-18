@@ -1,5 +1,7 @@
 // SELATARA HEAT — input.js
 // Keyboard + mouse state, Pointer Lock mouse look, edge-triggered key events.
+// Mouse look applies only while the canvas holds pointer lock; losing the
+// lock (Esc) is treated as a pause request by the menu layer.
 // Public API: SH.Input { keys, pressed, mouseDX/DY, locked, init(canvas), isDown(code), wasPressed(code), endFrame() }.
 (function (SH) {
   'use strict';

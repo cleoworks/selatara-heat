@@ -1,5 +1,6 @@
 // SELATARA HEAT — audio.js
-// All sound is WebAudio synthesis: engine, horn, siren, UI clicks, ambience.
+// All sound is WebAudio synthesis: engine, horn, siren, UI clicks, ambience,
+// and the three-station car radio (procedural synth loops, no audio files).
 // The context starts only after the first user gesture (browser policy).
 // Public API: SH.Audio { init(), engine(rpm01, load), horn(), click(), setVolumes(master, music, sfx) }.
 (function (SH) {

@@ -178,3 +178,19 @@ wanted/police, save/load, all 8 missions end-to-end, zero console errors.
   through `shots.js` at golden hour / night chase set-ups, then downscaled.
 - Three.js must stay the minified vendored build so its lines never count
   against authorship; all game code is written by hand in this repo.
+
+## 10. Art direction after the first build (art passes 2-3)
+
+- The road graph stays node-based (traffic, police BFS and missions depend
+  on it), but the coast road and ring are resampled into short segments so
+  the city reads curved, not gridded; Ruko Senja gains diagonal alleys and
+  the blocks gain plazas, parking lots and corner plazas.
+- Buildings are placed from one city data model (`SH.CityData`): footprint
+  polygons (rectangles, L annexes, drums, extruded corner-cut / hexagon /
+  courtyard lots) feed both the 3D builders and the 2D pause map.
+- Characters are real bone rigs (THREE.Skeleton + SkinnedMesh, authored in
+  code) with AnimationClip idle/walk/run and a procedural look/aim layer;
+  vehicles are single-shell side-profile extrusions with separate cabins.
+- One material rule learned the hard way: in the vendored three build, an
+  instanced MeshPhongMaterial fed by the scene environment renders black —
+  hero surfaces use MeshStandardMaterial / MeshPhysicalMaterial instead.
