@@ -333,7 +333,13 @@
       var diff = wrapAngle(targetHeading - v.heading);
       var steer = clamp(diff * 1.7, -0.62, 0.62);
       var spd = cruise * clamp(1.25 - Math.abs(diff) * 0.6, 0.38, 1);
-      if (dist < 3.2) spd = 0;
+      // Slow as the target closes: turn radius grows with speed, so
+      // arriving hot makes the car swing wide around its waypoint
+      // (the orbit trap above). A closing cap keeps the radius
+      // inside the capture disc.
+      if (dist < 26) spd = Math.min(spd, Math.max(5.5, dist * 0.5));
+      if (unit.reverseT > 0) spd = -6; // unstick reverse (see update)
+      if (dist < 3.2 && !(unit.reverseT > 0)) spd = 0;
       var accel = spd > v.speed ? spec.accel * 0.92 : spec.brake;
       v.speed += clamp(spd - v.speed, -accel * dt, accel * dt);
       v.speed = clamp(v.speed, -8, spec.maxSpeed);
@@ -480,7 +486,18 @@
           var nodes = SH.World.graph.nodes;
           while (unit.path && unit.wp < unit.path.length - 1) {
             var wpn = nodes[unit.path[unit.wp]];
-            if (Math.hypot(wpn.x - veh.x, wpn.z - veh.z) < 9) unit.wp++;
+            var wdx = wpn.x - veh.x, wdz = wpn.z - veh.z;
+            var wd = Math.hypot(wdx, wdz);
+            // Capture OR pass-by: on the curved Rev 11 graph the
+            // chords are ~40 m and a pursuit car at full speed turns
+            // in a ~15 m circle, so it can orbit a node it has
+            // effectively reached without ever entering the 9 m
+            // capture disc. Crossing the node's perpendicular plane
+            // counts as reaching it. (Pre-Rev 11 the streets were
+            // straight, so approaches were head-on and this never
+            // bit; the bowed graph exposed it — functest pursuit
+            // stalled at minDist=96 with units circling waypoints.)
+            if (wd < 9 || (wd < 20 && (wdx * Math.sin(veh.heading) + wdz * Math.cos(veh.heading)) < 0)) unit.wp++;
             else break;
           }
           var targetNode = unit.path && unit.path.length ? nodes[unit.path[Math.min(unit.wp, unit.path.length - 1)]] : null;
@@ -513,10 +530,22 @@
           }
           tx = rn.x; tz = rn.z;
         }
+        // Unstick reverse: a nose-in pin against a collider AABB
+        // cannot be steered out of (collideWorld ejects the car
+        // back every frame while driveCar pushes it in). Back
+        // straight out first, THEN let the recover steer to a node.
+        if (unit.reverseT > 0) {
+          unit.reverseT -= dt;
+          tx = veh.x - Math.sin(veh.heading) * 12;
+          tz = veh.z - Math.cos(veh.heading) * 12;
+        }
         this.driveCar(unit, dt, tx, tz, cruise);
         if (Math.abs(veh.speed) < 0.6 && distP > 15) {
           unit.stuckT = (unit.stuckT || 0) + dt;
-          if (unit.stuckT > 1.4) { unit.recover = 1.6; unit.stuckT = 0; unit.path = null; unit.pathTimer = 0; }
+          if (unit.stuckT > 1.4) {
+            unit.reverseT = 0.75; unit.recover = 2.2;
+            unit.stuckT = 0; unit.path = null; unit.pathTimer = 0;
+          }
         } else unit.stuckT = 0;
 
         // Officers bail out when close and the player is slow / on foot.

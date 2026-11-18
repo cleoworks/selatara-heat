@@ -166,6 +166,45 @@
       var jp3 = jPos(x, z);
       return nodeAt(jp3[0], jp3[1]);
     }
+    // Rev 11 — bowed spans: selected interior streets/avenues are
+    // resampled into two-bend polylines (the same short-chord trick
+    // as the ring road and the beach road), so the NAVIGATION GRAPH
+    // itself curves and traffic, police pathfinding and the map all
+    // inherit the curve — no system keeps a straight-line shortcut.
+    // Amplitudes stay inside the road corridor + building inset
+    // (<= 5 m bow + 5.6 m road half < 11.8 m inset), so no building
+    // collider is touched (colprobe verifies). Pelita's CBD grid and
+    // the housing rows stay straight on purpose (planned city).
+    var bowV = { // vertical avenue spans 'x,zStart' -> perpendicular amp
+      '-360,-420': 5, '-360,-300': -5, '-360,-180': 5, // Ruko S-curves
+      '-240,-300': -4, '-240,-180': 4,
+      '360,-300': -4, '360,-180': 4, // Mawar gentle bows
+      '360,60': 4.5 // Karat: one broad C on the warehouse access
+    };
+    var bowH = { // horizontal street spans 'z,xStart' -> perpendicular amp
+      '-300,-480': 5, '-300,-360': -5, // Ruko S-curves
+      '-180,-480': -5, '-180,-360': 5,
+      '-180,240': 4, '-180,360': -4, // Mawar
+      '-60,240': -4, '-60,360': 4,
+      '60,-120': -5, '60,0': -5, // Taman: bow into the park edge
+      '60,240': 4.5, '60,360': 4.5, // Karat access
+      '180,-480': -3, '180,-360': -3.5, '180,-240': -3, '180,-120': -2.5, // Kencana:
+      '180,0': -2.5, '180,120': -3, '180,240': -3.5, '180,360': -3 // contour bows (north)
+    };
+    function bowedEdge(a, b, vertical, amp) {
+      var A = nodes[a], B = nodes[b];
+      var dx = B.x - A.x, dz = B.z - A.z;
+      var len = Math.hypot(dx, dz) || 1;
+      var px = -dz / len, pz = dx / len; // unit perpendicular
+      var prev = a;
+      [1 / 3, 2 / 3].forEach(function (t) {
+        var s = Math.sin(Math.PI * t) * amp;
+        var mid = addNode(A.x + dx * t + px * s, A.z + dz * t + pz * s);
+        addEdge(prev, mid, vertical, 'grid');
+        prev = mid;
+      });
+      addEdge(prev, b, vertical, 'grid');
+    }
     // Vertical avenue edges (with the Ruko alley split at z=124 on the
     // three western avenues, between the z=60 and z=180 streets).
     for (i = 0; i < xs.length; i++) {
@@ -175,7 +214,9 @@
           addEdge(gridNode(i, j), mid, true);
           addEdge(mid, gridNode(i, j + 1), true);
         } else {
-          addEdge(gridNode(i, j), gridNode(i, j + 1), true);
+          var bv = bowV[xs[i] + ',' + zs[j]];
+          if (bv) bowedEdge(gridNode(i, j), gridNode(i, j + 1), true, bv);
+          else addEdge(gridNode(i, j), gridNode(i, j + 1), true);
         }
       }
     }
@@ -202,7 +243,9 @@
           addEdge(gridNode(i, j), splitN, false);
           addEdge(splitN, gridNode(i + 1, j), false);
         } else {
-          addEdge(gridNode(i, j), gridNode(i + 1, j), false);
+          var bh = bowH[zs[j] + ',' + xs[i]];
+          if (bh) bowedEdge(gridNode(i, j), gridNode(i + 1, j), false, bh);
+          else addEdge(gridNode(i, j), gridNode(i + 1, j), false);
         }
       }
     }
@@ -275,6 +318,20 @@
       }
       diagCells[crescents[i].cell] = true;
     }
+
+    // Rev 11: a teardrop loop in Bukit Mawar — a curved cul-de-sac
+    // that leaves the z=-180 street, loops through the block and
+    // rejoins it one lot east (no dead end, so traffic never has to
+    // reverse out). The cell stays open green via diagCells, so from
+    // the air the loop reads as a park-side crescent.
+    var tearPts = [[240, -180], [262, -214], [292, -234], [322, -226], [344, -202], [360, -180]];
+    var prevTn = gridNodeAt(tearPts[0][0], tearPts[0][1]);
+    for (i = 1; i < tearPts.length; i++) {
+      var tn = (i === tearPts.length - 1) ? gridNodeAt(tearPts[i][0], tearPts[i][1]) : addNode(tearPts[i][0], tearPts[i][1]);
+      addEdge(prevTn, tn, false, 'grid');
+      prevTn = tn;
+    }
+    diagCells['6,1'] = true;
 
     // Taman Arus curved collector: a gentle arc across the park,
     // following the pond's contour and crossing the canal where the
