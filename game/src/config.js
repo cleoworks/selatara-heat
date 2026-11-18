@@ -34,8 +34,12 @@
       },
       night: {
         skyTop: 0x070a24, skyBand: 0x1c1440, skyMid: 0x2a1b4a, skyLow: 0x2c2058, fog: 0x241d42,
-        sun: 0x8aa8ff, sunIntensity: 0.22, hemiSky: 0x3d4c7d, hemiGround: 0x1a1426,
-        hemiIntensity: 0.52, ambient: 0.3, water: 0x14384f, sand: 0x6a5f4d,
+        // Art Pass 3 (night readability): the night floor is raised on
+        // purpose — purple-blue hemisphere + a real ambient floor, so
+        // faces, clothes and car paint stay readable and nothing falls
+        // to a pure-black silhouette.
+        sun: 0x8aa8ff, sunIntensity: 0.3, hemiSky: 0x4a5f9e, hemiGround: 0x2c2340,
+        hemiIntensity: 0.8, ambient: 0.42, water: 0x14384f, sand: 0x6a5f4d,
         asphalt: 0x23202b, sidewalk: 0x3d3a4a, grass: 0x1e4028
       }
     },

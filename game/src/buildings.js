@@ -453,7 +453,56 @@
         var mx = -352 + (pi % 13) * 7.6, mz = 84 + ((pi / 13) | 0) * 16;
         tents.push({ x: mx, y: 2.6, z: mz, sx: 6.4, sy: 2.8, sz: 6.4, color: tentColors[(rng() * tentColors.length) | 0] });
       }
-      makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), new THREE.MeshLambertMaterial({ flatShading: true }), tents, scene, false);
+      // The tent canvas carries a warm emissive that setNightGlow raises
+      // after dark, so the stalls read as lit from inside.
+      var tentMat = new THREE.MeshLambertMaterial({ flatShading: true, emissive: 0xff8a3a, emissiveIntensity: 0 });
+      this.tentMaterial = tentMat;
+      makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), tentMat, tents, scene, false);
+
+      // String bulbs over the market (Art Pass 3): instanced warm bulbs
+      // on sagging spans between the tent tops of both rows, plus three
+      // cross spans. setNightGlow switches them on; every eighth bulb
+      // also carries a soft additive glow sprite.
+      var bulbPts = [];
+      function bulbSpan(x1, z1, x2, z2) {
+        var n = Math.max(3, Math.round(Math.hypot(x2 - x1, z2 - z1) / 1.9));
+        for (var bi = 0; bi <= n; bi++) {
+          var bt = bi / n;
+          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.9 - Math.sin(bt * Math.PI) * 0.5, z: z1 + (z2 - z1) * bt });
+        }
+      }
+      for (var brow = 0; brow < 2; brow++) {
+        var brz = 84 + brow * 16;
+        for (var bti = 0; bti < 12; bti++) bulbSpan(-352 + bti * 7.6, brz, -352 + (bti + 1) * 7.6, brz);
+      }
+      bulbSpan(-336.8, 84, -336.8, 100);
+      bulbSpan(-306.4, 84, -306.4, 100);
+      bulbSpan(-276.0, 84, -276.0, 100);
+      var bulbMat = new THREE.MeshBasicMaterial({ color: 0x665533 });
+      this.bulbMaterial = bulbMat;
+      this.bulbOffColor = new THREE.Color(0x665533);
+      this.bulbOnColor = new THREE.Color(0xffd9a0);
+      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 5), bulbMat, bulbPts.length);
+      var bDummy = new THREE.Object3D();
+      for (pi = 0; pi < bulbPts.length; pi++) {
+        bDummy.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
+        bDummy.updateMatrix();
+        bulbMesh.setMatrixAt(pi, bDummy.matrix);
+      }
+      scene.add(bulbMesh);
+      var bgc = document.createElement('canvas'); bgc.width = bgc.height = 64;
+      var bg2 = bgc.getContext('2d');
+      var bgrad = bg2.createRadialGradient(32, 32, 2, 32, 32, 32);
+      bgrad.addColorStop(0, 'rgba(255,215,150,1)'); bgrad.addColorStop(0.4, 'rgba(255,180,90,0.35)'); bgrad.addColorStop(1, 'rgba(255,160,60,0)');
+      bg2.fillStyle = bgrad; bg2.fillRect(0, 0, 64, 64);
+      var bulbGlowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(bgc), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      this.bulbGlowMaterial = bulbGlowMat;
+      for (pi = 0; pi < bulbPts.length; pi += 8) {
+        var bsp = new THREE.Sprite(bulbGlowMat);
+        bsp.scale.set(1.5, 1.5, 1);
+        bsp.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
+        scene.add(bsp);
+      }
 
       // ---- Boardwalk + pier at Pantai Kencana ----
       // The boardwalk is laid in 30 m segments that follow the bending
@@ -568,6 +617,11 @@
 
     setNightGlow: function (amount) {
       if (this.glowMaterial) this.glowMaterial.opacity = amount * 0.85;
+      // Market after dark: tent canvas glows from inside, string bulbs
+      // warm up and their glow sprites fade in.
+      if (this.tentMaterial) this.tentMaterial.emissiveIntensity = amount * 0.5;
+      if (this.bulbMaterial) this.bulbMaterial.color.copy(this.bulbOffColor).lerp(this.bulbOnColor, amount);
+      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.55;
     }
   };
 

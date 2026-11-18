@@ -23,7 +23,7 @@
   };
   SH.State = State;
 
-  var renderer, scene, camera, sun, hemi, skyMesh, ambLight;
+  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight;
   var accumulator = 0, lastTs = 0;
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
@@ -90,6 +90,21 @@
     SH.Roads.applyPalette(pal);
     var lamp = lampAmount(State.hour);
     SH.Buildings.setNightGlow(Math.max(lamp, nightAmount(State.hour) * 0.9));
+    // Night exposure + the player fill light ride the same curve: the
+    // renderer opens up a little after dark and the fill hovers over the
+    // focus, offset toward the camera so it rims the subject.
+    if (renderer) renderer.toneMappingExposure = 1.15 + nightAmount(State.hour) * 0.22;
+    if (fillLight) {
+      var fAmt = nightAmount(State.hour);
+      fillLight.intensity = fAmt * 1.5;
+      if (fAmt > 0.01) {
+        fillLight.position.set(
+          focus.x + Math.sin(State.camYaw) * 3.5,
+          3.4,
+          focus.z + Math.cos(State.camYaw) * 3.5
+        );
+      }
+    }
     if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
     updateSunSprite(pal, elev, sunAngle);
     updateClouds(pal, SH.Config.loop.step);
@@ -218,6 +233,13 @@
     sun.shadow.camera.far = 500;
     sun.shadow.bias = -0.0006;
     scene.add(sun); scene.add(sun.target);
+
+    // Player fill light (Art Pass 3): one warm point light that hovers
+    // above and behind the camera focus after dark, so faces, clothes
+    // and car paint near the player keep a readable rim instead of
+    // falling to black. Intensity is driven by applyLighting (0 by day).
+    fillLight = new THREE.PointLight(0xffd9b0, 0, 26, 1.8);
+    scene.add(fillLight);
 
     SH.Roads.build(scene);
     SH.Buildings.build(scene);
