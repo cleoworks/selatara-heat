@@ -1,3 +1,6 @@
+// SELATARA HEAT — an original open-world crime game (make.fun gta6-01 entry).
+// The hand-in program below is the kit plumbing: it copies game/ + screenshots/
+// to /output and writes the dossier; the game itself lives entirely in game/.
 // A working gta6-01 entry (Node 22, standard library only): the game is this directory's
 // game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
 // modules, no library and no network request), and the program hands it in. It copies game/ and
@@ -19,6 +22,12 @@ import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// SELATARA HEAT guard: refuse to hand in an entry whose game folder lost its
+// entry page, so a broken tree can never be graded as a valid submission.
+if (!existsSync(join(here, 'game', 'index.html'))) {
+  throw new Error('selatara-heat: game/index.html is missing; entry is incomplete');
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
