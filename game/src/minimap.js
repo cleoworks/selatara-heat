@@ -120,8 +120,10 @@
     // Buildings from the Rev 8 city data model: the same footprint
     // polygons the 3D generator placed (rects, L annexes, drums as
     // 10-gons, polygon lots with cut corners / courtyards), drawn as
-    // paths — no longer a grid of collider rectangles.
-    g.fillStyle = 'rgba(38,32,48,0.52)';
+    // paths — no longer a grid of collider rectangles. Block faces sit
+    // darker and more saturated than the road ribbons, so the
+    // hierarchy reads blocks = fill, roads = the cuts between them.
+    g.fillStyle = 'rgba(30,26,40,0.64)';
     var cityB = (SH.CityData && SH.CityData.buildings) || [];
     for (i = 0; i < cityB.length; i++) {
       var pts = cityB[i].pts;
@@ -143,27 +145,30 @@
         g.fillRect(w2mx(pk.x - pk.w * 0.36 + pb * pk.w * 0.18) - 1, w2my(pk.z - pk.d * 0.31), 2, pk.d * 0.62 / WORLD_H * MAP);
       }
     }
-    // Roads from the shared graph, drawn in passes (Art Bible v2 layer
-    // order): a dark casing under a lighter centre line. Weights follow
-    // the bible scaled to this canvas: ring ~6px, arterials ~3.6px,
-    // alleys ~1.6px. The bridge deck rides over the water.
+    // Roads from the shared graph, drawn as FILLED ASPHALT RIBBONS
+    // (map fix on the user's order): a thin dark casing, then a
+    // grey-tan fill — roads read as cuts between the blocks, never as
+    // a white line grid. Contrast is tiered: the ring stays orange
+    // (the only road allowed a pale centre mark), arterials are a
+    // medium light grey, collectors dimmer, local streets and alleys
+    // thin and faint. No white centre lines anywhere else.
     var graph = SH.World.graph;
     function roadPath(pass) {
       for (var e = 0; e < graph.edges.length; e++) {
         var ed = graph.edges[e], a = graph.nodes[ed.a], b = graph.nodes[ed.b];
         var kind = ed.kind || 'grid';
-        var accent = kind === 'ring' || kind === 'diag';
         var wPx, style;
         if (pass === 'casing') {
           if (kind === 'alley') continue;
-          wPx = accent ? 8.6 : 5.8; style = '#45413a';
-        } else if (pass === 'centre') {
-          if (accent) { wPx = kind === 'ring' ? 6 : 5; style = '#e07b2a'; }
-          else if (kind === 'alley') { wPx = 1.6; style = '#6a6252'; }
-          else { wPx = 3.6; style = '#e6dfca'; }
-        } else { // accent redraw, over the district tint
-          if (!accent) continue;
-          wPx = kind === 'ring' ? 4.2 : 3.6; style = '#f08a35';
+          wPx = kind === 'ring' ? 10 : kind === 'diag' ? 8.4 : 7; style = '#3a362f';
+        } else if (pass === 'fill') {
+          if (kind === 'ring') { wPx = 7.6; style = '#e07b2a'; }
+          else if (kind === 'diag') { wPx = 6; style = '#8f8a7c'; }
+          else if (kind === 'alley') { wPx = 1.6; style = 'rgba(106,101,88,0.75)'; }
+          else { wPx = 4.8; style = '#7e7a6e'; }
+        } else { // ringmark: the ring road's pale centre dashes only
+          if (kind !== 'ring') continue;
+          wPx = 1.3; style = 'rgba(255,217,168,0.85)';
         }
         g.strokeStyle = style;
         g.lineWidth = wPx;
@@ -172,8 +177,8 @@
     }
     g.lineCap = 'round';
     roadPath('casing');
-    roadPath('centre');
-    roadPath('accent');
+    roadPath('fill');
+    roadPath('ringmark');
     // Foam lines: a bright waterline right on the shore, a fainter
     // second line seaward, and a foam ring around Pulau Seberang.
     function foamPath(offM, alpha, wPx) {
