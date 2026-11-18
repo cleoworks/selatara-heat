@@ -87,7 +87,7 @@
       drawSky(pal);
       skyMesh.position.set(focus.x, 0, focus.z);
     }
-    SH.Roads.applyPalette(pal);
+    SH.Roads.applyPalette(pal, nightAmount(State.hour));
     var lamp = lampAmount(State.hour);
     SH.Buildings.setNightGlow(Math.max(lamp, nightAmount(State.hour) * 0.9));
     // Night exposure + the player fill light ride the same curve: the

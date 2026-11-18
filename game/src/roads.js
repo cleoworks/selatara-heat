@@ -482,12 +482,28 @@
       if (this.waterMesh) this.waterMesh.position.y = -0.55 + Math.sin(elapsed * 0.5) * 0.06;
     },
 
-    applyPalette: function (pal) {
+    applyPalette: function (pal, nightAmt) {
       if (this.groundMesh) this.groundMesh.material.color.setHex(pal.grass);
       if (this.sandMesh) this.sandMesh.material.color.setHex(pal.sand);
       if (this.waterMesh) this.waterMesh.material.color.setHex(pal.water);
       if (this.walkMaterial) this.walkMaterial.color.setHex(pal.sidewalk);
       if (this._paintShore) this._paintShore(pal);
+      // Night floor (Step 4 fix): a faint emissive lift on roads,
+      // ground and pavements after dark, so the world never falls to
+      // pure black silhouettes. Zero by day — daylight is untouched.
+      var na = nightAmt || 0;
+      if (this.roadMaterial) {
+        this.roadMaterial.emissive.setHex(0x2a3048);
+        this.roadMaterial.emissiveIntensity = 0.55 * na;
+      }
+      if (this.groundMesh) {
+        this.groundMesh.material.emissive.setHex(0x1a2b1a);
+        this.groundMesh.material.emissiveIntensity = 0.5 * na;
+      }
+      if (this.walkMaterial) {
+        this.walkMaterial.emissive.setHex(0x232838);
+        this.walkMaterial.emissiveIntensity = 0.35 * na;
+      }
     }
   };
 
