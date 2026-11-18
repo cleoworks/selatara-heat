@@ -423,7 +423,9 @@
     _lod: null,
     _buildLOD: function () {
       var scene = this._scene;
-      var paintMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 68, specular: 0x888888, flatShading: true });
+      // Lambert, not Phong: instanced Phong + scene environment
+      // renders black in this three build (see buildings.js towers).
+      var paintMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
       var trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
       var types = ['sedan', 'sport', 'police', 'truck', 'motor', 'boat'];
       var out = {};

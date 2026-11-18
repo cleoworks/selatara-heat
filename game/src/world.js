@@ -322,6 +322,29 @@
     return out;
   }
 
+  // Rev 8 (elfensky pattern): the city as ONE data model. Every
+  // building the generator places records its footprint polygon +
+  // height here; the 3D builder consumes the same entries it records,
+  // and the 2D map/minimap draw these polygons — never a second,
+  // diverging description of the city.
+  var CityData = { buildings: [] };
+  CityData.addRect = function (x, z, sx, sz, h, rotY) {
+    var c = Math.cos(rotY || 0), s = Math.sin(rotY || 0), pts = [];
+    var cs = [[-sx / 2, -sz / 2], [sx / 2, -sz / 2], [sx / 2, sz / 2], [-sx / 2, sz / 2]];
+    for (var i = 0; i < 4; i++) pts.push([x + cs[i][0] * c - cs[i][1] * s, z + cs[i][0] * s + cs[i][1] * c]);
+    CityData.buildings.push({ pts: pts, h: h });
+  };
+  CityData.addPoly = function (pts, h) { CityData.buildings.push({ pts: pts, h: h }); };
+  CityData.addDrum = function (x, z, r, h) {
+    var pts = [];
+    for (var i = 0; i < 10; i++) {
+      var a = i / 10 * Math.PI * 2;
+      pts.push([x + Math.cos(a) * r, z + Math.sin(a) * r]);
+    }
+    CityData.buildings.push({ pts: pts, h: h });
+  };
+  SH.CityData = CityData;
+
   SH.World = {
     rng: makeRng(20261124),
     makeRng: makeRng,

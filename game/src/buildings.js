@@ -125,6 +125,56 @@
       var parkingPads = [], parkingLines = [];
       var bucketSeq = { tower: 0, shop: 0, warehouse: 0, villa: 0, hotel: 0 };
       var xs = cfg.avenuesX, zs = cfg.streetsZ;
+      // Rev 8: polygon-footprint buildings (elfensky pattern). One
+      // outline per lot — corner-cut rectangle, elongated hexagon, or
+      // U with a courtyard notch — extruded to the lot's height. All
+      // lots merge into a single vertex-coloured mesh; walls take a
+      // district tint, caps go dark. Footprints are recorded into
+      // SH.CityData, the same data the 2D map draws.
+      var polyGeos = [];
+      var polyTints = { pelita: 0x8fa8c8, ruko: 0xd9a37e, mawar: 0xb9d9a8, karat: 0xc98d5f, taman: 0xaec49b, kencana: 0xe3cf9f };
+      function hScaleCell() { return 0.78 + rng() * 0.55; }
+      function polyLot(cx, cz, bw, bd, d, hScale) {
+        var w = bw * (0.62 + rng() * 0.2), dep = bd * (0.62 + rng() * 0.2);
+        var h = (d.minH + rng() * (d.maxH - d.minH)) * hScale * 0.85;
+        if (h < 5) h = 5 + rng() * 3;
+        var hw = w / 2, hd = dep / 2, pts = [], kind = rng();
+        if (kind < 0.4) {
+          var cut = 0.3 + rng() * 0.25;
+          pts = [[-hw, -hd], [hw, -hd], [hw, hd * (1 - cut * 2)], [hw * (1 - cut * 2), hd], [-hw, hd]];
+        } else if (kind < 0.7) {
+          var sh = 0.22 + rng() * 0.15;
+          pts = [[-hw + w * sh, -hd], [hw - w * sh, -hd], [hw, 0], [hw - w * sh, hd], [-hw + w * sh, hd], [-hw, 0]];
+        } else {
+          var nw = w * (0.18 + rng() * 0.1), nd = dep * (0.3 + rng() * 0.15);
+          pts = [[-hw, -hd], [hw, -hd], [hw, hd], [nw, hd], [nw, hd - nd], [-nw, hd - nd], [-nw, hd], [-hw, hd]];
+        }
+        // THREE.Shape lives in XY: author (x, -z) so rotateX(-90 deg)
+        // lands the outline back on (x, z) with height as +Y. Points
+        // are fed in REVERSE order: in (x,-z) space the outline winds
+        // clockwise, and ExtrudeGeometry needs counter-clockwise or
+        // every wall normal points inward (black buildings).
+        var shape = new THREE.Shape();
+        for (var pi = pts.length - 1; pi >= 0; pi--) {
+          if (pi === pts.length - 1) shape.moveTo(pts[pi][0], -pts[pi][1]); else shape.lineTo(pts[pi][0], -pts[pi][1]);
+        }
+        shape.closePath();
+        var geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        geo.translate(cx, 0, cz);
+        var tint = new THREE.Color(polyTints[d.id] || 0xcccccc);
+        tint.multiplyScalar(0.9 + rng() * 0.2);
+        var posA = geo.attributes.position, norA = geo.attributes.normal;
+        var col = new Float32Array(posA.count * 3);
+        for (var vi = 0; vi < posA.count; vi++) {
+          var cf = norA.getY(vi) > 0.5 ? 0.42 : 1.0;
+          col[vi * 3] = tint.r * cf; col[vi * 3 + 1] = tint.g * cf; col[vi * 3 + 2] = tint.b * cf;
+        }
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        polyGeos.push(geo);
+        SH.World.colliders.push({ x: cx, z: cz, hx: hw, hz: hd });
+        SH.CityData.addPoly(pts.map(function (p) { return [cx + p[0], cz + p[1]]; }), h);
+      }
       for (var i = 0; i + 1 < xs.length; i++) {
         for (var j = 0; j + 1 < zs.length; j++) {
           var cx = (xs[i] + xs[i + 1]) / 2, cz = (zs[j] + zs[j + 1]) / 2;
@@ -158,6 +208,11 @@
             }
             continue;
           }
+          // Rev 8: some blocks take ONE polygon-footprint building
+          // (elfensky pattern) — corner-cut, hexagon, or U-with-
+          // courtyard outline extruded to its height, instead of the
+          // rectangular district recipe. Ruko keeps its shophouse rows.
+          if (d.id !== 'ruko' && rng() < 0.15) { polyLot(cx, cz, bw, bd, d, hScaleCell()); continue; }
           var superLot = cellRoll < 0.34;
           var hScale = 0.78 + rng() * 0.55;
           if (d.id === 'pelita') {
@@ -293,7 +348,12 @@
       // stay matte Lambert, which is exactly the contrast the brief
       // asks for.
       towerMats = towerMats.map(function (m) {
-        return new THREE.MeshPhongMaterial({ map: m.map, shininess: 70, specular: 0xaaccee, envMapIntensity: 0.6 });
+        // Standard, NOT Phong: in this vendored three build an
+        // instanced Phong material fed by the scene environment
+        // renders pitch black (proven by probe — Lambert and Standard
+        // on the same buckets are fine). Standard also matches the
+        // brief: glass towers, roughness ~0.3, metalness ~0.45.
+        return new THREE.MeshStandardMaterial({ map: m.map, roughness: 0.32, metalness: 0.45, envMapIntensity: 0.7 });
       });
       this._envMats = towerMats;
       var shopMats = facadePool(200, 8, 'shop');
@@ -312,6 +372,9 @@
           var b = list[bi];
           var bucket = buckets[(b.bucket || 0) % mats.length];
           bucket.push(b);
+          // Rev 8: ground-level entries record their footprint into
+          // the single city data model the map is drawn from.
+          if ((b.base || 0) < 0.1 && b.sx) SH.CityData.addRect(b.x, b.z, b.sx, b.sz, b.h || b.sy, b.rotY || 0);
           if (!opts || (!opts.tiers && !opts.hipRoof && !opts.roofProps && !opts.balconies)) continue;
           var topY = (b.base || 0) + b.h;
           if (opts.tiers && rng() < 0.85) {
@@ -374,11 +437,20 @@
       bucketize(warehouses, wareMats, { hipRoof: 0.4, roofProps: true });
       bucketize(villas, villaMats, { hipRoof: 0.9, balconies: true });
       bucketize(podiums, shopMats, {});
+      // Rev 8: all polygon lots fuse into ONE vertex-coloured mesh.
+      if (polyGeos.length) {
+        var polyMesh = new THREE.Mesh(SH.World.mergeGeos(polyGeos),
+          new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+        polyMesh.castShadow = true;
+        polyMesh.receiveShadow = true;
+        scene.add(polyMesh);
+      }
       // Cylindrical hotel drums, some with a narrower crown drum.
       var hotelBuckets = hotelMats.map(function () { return []; });
       for (var hi = 0; hi < hotels.length; hi++) {
         var hb = hotels[hi];
         hotelBuckets[hb.bucket % hotelMats.length].push(hb);
+        SH.CityData.addDrum(hb.x, hb.z, hb.sx / 2, hb.h);
         if (rng() < 0.55) {
           hotelBuckets[hb.bucket % hotelMats.length].push({ x: hb.x, y: (hb.base || 0) + hb.h + hb.h * 0.14, z: hb.z, sx: hb.sx * 0.66, sy: hb.h * 0.28, sz: hb.sx * 0.66 });
         }
@@ -580,7 +652,7 @@
       makeInstanced(new THREE.IcosahedronGeometry(0.62, 0), treeMat, canopies, scene, false);
 
       // Park pond.
-      var pond = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshPhongMaterial({ color: 0x2e8fb5, shininess: 80 }));
+      var pond = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshStandardMaterial({ color: 0x2e8fb5, roughness: 0.15, metalness: 0.1 }));
       pond.rotation.x = -Math.PI / 2; pond.position.set(0, 0.03, 60);
       scene.add(pond);
 

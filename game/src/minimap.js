@@ -45,14 +45,49 @@
     g.stroke();
 
     // Landmass: a dark-cream island whose south shore follows coastZ(x).
+    // Kept as a Path2D so terrain variation, the sand band and the
+    // district tints can all clip to the land (Rev 8 map fix).
+    var landPath = new Path2D();
+    landPath.moveTo(w2mx(-680), w2my(-580));
+    landPath.lineTo(w2mx(680), w2my(-580));
+    landPath.lineTo(w2mx(680), w2my(SH.World.coastZ(680)));
+    for (x = 680; x >= -680; x -= 20) landPath.lineTo(w2mx(x), w2my(SH.World.coastZ(x)));
+    landPath.closePath();
     g.fillStyle = '#b89a6a';
-    g.beginPath();
-    g.moveTo(w2mx(-680), w2my(-580));
-    g.lineTo(w2mx(680), w2my(-580));
-    g.lineTo(w2mx(680), w2my(SH.World.coastZ(680)));
-    for (x = 680; x >= -680; x -= 20) g.lineTo(w2mx(x), w2my(SH.World.coastZ(x)));
-    g.closePath();
-    g.fill();
+    g.fill(landPath);
+    // Terrain variation (Rev 8): seeded soft blotches in grass / dry /
+    // dirt tones so the landmass stops reading as one flat tan plate,
+    // plus a greener wash toward the northern hills.
+    g.save();
+    g.clip(landPath);
+    var trng = SH.World.makeRng(777);
+    var tones = ['#a8b06a', '#8a9a58', '#c2ab72', '#9a7d55', '#7d8f57'];
+    for (i = 0; i < 460; i++) {
+      g.fillStyle = tones[(trng() * tones.length) | 0];
+      g.globalAlpha = 0.06 + trng() * 0.07;
+      g.beginPath();
+      g.ellipse(trng() * MAP, trng() * MAP, 14 + trng() * 58, 10 + trng() * 40, trng() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    var hillGrad = g.createLinearGradient(0, 0, 0, MAP * 0.45);
+    hillGrad.addColorStop(0, 'rgba(70,110,60,0.20)');
+    hillGrad.addColorStop(1, 'rgba(70,110,60,0)');
+    g.fillStyle = hillGrad;
+    g.fillRect(0, 0, MAP, MAP * 0.45);
+    // District tints UNDER the road net (Rev 8: alpha 0.42 with boosted
+    // identity colours — all six districts must read at a glance; the
+    // roads drawn later stay fully crisp on top).
+    var tintOf = { pelita: '#2e6bc2', kencana: '#d9a84e', karat: '#c2611f', ruko: '#cf5f36', mawar: '#3fae62', taman: '#1e5631' };
+    var districtsPre = SH.Config.districts;
+    for (i = 0; i < districtsPre.length; i++) {
+      var dp = districtsPre[i];
+      g.fillStyle = tintOf[dp.id] || dp.map;
+      g.globalAlpha = 0.42;
+      g.fillRect(w2mx(dp.x0), w2my(dp.z0), w2mx(dp.x1) - w2mx(dp.x0), w2my(dp.z1) - w2my(dp.z0));
+    }
+    g.globalAlpha = 1;
+    g.restore();
     // Pulau Seberang: sand ellipse + green heart.
     g.fillStyle = '#d9ba7f';
     g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx + 12) / WORLD_W * MAP, (isl.rz + 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
@@ -82,12 +117,20 @@
     g.beginPath(); g.moveTo(w2mx(0), w2my(84)); g.lineTo(w2mx(0), w2my(SH.World.coastZ(0))); g.stroke();
     g.fillStyle = '#2e8fb5';
     g.beginPath(); g.arc(w2mx(0), w2my(60), 26 / WORLD_W * MAP, 0, Math.PI * 2); g.fill();
-    // Building blocks from colliders, muted so roads stay readable.
-    g.fillStyle = 'rgba(38,32,48,0.5)';
-    var cols = SH.World.colliders;
-    for (i = 0; i < cols.length; i++) {
-      var c = cols[i];
-      g.fillRect(w2mx(c.x - c.hx), w2my(c.z - c.hz), (c.hx * 2) / WORLD_W * MAP, (c.hz * 2) / WORLD_H * MAP);
+    // Buildings from the Rev 8 city data model: the same footprint
+    // polygons the 3D generator placed (rects, L annexes, drums as
+    // 10-gons, polygon lots with cut corners / courtyards), drawn as
+    // paths — no longer a grid of collider rectangles.
+    g.fillStyle = 'rgba(38,32,48,0.52)';
+    var cityB = (SH.CityData && SH.CityData.buildings) || [];
+    for (i = 0; i < cityB.length; i++) {
+      var pts = cityB[i].pts;
+      g.beginPath();
+      for (var pi = 0; pi < pts.length; pi++) {
+        if (pi === 0) g.moveTo(w2mx(pts[pi][0]), w2my(pts[pi][1])); else g.lineTo(w2mx(pts[pi][0]), w2my(pts[pi][1]));
+      }
+      g.closePath();
+      g.fill();
     }
     // Rev 5E open parking blocks: dark pad + painted bay stripes.
     var pkCells = SH.World.parkingCells || [];
@@ -129,19 +172,6 @@
     }
     g.lineCap = 'round';
     roadPath('casing');
-    roadPath('centre');
-    // District tint OVER the road network (Rev 5: alpha raised to 0.30
-    // on the user's order — district identity must read at a glance;
-    // the road centre lines are redrawn over the tint right after, so
-    // the network stays crisp through the stronger wash).
-    var districts = SH.Config.districts;
-    for (i = 0; i < districts.length; i++) {
-      var d = districts[i];
-      g.fillStyle = d.map;
-      g.globalAlpha = 0.30;
-      g.fillRect(w2mx(d.x0), w2my(d.z0), w2mx(d.x1) - w2mx(d.x0), w2my(d.z1) - w2my(d.z0));
-    }
-    g.globalAlpha = 1;
     roadPath('centre');
     roadPath('accent');
     // Foam lines: a bright waterline right on the shore, a fainter
