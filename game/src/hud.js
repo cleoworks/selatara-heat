@@ -9,7 +9,7 @@
   var el = {};
   var displayedCash = 0, cashFlash = 0, cashFlashSign = 0;
   var notifications = [];
-  var subtitleTimer = 0;
+  var subtitleTimer = 0, bannerTimer = 0, hitmarkTimer = 0;
   var projV = null;
 
   function byId(id) { return document.getElementById(id); }
@@ -28,6 +28,8 @@
       el.prompt = byId('hud-prompt'); el.district = byId('hud-district');
       el.marker = byId('hud-marker'); el.crosshair = byId('hud-crosshair');
       el.vehDamage = byId('veh-damage');
+      el.banner = byId('hud-banner'); el.hitmark = byId('hud-hitmark');
+      el.dmgFlash = byId('damage-flash');
       displayedCash = SH.State.cash;
       projV = new THREE.Vector3();
     },
@@ -72,6 +74,18 @@
       cashFlash = 1.2; cashFlashSign = n >= 0 ? 1 : -1;
     },
 
+    // Big centre banner: BUSTED / WASTED / MISSION COMPLETE / mission titles.
+    banner: function (big, sub, seconds, red) {
+      if (!el.banner) return;
+      el.banner.querySelector('.big').textContent = big;
+      el.banner.querySelector('.sub').textContent = sub || '';
+      el.banner.classList.toggle('red', !!red);
+      el.banner.classList.remove('hidden');
+      bannerTimer = seconds || 2.8;
+    },
+
+    hitmark: function () { hitmarkTimer = 0.12; if (el.hitmark) el.hitmark.classList.remove('hidden'); },
+
     refresh: function () {
       if (!el.hud) return;
       var st = SH.State;
@@ -86,6 +100,9 @@
       }
       if (changed) this.renderNotes();
       if (subtitleTimer > 0) { subtitleTimer -= 1 / 60; if (subtitleTimer <= 0) el.subtitle.classList.add('hidden'); }
+      if (bannerTimer > 0) { bannerTimer -= 1 / 60; if (bannerTimer <= 0 && el.banner) el.banner.classList.add('hidden'); }
+      if (hitmarkTimer > 0) { hitmarkTimer -= 1 / 60; if (hitmarkTimer <= 0 && el.hitmark) el.hitmark.classList.add('hidden'); }
+      if (el.dmgFlash) el.dmgFlash.style.opacity = Math.max(0, Math.min(0.85, st._dmgFlash || 0));
 
       // Cash counts toward the real value; flashes green/red on change.
       if (displayedCash !== st.cash) {

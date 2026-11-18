@@ -15,6 +15,8 @@
           player: { x: st.player.x, z: st.player.z, health: st.player.health, armor: st.player.armor },
           hour: st.hour, outfit: st.outfit, settings: st.settings,
           stats: st.stats, missionsDone: st.stats.missionsDone,
+          missionIndex: SH.Missions ? SH.Missions.currentIndex : 0,
+          owned: SH.Combat ? SH.Combat.owned : null,
           weapon: st.weapon, ammo: st.ammo, ammoReserve: st.ammoReserve
         };
         window.localStorage.setItem(KEY, JSON.stringify(data));
@@ -39,6 +41,8 @@
         if (data.settings) { st.settings = data.settings; SH.Input.sensitivity = data.settings.sensitivity || 1; SH.Audio.setVolumes(data.settings.volume, data.settings.music, data.settings.sfx); }
         if (data.stats) st.stats = data.stats;
         if (data.weapon) st.weapon = data.weapon;
+        if (data.owned && SH.Combat) SH.Combat.owned = data.owned;
+        if (data.missionIndex !== undefined && SH.Missions) SH.Missions.currentIndex = data.missionIndex;
         st.ammo = data.ammo || 0; st.ammoReserve = data.ammoReserve || 0;
         return true;
       } catch (e) { return false; }

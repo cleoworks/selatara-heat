@@ -113,7 +113,7 @@
       var p = SH.State.player, best = null, bd = 4.2;
       for (var i = 0; i < this.list.length; i++) {
         var v = this.list[i];
-        if (!v.active || v.dead || v.driver === 'traffic') continue;
+        if (!v.active || v.dead || v.driver === 'traffic' || v.driver === 'police' || v.driver === 'roadblock') continue;
         var d = Math.hypot(v.x - p.x, v.z - p.z);
         if (d < bd) { bd = d; best = v; }
       }
@@ -127,6 +127,7 @@
       st.vehicle = veh;
       SH.Player.onFoot = false;
       st.stats.carsStolen++;
+      if (SH.Audio && SH.Audio.radio) SH.Audio.radio(true);
       if (SH.HUD) SH.HUD.notify('Driving: ' + veh.spec.label);
       if (SH.Police && SH.Police.witnessCrime) SH.Police.witnessCrime('steal', veh.x, veh.z);
     },
@@ -144,6 +145,7 @@
       st.player.z = veh.z + Math.cos(side) * 2.4;
       st.player.y = 0; st.player.vy = 0;
       SH.Audio.engine(0, false);
+      if (SH.Audio && SH.Audio.radio) SH.Audio.radio(false);
     },
 
     updateInteractions: function (dt) {
@@ -185,6 +187,8 @@
       if (v.hp <= 0) {
         v.hp = 0; v.dead = true;
         SH.Effects.explosion(v.x, 0.6, v.z);
+        if (SH.Audio && SH.Audio.boom) SH.Audio.boom();
+        if (SH.Police && SH.Police.witnessCrime && (v.driver === 'police' || v.driver === 'roadblock')) SH.Police.witnessCrime('killPolice', v.x, v.z);
         v.speed = 0;
         if (v.driver === 'player') {
           SH.State.player.health = Math.max(5, SH.State.player.health - 25);

@@ -12,7 +12,7 @@
       avenuesX: [-480, -360, -240, -120, 0, 120, 240, 360, 480],
       streetsZ: [-420, -300, -180, -60, 60, 180, 228],
       ringX: 560, ringZ: 460,
-      roadHalf: 7, sidewalk: 3.2, laneOffset: 3.4,
+      roadHalf: 5.6, sidewalk: 3.2, laneOffset: 2.9,
       spawn: { x: -360, z: 96, heading: 0 }
     },
 
@@ -25,8 +25,8 @@
         asphalt: 0x4a4442, sidewalk: 0x9a8f85, grass: 0x5da85e
       },
       dusk: {
-        skyTop: 0x3a4a8c, skyMid: 0xff8c5a, skyLow: 0xff6b4a, fog: 0xd98a6a,
-        sun: 0xff9a5c, sunIntensity: 1.0, hemiSky: 0xc98a6a, hemiGround: 0x4a3a44,
+        skyTop: 0x3a4a8c, skyMid: 0xff8c5a, skyLow: 0xff6b4a, fog: 0xe08a5f,
+        sun: 0xff8a4a, sunIntensity: 1.05, hemiSky: 0xd98a5f, hemiGround: 0x4a3a44,
         hemiIntensity: 0.68, ambient: 0.3, water: 0x2a6a94, sand: 0xc9a87a,
         asphalt: 0x3a3236, sidewalk: 0x6a5a58, grass: 0x3a6a3e
       },
@@ -81,6 +81,20 @@
       smg: { label: 'SMG Arus-9', damage: 11, rate: 10, range: 70, spread: 0.03, mag: 30, reload: 1.5 },
       shotgun: { label: 'Shotgun Pelabuhan', damage: 9, pellets: 7, rate: 1.15, range: 42, spread: 0.075, mag: 6, reload: 2.2 }
     },
+
+    // ---- Police / wanted ----
+    police: {
+      station: { x: 8, z: -64 }, hospital: { x: -240, z: 188 },
+      carsByStars: [0, 2, 3, 4, 5, 6],
+      searchSeconds: [0, 9, 12, 15, 19, 24],   // hidden time needed to lose one star
+      spawnDist: 135, despawnDist: 330,
+      copDamage: 7, copFireRange: 40,
+      bustedRadius: 6.5, bustedSeconds: 2.2,
+      fineBase: 120, finePerStar: 110, wastedFine: 180
+    },
+
+    // ---- Pickups ----
+    pickups: { health: 35, armor: 50, cashMin: 40, cashMax: 120 },
 
     // ---- Loop / performance ----
     loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 34, activeRadius: 340, despawnRadius: 420 },

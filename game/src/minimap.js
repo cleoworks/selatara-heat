@@ -125,6 +125,13 @@
           if (dx * dx + dz * dz < viewRadius * viewRadius) this.blip(ctx, c, c, dx, dz, rot, scale, radius, 'rgba(240,240,240,.75)', false);
         }
       }
+      // Police (red, flashing blue/red while wanted).
+      if (SH.Police && st.wanted > 0) {
+        var blips = SH.Police.blipPositions(Minimap._blipScratch || (Minimap._blipScratch = []));
+        for (i = 0; i < blips.length; i++) {
+          this.blip(ctx, c, c, blips[i].x - focus.x, blips[i].z - focus.z, rot, scale, radius, (SH.State.time * 2.4 % 1) > 0.5 ? '#4a7dff' : '#ff3b4e', false);
+        }
+      }
       // Objective / waypoint (yellow / white).
       if (st.objective) this.blip(ctx, c, c, st.objective.x - focus.x, st.objective.z - focus.z, rot, scale, radius, '#ffd23f', false);
       if (st.waypoint) this.blip(ctx, c, c, st.waypoint.x - focus.x, st.waypoint.z - focus.z, rot, scale, radius, '#ffffff', false);

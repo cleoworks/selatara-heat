@@ -51,6 +51,30 @@
       }
     },
 
+    // A tracer: a short chain of fast, short-lived bright particles along a line.
+    tracer: function (x1, y1, z1, x2, y2, z2, hostile) {
+      var steps = 5;
+      for (var i = 1; i <= steps; i++) {
+        var t = i / steps;
+        this.spawn(
+          x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, z1 + (z2 - z1) * t,
+          (x2 - x1) * 2.2, (y2 - y1) * 2.2, (z2 - z1) * 2.2,
+          0.09, hostile ? 1 : 1, hostile ? 0.3 : 0.85, hostile ? 0.25 : 0.4);
+      }
+    },
+
+    muzzle: function (x, y, z) {
+      this.burst(x, y, z, { count: 3, speed: 1.6, life: 0.12, color: [1, 0.75, 0.3] });
+    },
+
+    sparks: function (x, y, z) {
+      this.burst(x, y, z, { count: 7, speed: 4.5, life: 0.35, color: [1, 0.7, 0.25] });
+    },
+
+    blood: function (x, y, z) {
+      this.burst(x, y, z, { count: 6, speed: 2.6, life: 0.4, color: [0.62, 0.08, 0.1] });
+    },
+
     smoke: function (x, y, z, dark) {
       var g = dark ? 0.12 : 0.55;
       this.spawn(x + (Math.random() - 0.5) * 0.5, y, z + (Math.random() - 0.5) * 0.5,

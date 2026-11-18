@@ -70,6 +70,93 @@
     pickup: function () { this.blip(660, 0.09, 'sine', 0.07, 990); },
     cash: function () { this.blip(990, 0.08, 'triangle', 0.08, 1320); },
 
+    // Filtered noise burst: gunshots and explosions share the voice.
+    noise: function (dur, freq, gain, type) {
+      if (!this.ctx) return;
+      var t = this.ctx.currentTime;
+      var len = Math.max(1, (dur * this.ctx.sampleRate) | 0);
+      var buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      var src = this.ctx.createBufferSource(); src.buffer = buf;
+      var f = this.ctx.createBiquadFilter(); f.type = type || 'lowpass'; f.frequency.value = freq;
+      var g = this.ctx.createGain(); g.gain.value = gain;
+      src.connect(f); f.connect(g); g.connect(this.sfxGain);
+      src.start(t);
+    },
+
+    shot: function (kind) {
+      if (kind === 'shotgun') { this.noise(0.28, 900, 0.5); this.blip(120, 0.16, 'triangle', 0.2, 55); }
+      else if (kind === 'smg') this.noise(0.09, 2400, 0.22, 'bandpass');
+      else if (kind === 'enemy') this.noise(0.11, 1500, 0.13, 'bandpass');
+      else { this.noise(0.14, 1900, 0.3, 'bandpass'); this.blip(180, 0.07, 'square', 0.08, 70); }
+    },
+    dryFire: function () { this.blip(1400, 0.04, 'square', 0.05); },
+    reload: function () { this.blip(500, 0.05, 'square', 0.06); var s = this; setTimeout(function () { s.blip(760, 0.05, 'square', 0.06); }, 160); },
+    boom: function () { this.noise(0.8, 300, 0.6); this.blip(70, 0.5, 'sine', 0.3, 34); },
+    hurt: function () { this.blip(220, 0.09, 'sawtooth', 0.07, 140); },
+
+    // Police siren: two detuned oscillators with an LFO swapping pitch.
+    siren: function (on) {
+      if (!this.ctx) return;
+      if (on && !this.sirenOsc) {
+        var t = this.ctx.currentTime;
+        this.sirenOsc = this.ctx.createOscillator();
+        this.sirenOsc.type = 'triangle';
+        this.sirenOsc.frequency.value = 820;
+        this.sirenLfo = this.ctx.createOscillator();
+        this.sirenLfo.type = 'square'; this.sirenLfo.frequency.value = 0.7;
+        this.sirenLfoGain = this.ctx.createGain(); this.sirenLfoGain.gain.value = 160;
+        this.sirenLfo.connect(this.sirenLfoGain); this.sirenLfoGain.connect(this.sirenOsc.frequency);
+        this.sirenGain = this.ctx.createGain(); this.sirenGain.gain.value = 0;
+        this.sirenOsc.connect(this.sirenGain); this.sirenGain.connect(this.sfxGain);
+        this.sirenOsc.start(t); this.sirenLfo.start(t);
+      }
+      if (this.sirenGain) this.sirenGain.gain.setTargetAtTime(on ? 0.028 : 0, this.ctx.currentTime, 0.2);
+      if (!on && this.sirenOsc) {
+        var o = this.sirenOsc, l = this.sirenLfo;
+        setTimeout(function () { try { o.stop(); l.stop(); } catch (e) { /* already stopped */ } }, 700);
+        this.sirenOsc = null; this.sirenLfo = null;
+      }
+    },
+
+    // ---- Radio: two fictional stations, tiny synth loops ----
+    stations: [
+      { name: 'RADIO SELATARA FM', root: 110, mode: [0, 3, 5, 7, 10] },
+      { name: 'GELOMBANG MALAM 98.2', root: 98, mode: [0, 2, 3, 7, 9] }
+    ],
+    stationIndex: 0, radioTimer: null, radioStep: 0,
+    radio: function (on) {
+      var self = this;
+      if (on && !this.radioTimer && this.ctx) {
+        this.radioTimer = setInterval(function () { self.radioStepPlay(); }, 240);
+      } else if (!on && this.radioTimer) {
+        clearInterval(this.radioTimer); this.radioTimer = null;
+      }
+    },
+    radioStepPlay: function () {
+      if (!this.ctx || !this.musicGain) return;
+      var st = this.stations[this.stationIndex];
+      var step = this.radioStep++;
+      var t = this.ctx.currentTime;
+      function tone(freq, dur, type, gain, dest) {
+        var o = self0.ctx.createOscillator(), g = self0.ctx.createGain();
+        o.type = type; o.frequency.value = freq;
+        g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.02);
+      }
+      var self0 = this;
+      if (step % 2 === 0) tone(st.root / 2, 0.22, 'triangle', 0.16, this.musicGain);          // bass
+      if (step % 4 === 2) tone(st.root, 0.18, 'square', 0.05, this.musicGain);                 // kick-ish
+      var note = st.mode[(step * 2 + ((step / 8) | 0)) % st.mode.length];
+      tone(st.root * Math.pow(2, note / 12) * 2, 0.2, 'sawtooth', 0.028, this.musicGain);     // arp
+      if (step % 16 === 15) tone(st.root * 4, 0.3, 'sine', 0.05, this.musicGain);              // jingle ping
+    },
+    cycleStation: function () {
+      this.stationIndex = (this.stationIndex + 1) % this.stations.length;
+      return this.stations[this.stationIndex].name;
+    },
+
     setVolumes: function (master, music, sfx) {
       this.volumes = { master: master, music: music, sfx: sfx };
       if (!this.ctx) return;

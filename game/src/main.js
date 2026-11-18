@@ -12,6 +12,7 @@
     driving: false, vehicle: null, vehiclePos: { x: 0, y: 0, z: 0 },
     aiming: false, speedKmh: 0,
     cash: 250, wanted: 0, weapon: 'fist', ammo: 0, ammoReserve: 0,
+    radioStation: 'RADIO SELATARA FM', stun: 0, _dmgFlash: 0, cutscene: false,
     district: null, districtTimer: 0,
     objective: null, // { title, text, x, z }
     outfit: { shirt: 0xc94f4f, pants: 0x2a3550 },
@@ -137,15 +138,25 @@
       State.camPitch += input.mouseDY * 0.0022;
       State.camPitch = Math.max(-0.5, Math.min(1.0, State.camPitch));
     }
-    State.aiming = input.aimDown && !State.driving;
+    State.aiming = (input.aimDown || State._shotAim) && !State.driving;
+    if (State.stun > 0) State.stun -= dt;
+    if (State._dmgFlash > 0) State._dmgFlash = Math.max(0, State._dmgFlash - dt * 1.4);
+    var frozen = State.stun > 0;
 
-    if (SH.Vehicles) SH.Vehicles.updateInteractions(dt);
-    if (State.driving && SH.Vehicles) SH.Vehicles.updatePlayerVehicle(dt);
-    else SH.Player.update(dt);
+    if (!frozen && SH.Vehicles) SH.Vehicles.updateInteractions(dt);
+    if (State.driving && SH.Vehicles) { if (!frozen) SH.Vehicles.updatePlayerVehicle(dt); }
+    else if (!frozen) SH.Player.update(dt);
+    else if (SH.Player.mesh) SH.Player.mesh.visible = !State.driving;
     if (SH.Traffic) SH.Traffic.update(dt);
     if (SH.Pedestrians) SH.Pedestrians.update(dt);
     if (SH.Police) SH.Police.update(dt);
+    if (SH.Combat) SH.Combat.update(dt);
+    if (SH.Missions) SH.Missions.update(dt);
     if (input.wasPressed('KeyQ') && SH.Combat) SH.Combat.cycleWeapon();
+    if (input.wasPressed('KeyK') && SH.Audio && SH.Audio.ctx) {
+      State.radioStation = SH.Audio.cycleStation();
+      if (SH.HUD) SH.HUD.notify('📻 ' + State.radioStation);
+    }
     State._autosave = (State._autosave || 0) + dt;
     if (State._autosave > 60) { State._autosave = 0; if (SH.Save) SH.Save.saveGame(); }
     SH.Roads.update(dt, State.time);
@@ -176,6 +187,19 @@
     var n = 0;
     while (accumulator >= stepSize && n < SH.Config.loop.maxSteps) {
       if (State.mode === 'playing') step(stepSize);
+      else if (State.mode === 'cutscene') {
+        // Intro cutscene: the world lives, the camera follows the shot list.
+        State.time += stepSize;
+        State.hour = (State.hour + stepSize * SH.Config.day.minutesPerSecond / 60) % 24;
+        if (SH.Traffic) SH.Traffic.update(stepSize);
+        if (SH.Pedestrians) SH.Pedestrians.update(stepSize);
+        if (SH.Effects) SH.Effects.update(stepSize, camera);
+        SH.Roads.update(stepSize, State.time);
+        applyLighting();
+        if (SH.Missions) SH.Missions.updateCutscene(stepSize, camera);
+        if (SH.HUD) SH.HUD.refresh();
+        SH.Input.endFrame();
+      }
       else { // title/pause: still orbit the city slowly for the cinematic backdrop
         State.time += stepSize;
         SH.Roads.update(stepSize, State.time);
