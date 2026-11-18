@@ -147,9 +147,26 @@
         }
       }
     }
-    // Horizontal street edges.
+    // Horizontal street edges. The southern (beach) row is subdivided
+    // into short chords that hug the beachRoadZ spline (Rev 5A): the
+    // coast artery genuinely curves with the bays and headlands, and
+    // the shore blocks read as wedges instead of rectangles. The
+    // centreline is the same curve as before — only denser.
     for (j = 0; j < zs.length; j++) {
-      for (i = 0; i + 1 < xs.length; i++) addEdge(gridNode(i, j), gridNode(i + 1, j), false);
+      for (i = 0; i + 1 < xs.length; i++) {
+        if (j === lastRow) {
+          var prevC = gridNode(i, j);
+          for (var sub = 1; sub <= 3; sub++) {
+            var subX = xs[i] + (xs[i + 1] - xs[i]) * sub / 4;
+            var subN = addNode(subX, beachRoadZ(subX));
+            addEdge(prevC, subN, false);
+            prevC = subN;
+          }
+          addEdge(prevC, gridNode(i + 1, j), false);
+        } else {
+          addEdge(gridNode(i, j), gridNode(i + 1, j), false);
+        }
+      }
     }
     // Ruko Senja alleys: a lane along z=124 through the two market blocks,
     // threaded between the shophouse rows (front row ends z~112, back row
@@ -182,8 +199,30 @@
     ];
     var ring = [];
     for (i = 0; i < ringPts.length; i++) ring.push(addNode(ringPts[i][0], ringPts[i][1]));
-    for (i = 0; i < ring.length; i++) {
-      addEdge(ring[i], ring[(i + 1) % ring.length], ringPts[i][0] === ringPts[(i + 1) % ring.length][0], 'ring');
+    // Rev 5B: the loop is driven as a closed Catmull-Rom spline through
+    // the 14 control points, sampled into short straight segments — the
+    // graph stays node + segment (traffic, police BFS and missions run
+    // on the same system), but the highway reads as a smooth curve both
+    // on the road and on the map. The 14 control nodes keep their
+    // indices, so the grid connectors below are untouched.
+    function crPoint(p0, p1, p2, p3, t) {
+      var t2 = t * t, t3 = t2 * t;
+      return [
+        0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
+      ];
+    }
+    var nRing = ringPts.length;
+    for (i = 0; i < nRing; i++) {
+      var rp0 = ringPts[(i + nRing - 1) % nRing], rp1 = ringPts[i], rp2 = ringPts[(i + 1) % nRing], rp3 = ringPts[(i + 2) % nRing];
+      var prevR = ring[i];
+      for (var rs = 1; rs <= 2; rs++) {
+        var cp = crPoint(rp0, rp1, rp2, rp3, rs / 3);
+        var midR = addNode(cp[0], cp[1]);
+        addEdge(prevR, midR, false, 'ring');
+        prevR = midR;
+      }
+      addEdge(prevR, ring[(i + 1) % nRing], false, 'ring');
     }
     // Connectors from the grid corners to the ring.
     addEdge(nodeAt(-480, -420), ring[12], true);
