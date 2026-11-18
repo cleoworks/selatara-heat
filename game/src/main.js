@@ -144,9 +144,9 @@
     else SH.Player.update(dt);
     if (SH.Traffic) SH.Traffic.update(dt);
     if (SH.Pedestrians) SH.Pedestrians.update(dt);
-    if (SH.Effects) SH.Effects.update(dt);
     SH.Roads.update(dt, State.time);
     SH.Player.updateCamera(dt, camera);
+    if (SH.Effects) SH.Effects.update(dt, camera);
     applyLighting();
 
     var focus = State.driving ? State.vehiclePos : State.player;

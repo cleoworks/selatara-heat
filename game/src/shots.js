@@ -17,7 +17,14 @@
       if (!name) return;
       var st = SH.State;
       st.mode = 'playing';
-      if (name === 'cover') {
+      if (name === 'drive') {
+        SH.Main.setHour(17.9);
+        var veh = SH.Vehicles.list[0];
+        veh.x = -120; veh.z = -240; veh.heading = Math.PI; veh.speed = 0;
+        SH.Vehicles.syncMesh(veh);
+        SH.Vehicles.enter(veh);
+        st.camYaw = Math.PI * 2; st.camPitch = 0.18;
+      } else if (name === 'cover') {
         // Golden-hour drive through Pelita Heights (set up fully in slice b/c).
         SH.Main.setHour(17.9);
         st.player.x = -120; st.player.z = -250; st.camYaw = Math.PI; st.camPitch = 0.2;
