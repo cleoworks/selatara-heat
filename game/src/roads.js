@@ -187,6 +187,39 @@
       var railMat = new THREE.MeshLambertMaterial({ color: 0x8a4a3a });
       var lampEvery = 26;
 
+      // Draw-call diet (Art Bible v2 perf mandate): every road plane and
+      // sidewalk is baked into ONE merged mesh per material. The per-edge
+      // texture repeat (and the 90-degree texture rotation on horizontal
+      // streets) is baked into the UVs — the asphalt texture wraps, and
+      // its dash period divides the tile, so the baked result is pixel-
+      // identical to the old per-edge materials. Alleys keep their tint
+      // as a vertex colour.
+      var roadGeos = [], walkGeos = [];
+      var alleyTint = new THREE.Color(0x9a9186), whiteTint = new THREE.Color(0xffffff);
+      function bakeRoadUV(geo, rep, horizontal) {
+        var uv = geo.attributes.uv;
+        for (var ui = 0; ui < uv.count; ui++) {
+          var u = uv.getX(ui), v = uv.getY(ui);
+          if (horizontal) uv.setXY(ui, v, rep * (1 - u));
+          else uv.setXY(ui, u, rep * v);
+        }
+        return geo;
+      }
+      function tintGeo(geo, col) {
+        var n = geo.attributes.position.count;
+        var arr = new Float32Array(n * 3);
+        for (var ti = 0; ti < n; ti++) { arr[ti * 3] = col.r; arr[ti * 3 + 1] = col.g; arr[ti * 3 + 2] = col.b; }
+        geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        return geo;
+      }
+      function collectRoad(mesh, rep, horizontal, tint) {
+        mesh.updateMatrix();
+        var geo = mesh.geometry.clone().applyMatrix4(mesh.matrix);
+        bakeRoadUV(geo, rep, horizontal);
+        tintGeo(geo, tint);
+        roadGeos.push(geo);
+      }
+
       for (var i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].a], b = nodes[edges[i].b];
         var dx = b.x - a.x, dz = b.z - a.z;
@@ -217,7 +250,7 @@
           top.rotation.x = -Math.PI / 2;
           top.position.set(mx, 0.03, mz);
           top.receiveShadow = true;
-          scene.add(top);
+          collectRoad(top, t2.repeat.y, false, whiteTint);
           for (var rs = -1; rs <= 1; rs += 2) {
             var rail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.85, len + 3), railMat);
             rail.rotation.y = Math.atan2(dx, dz);
@@ -246,7 +279,7 @@
         }
         road.position.set(mx, 0, mz);
         road.receiveShadow = true;
-        scene.add(road);
+        collectRoad(road, t2.repeat.y, axis && !edges[i].vertical, kind === 'alley' ? alleyTint : whiteTint);
 
         // Sidewalks + lamps on city streets (not ring, alley or bridge).
         if (kind === 'grid' || kind === 'diag' || kind === 'coast') {
@@ -266,7 +299,8 @@
               walk.position.set(mx + px * s * wOff, 0.04, mz + pz * s * wOff);
             }
             walk.receiveShadow = true;
-            scene.add(walk);
+            walk.updateMatrix();
+            walkGeos.push(walk.geometry.clone().applyMatrix4(walk.matrix));
           }
           // Lamp spots along BOTH edges of the street.
           var steps = Math.floor(len / lampEvery);
@@ -280,6 +314,21 @@
             }
           }
         }
+      }
+
+      // Emit the merged road + sidewalk meshes (one draw call each).
+      if (roadGeos.length) {
+        var mergedRoadMat = new THREE.MeshPhongMaterial({ map: tex, vertexColors: true, shininess: 26, specular: 0x8a6a4a });
+        var roadMesh = new THREE.Mesh(SH.World.mergeGeos(roadGeos), mergedRoadMat);
+        roadMesh.receiveShadow = true;
+        scene.add(roadMesh);
+        this.roadMaterials = [mergedRoadMat];
+        this.roadMaterial = mergedRoadMat;
+      }
+      if (walkGeos.length) {
+        var walkMesh = new THREE.Mesh(SH.World.mergeGeos(walkGeos), walkMat);
+        walkMesh.receiveShadow = true;
+        scene.add(walkMesh);
       }
     },
 

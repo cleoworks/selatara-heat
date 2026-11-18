@@ -20,6 +20,12 @@
   // Spoked rim texture (Art Bible): one shared canvas — a silver disc
   // with five dark turbine slots and a centre cap. A plain hub disc is
   // the single biggest "toy car" tell; spokes that spin sell the wheel.
+  // Scratch objects for the per-frame LOD pass (no per-frame allocation).
+  var _lodScratchM = new THREE.Matrix4();
+  var _lodScratchOne = new THREE.Vector3(1, 1, 1);
+  var _lodScratchCol = new THREE.Color();
+  var _lodScratchZero = new THREE.Matrix4().makeScale(0, 0, 0);
+
   var rimTex = null, rimMatShared = null;
   function getRimMat() {
     if (rimMatShared) return rimMatShared;
@@ -286,6 +292,7 @@
       blob.rotation.x = -Math.PI / 2;
       blob.position.y = 0.02;
       blob.renderOrder = 1;
+      blob.userData.isBlob = true; // excluded from the far-LOD bake
       g.add(blob);
     }
     // Lights: front = +z face of the model. The motor gets a single round
@@ -339,7 +346,7 @@
       }
     })();
 
-    return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat };
+    return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat, paintMat: paint };
   }
 
   var Vehicles = {
@@ -391,6 +398,7 @@
     },
 
     buildPool: function (scene) {
+      this._scene = scene;
       var rng = SH.World.makeRng(99);
       for (var i = 0; i < this.parkedSpots.length; i++) {
         var s = this.parkedSpots[i];
@@ -401,6 +409,115 @@
       this.headlight = new THREE.SpotLight(0xffe9b8, 0, 60, 0.62, 0.5, 1.2);
       scene.add(this.headlight);
       scene.add(this.headlight.target);
+    },
+
+    // ---- Far LOD (perf mandate) --------------------------------------
+    // Beyond ~55 m from the camera a vehicle stops drawing its ~17
+    // meshes and instead occupies ONE slot in two InstancedMeshes per
+    // type: a paint shell (tinted per instance from the car's colour)
+    // and a vertex-coloured trim shell (glass, tyres, lights, plate —
+    // baked from a template build). Slots are rewritten from the live
+    // vehicle list every frame, so police spawns/despawns can never
+    // leave a ghost. Near vehicles are completely untouched.
+    _lod: null,
+    _buildLOD: function () {
+      var scene = this._scene;
+      var paintMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 68, specular: 0x888888, flatShading: true });
+      var trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+      var types = ['sedan', 'sport', 'police', 'truck', 'motor', 'boat'];
+      var out = {};
+      for (var ti = 0; ti < types.length; ti++) {
+        var type = types[ti];
+        var built = buildMesh(type, 0xffffff);
+        var paintGeos = [], trimGeos = [];
+        var kids = built.group.children;
+        for (var ci = 0; ci < kids.length; ci++) {
+          var child = kids[ci];
+          if (!child.isMesh) continue;
+          if (child === built.group.userData.cone || child.userData.isBlob) continue;
+          child.updateMatrix();
+          var geo = child.geometry.clone().applyMatrix4(child.matrix);
+          if (child.material === built.paintMat) { paintGeos.push(geo); continue; }
+          var col = (child.material && child.material.map) ? new THREE.Color(0x777d85)
+            : (child.material && child.material.color ? child.material.color : new THREE.Color(0x777d85));
+          var n = geo.attributes.position.count;
+          var arr = new Float32Array(n * 3);
+          for (var vi = 0; vi < n; vi++) { arr[vi * 3] = col.r; arr[vi * 3 + 1] = col.g; arr[vi * 3 + 2] = col.b; }
+          geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+          trimGeos.push(geo);
+        }
+        if (type === 'motor') {
+          // A simple rider silhouette so a far bike is never a ghost:
+          // dark torso leaning forward + the red helmet.
+          var torsoG = new THREE.BoxGeometry(0.34, 0.52, 0.20);
+          torsoG.rotateX(0.15); torsoG.translate(0, 1.04, -0.05);
+          var headG = new THREE.SphereGeometry(0.115, 8, 6).translate(0, 1.42, 0.03);
+          var sil = [[torsoG, new THREE.Color(0x2c3444)], [headG, new THREE.Color(0xd8402e)]];
+          for (var si = 0; si < sil.length; si++) {
+            var sg = sil[si][0], sc = sil[si][1];
+            var sn = sg.attributes.position.count;
+            var sarr = new Float32Array(sn * 3);
+            for (var sj = 0; sj < sn; sj++) { sarr[sj * 3] = sc.r; sarr[sj * 3 + 1] = sc.g; sarr[sj * 3 + 2] = sc.b; }
+            sg.setAttribute('color', new THREE.BufferAttribute(sarr, 3));
+            trimGeos.push(sg);
+          }
+        }
+        var count = 0;
+        for (var li = 0; li < this.list.length; li++) if (this.list[li].type === type) count++;
+        var cap = count + (type === 'police' ? 16 : 8);
+        var paintIM = new THREE.InstancedMesh(SH.World.mergeGeos(paintGeos), paintMat, cap);
+        var trimIM = new THREE.InstancedMesh(SH.World.mergeGeos(trimGeos), trimMat, cap);
+        var zero = new THREE.Matrix4().makeScale(0, 0, 0);
+        for (var zi = 0; zi < cap; zi++) { paintIM.setMatrixAt(zi, zero); trimIM.setMatrixAt(zi, zero); }
+        paintIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        trimIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        paintIM.castShadow = true;
+        paintIM.frustumCulled = false;
+        trimIM.frustumCulled = false;
+        scene.add(paintIM);
+        scene.add(trimIM);
+        out[type] = { paintIM: paintIM, trimIM: trimIM, cap: cap, cursor: 0, last: 0 };
+      }
+      this._lod = out;
+    },
+
+    updateLOD: function (camPos) {
+      if (!this._scene) return;
+      if (!this._lod) this._buildLOD();
+      var types = this._lod, t;
+      for (t in types) types[t].cursor = 0;
+      var m = _lodScratchM, one = _lodScratchOne, col = _lodScratchCol;
+      for (var i = 0; i < this.list.length; i++) {
+        var v = this.list[i];
+        var dx = v.x - camPos.x, dz = v.z - camPos.z;
+        var d2 = dx * dx + dz * dz;
+        var far = v._far ? d2 > 2500 : d2 > 3025; // out at 55 m, back at 50 m
+        var rec = types[v.type];
+        if (far && rec && rec.cursor < rec.cap) {
+          m.compose(v.mesh.position, v.mesh.quaternion, one);
+          rec.paintIM.setMatrixAt(rec.cursor, m);
+          rec.trimIM.setMatrixAt(rec.cursor, m);
+          rec.paintIM.setColorAt(rec.cursor, col.setHex(v.color));
+          rec.cursor++;
+          v._far = true;
+          if (v.mesh.visible) v.mesh.visible = false;
+        } else {
+          v._far = false;
+          if (!v.mesh.visible) v.mesh.visible = true;
+        }
+      }
+      var zero = _lodScratchZero;
+      for (t in types) {
+        var r = types[t];
+        for (var s = r.cursor; s < r.last; s++) {
+          r.paintIM.setMatrixAt(s, zero);
+          r.trimIM.setMatrixAt(s, zero);
+        }
+        r.last = r.cursor;
+        r.paintIM.instanceMatrix.needsUpdate = true;
+        r.trimIM.instanceMatrix.needsUpdate = true;
+        if (r.paintIM.instanceColor) r.paintIM.instanceColor.needsUpdate = true;
+      }
     },
 
     nearestUsable: function () {

@@ -98,15 +98,24 @@
       var hip = new THREE.Group();
       hip.position.set(0.105 * side, 0.92, 0);
       g.add(hip);
-      add(cyl(0.075, 0.055, 0.42, 7, thighMat), hip, 0, -0.21, 0);       // thigh
-      add(ball(0.05, thighMat), hip, 0, -0.42, 0);                        // knee ball
+      // Thigh + knee ball share a material and never move apart: merged
+      // into one geometry (draw-call diet, Art Bible v2 perf mandate).
+      var thighGeo = SH.World.mergeGeos([
+        new THREE.CylinderGeometry(0.075, 0.055, 0.42, 7).translate(0, -0.21, 0),
+        new THREE.SphereGeometry(0.05, 8, 6).translate(0, -0.42, 0)
+      ]);
+      add(new THREE.Mesh(thighGeo, thighMat), hip, 0, 0, 0);
       var knee = new THREE.Group();
       knee.position.set(0, -0.42, 0);
       hip.add(knee);
-      add(cyl(0.05, 0.035, 0.42, 7, shinMat), knee, 0, -0.21, 0);        // shin
-      var calf = ball(0.048, shinMat);                                    // calf bulge
-      calf.scale.set(0.75, 1.35, 0.75);
-      add(calf, knee, 0, -0.11, -0.018);
+      var calfGeo = new THREE.SphereGeometry(0.048, 8, 6);
+      calfGeo.scale(0.75, 1.35, 0.75);
+      calfGeo.translate(0, -0.11, -0.018);
+      var shinGeo = SH.World.mergeGeos([
+        new THREE.CylinderGeometry(0.05, 0.035, 0.42, 7).translate(0, -0.21, 0),
+        calfGeo
+      ]);
+      add(new THREE.Mesh(shinGeo, shinMat), knee, 0, 0, 0);
       var shoe = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.07, 0.27), dark); // wedge shoe
       shoe.rotation.x = 0.08;
       add(shoe, knee, 0, -0.415, 0.055);
@@ -126,12 +135,20 @@
     add(belt, g, 0, 1.12, 0);
     // Chest: ellipse-section (z-scale 0.66) tapering ~20% to the waist,
     // centred on the bible's y 1.32, plus a trapezius cone to the neck.
-    var torso = cyl(0.24, 0.195, 0.36, 8, shirt);
-    torso.scale.z = 0.66;
-    add(torso, g, 0, 1.32, 0);
-    var trap = cyl(0.09, 0.155, 0.10, 8, shirt);
-    trap.scale.z = 0.66;
-    add(trap, g, 0, 1.515, 0);
+    // Chest + trapezius + both deltoid caps are one shirt material in
+    // group space, so they are merged into a single mesh; its Y-rotation
+    // (the gait counter-rotation) pivots on the body centreline either
+    // way, so the merged mesh animates exactly like the loose chest did.
+    var chestGeo = new THREE.CylinderGeometry(0.24, 0.195, 0.36, 8);
+    chestGeo.scale(1, 1, 0.66); chestGeo.translate(0, 1.32, 0);
+    var trapGeo = new THREE.CylinderGeometry(0.09, 0.155, 0.10, 8);
+    trapGeo.scale(1, 1, 0.66); trapGeo.translate(0, 1.515, 0);
+    var deltGeoL = new THREE.SphereGeometry(0.078, 8, 6);
+    deltGeoL.scale(1.05, 0.8, 1.05); deltGeoL.translate(-0.235, 1.45, 0);
+    var deltGeoR = new THREE.SphereGeometry(0.078, 8, 6);
+    deltGeoR.scale(1.05, 0.8, 1.05); deltGeoR.translate(0.235, 1.45, 0);
+    var torso = new THREE.Mesh(SH.World.mergeGeos([chestGeo, trapGeo, deltGeoL, deltGeoR]), shirt);
+    add(torso, g, 0, 0, 0);
     if (opts.jacket) {
       var placket = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.015), dark);
       add(placket, g, 0, 1.31, 0.115);
@@ -142,9 +159,7 @@
     // a light A-pose (12° out), elbow ball, tapered forearm with a
     // slight natural bend, flat hand with a thumb nub.
     function makeArm(side) {
-      var delt = ball(0.078, shirt);
-      delt.scale.set(1.05, 0.8, 1.05);
-      add(delt, g, 0.235 * side, 1.45, 0);
+      // (The deltoid cap lives in the merged torso mesh above.)
       var shoulder = new THREE.Group();
       shoulder.position.set(0.24 * side, 1.455, 0);
       shoulder.rotation.z = -0.21 * side;
@@ -156,11 +171,13 @@
       elbow.position.set(0, -0.30, 0);
       elbow.rotation.x = -0.16;
       shoulder.add(elbow);
-      add(cyl(0.04, 0.03, 0.28, 7, skin), elbow, 0, -0.14, 0);           // forearm
-      var hand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.025), skin);
-      add(hand, elbow, 0, -0.315, 0);
-      var thumb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.02), skin);
-      add(thumb, elbow, -0.032 * side, -0.285, 0.012);
+      // Forearm + hand + thumb: one skin material, rigid — merged.
+      var foreGeo = SH.World.mergeGeos([
+        new THREE.CylinderGeometry(0.04, 0.03, 0.28, 7).translate(0, -0.14, 0),
+        new THREE.BoxGeometry(0.05, 0.09, 0.025).translate(0, -0.315, 0),
+        new THREE.BoxGeometry(0.02, 0.04, 0.02).translate(-0.032 * side, -0.285, 0.012)
+      ]);
+      add(new THREE.Mesh(foreGeo, skin), elbow, 0, 0, 0);
       return { shoulder: shoulder, elbow: elbow };
     }
     var armL = makeArm(-1), armR = makeArm(1);
@@ -174,27 +191,26 @@
     var head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), headMat);
     head.scale.set(0.94, 1, 0.97);
     add(head, headGroup, 0, 0.15, 0);
-    var earGeo = new THREE.SphereGeometry(0.038, 6, 5);
-    add(new THREE.Mesh(earGeo, skin), headGroup, -0.135, 0.14, 0);
-    add(new THREE.Mesh(earGeo, skin), headGroup, 0.135, 0.14, 0);
+    // Ears merged into one skin mesh; hair/hat pieces merged per style.
+    var earGeo = SH.World.mergeGeos([
+      new THREE.SphereGeometry(0.038, 6, 5).translate(-0.135, 0.14, 0),
+      new THREE.SphereGeometry(0.038, 6, 5).translate(0.135, 0.14, 0)
+    ]);
+    add(new THREE.Mesh(earGeo, skin), headGroup, 0, 0, 0);
     var hairStyle = opts.hairStyle || 'cap';
     if (hairStyle === 'hat') {
       var hatMat = new THREE.MeshLambertMaterial({ color: opts.hatColor != null ? opts.hatColor : 0x22242c, flatShading: true });
-      add(cyl(0.20, 0.20, 0.02, 10, hatMat), headGroup, 0, 0.235, 0);
-      add(cyl(0.135, 0.145, 0.10, 10, hatMat), headGroup, 0, 0.275, 0);
+      var hatGeo = SH.World.mergeGeos([
+        new THREE.CylinderGeometry(0.20, 0.20, 0.02, 10).translate(0, 0.235, 0),
+        new THREE.CylinderGeometry(0.135, 0.145, 0.10, 10).translate(0, 0.275, 0)
+      ]);
+      add(new THREE.Mesh(hatGeo, hatMat), headGroup, 0, 0, 0);
     } else if (hairStyle !== 'bald') {
-      var cap = new THREE.Mesh(new THREE.SphereGeometry(0.158, 10, 6, 0, Math.PI * 2, 0, 1.75), hairMat);
-      add(cap, headGroup, 0, 0.16, -0.01);
-      if (hairStyle === 'long') {
-        var back = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.32, 0.05), hairMat);
-        add(back, headGroup, 0, 0.0, -0.125);
-      } else if (hairStyle === 'bun') {
-        var bun = new THREE.Mesh(new THREE.SphereGeometry(0.065, 7, 6), hairMat);
-        add(bun, headGroup, 0, 0.26, -0.09);
-      } else if (hairStyle === 'mohawk') {
-        var hawk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13, 0.30), hairMat);
-        add(hawk, headGroup, 0, 0.27, 0);
-      }
+      var hairParts = [new THREE.SphereGeometry(0.158, 10, 6, 0, Math.PI * 2, 0, 1.75).translate(0, 0.16, -0.01)];
+      if (hairStyle === 'long') hairParts.push(new THREE.BoxGeometry(0.24, 0.32, 0.05).translate(0, 0.0, -0.125));
+      else if (hairStyle === 'bun') hairParts.push(new THREE.SphereGeometry(0.065, 7, 6).translate(0, 0.26, -0.09));
+      else if (hairStyle === 'mohawk') hairParts.push(new THREE.BoxGeometry(0.05, 0.13, 0.30).translate(0, 0.27, 0));
+      add(new THREE.Mesh(SH.World.mergeGeos(hairParts), hairMat), headGroup, 0, 0, 0);
     }
     if (opts.glasses) {
       var shades = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.055, 0.015), dark);
@@ -214,8 +230,9 @@
 
   function buildPedMesh(rng) {
     var bottom = ['pants', 'pants', 'shorts', 'skirt'][(rng() * 4) | 0];
-    return buildFigure({
-      skin: skinTones[(rng() * skinTones.length) | 0],
+    var skinTone = skinTones[(rng() * skinTones.length) | 0];
+    var built = buildFigure({
+      skin: skinTone,
       shirt: shirtColors[(rng() * shirtColors.length) | 0],
       pants: 0x2a3040 + ((rng() * 0x101018) | 0),
       hairColor: hairColors[(rng() * hairColors.length) | 0],
@@ -226,6 +243,35 @@
       glasses: rng() < 0.2,
       face: (rng() * 3) | 0
     });
+    built._skinTone = skinTone;
+    return built;
+  }
+
+  // Far LOD (perf mandate): bake the whole articulated figure into ONE
+  // vertex-coloured mesh. Beyond ~46 m the limb swing is a few pixels;
+  // the baked walker still moves, turns and bobs via the ped update,
+  // and the full figure returns inside 42 m (hysteresis, no flicker).
+  var lodMatShared = null;
+  function bakeLOD(built) {
+    if (!lodMatShared) lodMatShared = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    built.group.updateMatrixWorld(true);
+    var geos = [];
+    built.group.traverse(function (o) {
+      if (!o.isMesh) return;
+      var geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      var col = (o.material && o.material.map)
+        ? new THREE.Color(built._skinTone != null ? built._skinTone : 0xb87a4e)
+        : (o.material && o.material.color ? o.material.color : new THREE.Color(0x888888));
+      var n = geo.attributes.position.count;
+      var arr = new Float32Array(n * 3);
+      for (var i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+      geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      geos.push(geo);
+    });
+    var mesh = new THREE.Mesh(SH.World.mergeGeos(geos), lodMatShared);
+    mesh.castShadow = true;
+    mesh.visible = false;
+    return mesh;
   }
 
   var Pedestrians = {
@@ -238,8 +284,10 @@
       for (var i = 0; i < n; i++) {
         var built = buildPedMesh(this.rng);
         scene.add(built.group);
+        var lod = bakeLOD(built);
+        scene.add(lod);
         var ped = {
-          mesh: built.group, parts: built,
+          mesh: built.group, parts: built, lod: lod, far: false,
           x: 0, z: 0, heading: 0, speed: 0, cycle: this.rng() * 6,
           tx: 0, tz: 0, state: 'walk', timer: this.rng() * 3, panic: 0, down: 0
         };
@@ -261,10 +309,13 @@
         ped.x = x; ped.z = z; ped.down = 0; ped.state = 'walk';
         ped.mesh.rotation.x = 0;
         this.pickTarget(ped);
+        ped.far = false;
+        if (ped.lod) ped.lod.visible = false;
         ped.mesh.visible = true;
         return;
       }
       ped.mesh.visible = false;
+      if (ped.lod) ped.lod.visible = false;
     },
 
     pickTarget: function (ped) {
@@ -341,6 +392,26 @@
           ped.z += Math.cos(ped.heading) * speed * dt;
           ped.cycle += dt * speed * 2.6;
         }
+        // Distance LOD swap (hysteresis 46 m out / 42 m back).
+        var wantFar = ped.far ? distP > 42 : distP > 46;
+        if (wantFar !== ped.far) {
+          ped.far = wantFar;
+          ped.mesh.visible = !wantFar;
+          if (ped.lod) ped.lod.visible = wantFar;
+        }
+        var gait = speed > 0 ? 1 : 0;
+        var bobY = Math.abs(Math.sin(ped.cycle * 2.2)) * 0.028 * gait;
+        var swayY = ped.heading + Math.sin(ped.cycle * 2.2) * 0.08 * gait;
+        ped.mesh.position.set(ped.x, bobY, ped.z);
+        ped.mesh.rotation.y = swayY;
+        if (ped.far) {
+          // The baked walker just rides the same bob and sway.
+          if (ped.lod) {
+            ped.lod.position.set(ped.x, bobY, ped.z);
+            ped.lod.rotation.y = swayY;
+          }
+          continue;
+        }
         var s = Math.sin(ped.cycle * 2.2) * (speed > 0 ? 0.55 : 0.04);
         ped.parts.legL.rotation.x = s; ped.parts.legR.rotation.x = -s;
         ped.parts.armL.rotation.x = -s * 0.8; ped.parts.armR.rotation.x = s * 0.8;
@@ -351,12 +422,8 @@
           ped.parts.shinR.rotation.x = Math.max(0, s) * 0.85;
         }
         // Gait life (bible v2): hips yaw a few degrees against the
-        // shoulders, the chest counter-rotates, and the body bobs
-        // 2-3 cm at step frequency.
-        var gait = speed > 0 ? 1 : 0;
+        // shoulders, the chest counter-rotates.
         if (ped.parts.torso) ped.parts.torso.rotation.y = -Math.sin(ped.cycle * 2.2) * 0.07 * gait;
-        ped.mesh.position.set(ped.x, Math.abs(Math.sin(ped.cycle * 2.2)) * 0.028 * gait, ped.z);
-        ped.mesh.rotation.y = ped.heading + Math.sin(ped.cycle * 2.2) * 0.08 * gait;
       }
     }
   };

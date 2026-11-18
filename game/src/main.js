@@ -288,6 +288,7 @@
     if (State._autosave > 60) { State._autosave = 0; if (SH.Save) SH.Save.saveGame(); }
     SH.Roads.update(dt, State.time);
     SH.Player.updateCamera(dt, camera);
+    if (SH.Vehicles && SH.Vehicles.updateLOD) SH.Vehicles.updateLOD(camera.position);
     if (SH.Effects) SH.Effects.update(dt, camera);
     applyLighting();
 
