@@ -592,6 +592,10 @@
       var s = Math.sin(c.cycle * 2.2) * 0.6;
       c.parts.legL.rotation.x = s; c.parts.legR.rotation.x = -s;
       c.parts.armL.rotation.x = -s * 0.85; c.parts.armR.rotation.x = s * 0.85;
+      if (c.parts.shinL) { // knees fold on the forward swing
+        c.parts.shinL.rotation.x = Math.max(0, -s) * 0.85;
+        c.parts.shinR.rotation.x = Math.max(0, s) * 0.85;
+      }
       c.mesh.position.set(c.x, 0, c.z);
       c.mesh.rotation.y = c.heading;
       // Keep the objective marker glued to the courier.

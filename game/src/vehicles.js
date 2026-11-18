@@ -129,7 +129,9 @@
         hairStyle: 'hat', hatColor: 0xd8402e, sleeves: 'long', face: 1
       });
       rider.legL.rotation.x = -0.85; rider.legR.rotation.x = -0.85;
+      rider.shinL.rotation.x = 0.95; rider.shinR.rotation.x = 0.95; // knees bent to the pegs
       rider.armL.rotation.x = -1.0; rider.armR.rotation.x = -1.0;
+      rider.foreL.rotation.x = -0.35; rider.foreR.rotation.x = -0.35;
       rider.group.position.set(0, -0.22, -0.05);
       rider.group.rotation.x = 0.15;
       rider.group.visible = false;
@@ -490,6 +492,12 @@
           pm.rotation.x = 0.15;
           SH.Player.parts.legL.rotation.x = -0.85;
           SH.Player.parts.legR.rotation.x = -0.85;
+          if (SH.Player.parts.shinL) {
+            SH.Player.parts.shinL.rotation.x = 0.95;
+            SH.Player.parts.shinR.rotation.x = 0.95;
+            SH.Player.parts.foreL.rotation.x = -0.35;
+            SH.Player.parts.foreR.rotation.x = -0.35;
+          }
           SH.Player.parts.armL.rotation.x = -1.0;
           SH.Player.parts.armR.rotation.x = -1.0;
         } else {

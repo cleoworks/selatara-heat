@@ -520,6 +520,10 @@
         off.parts.legL.rotation.x = sw; off.parts.legR.rotation.x = -sw;
         off.parts.armL.rotation.x = -sw * 0.7;
         off.parts.armR.rotation.x = st.wanted >= 3 && los ? -1.35 : sw * 0.7; // gun arm up
+        if (off.parts.shinL) { // knees fold on the forward swing
+          off.parts.shinL.rotation.x = Math.max(0, -sw) * 0.85;
+          off.parts.shinR.rotation.x = Math.max(0, sw) * 0.85;
+        }
         // Shooting at high stars.
         if (st.wanted >= 3 && los && od < cfgP.copFireRange) {
           off.fireTimer -= dt;

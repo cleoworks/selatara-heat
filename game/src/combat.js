@@ -505,6 +505,10 @@
         e.parts.legL.rotation.x = sw; e.parts.legR.rotation.x = -sw;
         e.parts.armL.rotation.x = -sw * 0.7;
         if (e.state !== 'attack') e.parts.armR.rotation.x = sw * 0.7;
+        if (e.parts.shinL) { // knees fold on the forward swing
+          e.parts.shinL.rotation.x = Math.max(0, -sw) * 0.85;
+          e.parts.shinR.rotation.x = Math.max(0, sw) * 0.85;
+        }
         e.mesh.position.set(e.x, 0, e.z);
         e.mesh.rotation.y = e.state === 'attack' || e.state === 'alert' ? Math.atan2(f.x - e.x, f.z - e.z) : e.heading;
       }
