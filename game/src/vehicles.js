@@ -26,32 +26,53 @@
   var _lodScratchCol = new THREE.Color();
   var _lodScratchZero = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  var rimTex = null, rimMatShared = null;
-  function getRimMat() {
-    if (rimMatShared) return rimMatShared;
-    var c = document.createElement('canvas'); c.width = c.height = 128;
+  // (The textured hub disc was retired in Rev 9 — rims are geometry
+  // now: a lathe dish + a 5-spoke star prism, see getStarGeo/wheel.)
+  // Rev 9 (cars v3): the rear light BAND texture — a horizontal
+  // luminance gradient (dim edges, hot centre) multiplied by the tail
+  // material colour, so one wide box reads as a continuous LED strip
+  // with falloff instead of two flat red squares. Brake brightening
+  // still works because setBrakeLights only changes material colour.
+  var tailBandTex = null;
+  function getTailBandTex() {
+    if (tailBandTex) return tailBandTex;
+    var c = document.createElement('canvas'); c.width = 128; c.height = 16;
     var g2 = c.getContext('2d');
-    g2.fillStyle = '#141519'; g2.fillRect(0, 0, 128, 128);
-    g2.fillStyle = '#c8d0da';
-    g2.beginPath(); g2.arc(64, 64, 54, 0, Math.PI * 2); g2.fill();
-    g2.fillStyle = '#23252b';
-    for (var k = 0; k < 5; k++) {
-      var a = (k / 5) * Math.PI * 2;
-      g2.save(); g2.translate(64, 64); g2.rotate(a);
-      g2.beginPath();
-      g2.moveTo(10, -7); g2.quadraticCurveTo(34, -13, 50, -4);
-      g2.lineTo(50, 7); g2.quadraticCurveTo(32, 8, 10, 6);
-      g2.closePath(); g2.fill();
-      g2.restore();
+    var hg = g2.createLinearGradient(0, 0, 128, 0);
+    hg.addColorStop(0, '#595959'); hg.addColorStop(0.22, '#c9c9c9');
+    hg.addColorStop(0.5, '#ffffff'); hg.addColorStop(0.78, '#c9c9c9');
+    hg.addColorStop(1, '#595959');
+    g2.fillStyle = hg; g2.fillRect(0, 0, 128, 16);
+    g2.globalCompositeOperation = 'multiply';
+    var vg = g2.createLinearGradient(0, 0, 0, 16);
+    vg.addColorStop(0, '#8a8a8a'); vg.addColorStop(0.35, '#ffffff');
+    vg.addColorStop(0.65, '#ffffff'); vg.addColorStop(1, '#8a8a8a');
+    g2.fillStyle = vg; g2.fillRect(0, 0, 128, 16);
+    tailBandTex = new THREE.CanvasTexture(c);
+    tailBandTex.colorSpace = THREE.SRGBColorSpace;
+    return tailBandTex;
+  }
+  // Rev 9: a real 5-spoke star prism for the rim face — geometry spokes
+  // that catch light from a rear 3/4 chase view, replacing the flat
+  // textured hub disc. The star plate's negative spaces read as the
+  // gaps between spokes. Cached per radius.
+  var starGeoCache = {};
+  function getStarGeo(r) {
+    var key = r.toFixed(3);
+    if (starGeoCache[key]) return starGeoCache[key];
+    var shape = new THREE.Shape();
+    for (var k = 0; k < 10; k++) {
+      var ang = (k / 10) * Math.PI * 2 + Math.PI / 2;
+      var rad = (k % 2 === 0) ? r * 0.58 : r * 0.22;
+      var px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
+      if (k === 0) shape.moveTo(px, py); else shape.lineTo(px, py);
     }
-    g2.fillStyle = '#3a3f47';
-    g2.beginPath(); g2.arc(64, 64, 12, 0, Math.PI * 2); g2.fill();
-    g2.fillStyle = '#17181c';
-    g2.beginPath(); g2.arc(64, 64, 4.5, 0, Math.PI * 2); g2.fill();
-    rimTex = new THREE.CanvasTexture(c);
-    rimTex.colorSpace = THREE.SRGBColorSpace;
-    rimMatShared = new THREE.MeshStandardMaterial({ map: rimTex, metalness: 1.0, roughness: 0.22, envMapIntensity: 1.25 });
-    return rimMatShared;
+    shape.closePath();
+    var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.028, bevelEnabled: false });
+    geo.translate(0, 0, -0.014);
+    geo.rotateY(Math.PI / 2); // extrusion axis -> +X (the wheel axle)
+    starGeoCache[key] = geo;
+    return geo;
   }
   var coneMatShared = null, headGlowMatShared = null;
   function getConeMat() {
@@ -99,24 +120,53 @@
       if (key) m.userData.mergeKey = key;
       g.add(m); return m;
     }
+    // Rev 9 wheel: a LATHE profile (tread band, curved sidewalls, a
+    // recessed rim dish) instead of a plain cylinder, a metal rim
+    // barrel inside the dish, and a geometric 5-spoke star on the outer
+    // face. The whole wheel is one spinning group; the star sits on the
+    // outboard side only (both sides on the centred motor wheels).
+    var rimBarrelMat = new THREE.MeshStandardMaterial({ color: 0xb9c1c9, metalness: 1.0, roughness: 0.25, envMapIntensity: 1.25, flatShading: true });
+    // The spoke star + lip ring get a brighter metal: at chase distance
+    // the rim is the brightest part of a real wheel, and a near-white
+    // ring is what keeps the wheel from reading as a black hole.
+    var rimFaceMat = new THREE.MeshStandardMaterial({ color: 0xd7dde3, metalness: 0.9, roughness: 0.2, envMapIntensity: 1.4, flatShading: true, side: THREE.DoubleSide });
     function wheel(x, z, r, width) {
       var wWidth = width || 0.3;
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, wWidth, 14), tireMat);
-      w.rotation.z = Math.PI / 2;
-      w.position.set(x, r, z);
-      w.castShadow = true;
-      g.add(w); wheels.push(w);
-      // Spoked rim: a textured disc (5 turbine spokes) that spins with
-      // the wheel — the bible's fix for the plain-hub toy look.
-      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r * 0.62, wWidth + 0.02, 30), getRimMat()); // 30 = 5 spokes x 4 (bible rim rule)
-      hub.rotation.z = Math.PI / 2;
-      hub.position.set(x, r, z);
-      g.add(hub); wheels.push(hub);
-      return w;
+      var grp = new THREE.Group();
+      grp.position.set(x, r, z);
+      var prof = [
+        [0.03, -0.50], [0.34, -0.50], [0.58, -0.36], [1.00, -0.10],
+        [1.00, 0.10], [0.93, 0.31], [0.60, 0.44], [0.30, 0.32], [0.03, 0.36]
+      ];
+      var pts = [];
+      for (var pi = 0; pi < prof.length; pi++) pts.push(new THREE.Vector2(Math.max(0.02, prof[pi][0] * r), prof[pi][1] * wWidth));
+      var tireGeo = new THREE.LatheGeometry(pts, 10);
+      tireGeo.rotateZ(-Math.PI / 2); // lathe axis Y -> wheel axle X, dish facing +X
+      var tire = new THREE.Mesh(tireGeo, tireMat);
+      tire.castShadow = true;
+      grp.add(tire);
+      var barrelGeo = new THREE.CylinderGeometry(r * 0.58, r * 0.58, wWidth * 0.66, 10, 1, true);
+      barrelGeo.rotateZ(Math.PI / 2);
+      var barrel = new THREE.Mesh(barrelGeo, rimBarrelMat);
+      grp.add(barrel);
+      var sides = (x === 0) ? [-1, 1] : [Math.sign(x)];
+      for (var si = 0; si < sides.length; si++) {
+        var star = new THREE.Mesh(getStarGeo(r), rimFaceMat);
+        star.position.x = sides[si] * wWidth * 0.355;
+        if (sides[si] < 0) star.rotation.y = Math.PI;
+        grp.add(star);
+        var lipGeo = new THREE.RingGeometry(r * 0.50, r * 0.615, 12);
+        lipGeo.rotateY(sides[si] > 0 ? Math.PI / 2 : -Math.PI / 2);
+        var lip = new THREE.Mesh(lipGeo, rimFaceMat);
+        lip.position.x = sides[si] * wWidth * 0.37;
+        grp.add(lip);
+      }
+      g.add(grp); wheels.push(grp);
+      return grp;
     }
 
     var headMat = new THREE.MeshBasicMaterial({ color: 0xfff2c0 });
-    var tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+    var tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a, map: getTailBandTex() });
     var brakeMat = new THREE.MeshBasicMaterial({ color: 0xff6060 });
 
     // ---- Art Pass 2: car bodies are EXTRUDED SIDE PROFILES, not stacked
@@ -124,11 +174,9 @@
     // narrower glasshouse extrusion sits on top with a paint roof panel,
     // so from any screenshot distance the car reads as a shaped body.
     // Points are [z as a fraction of length, height in metres].
-    var SEDAN_BELT = [[-0.50, 0.30], [-0.50, 0.90], [-0.45, 0.99], [-0.20, 1.04], [0.26, 1.02], [0.44, 0.90], [0.50, 0.83], [0.50, 0.30]];
-    var SEDAN_GLASS = [[-0.175, 1.01], [-0.055, 1.36], [0.125, 1.38], [0.27, 1.00]];
-    var SPORT_BELT = [[-0.50, 0.28], [-0.50, 0.76], [-0.43, 0.85], [-0.18, 0.91], [0.24, 0.87], [0.43, 0.70], [0.50, 0.60], [0.50, 0.28]];
-    var SPORT_GLASS = [[-0.16, 0.88], [-0.04, 1.13], [0.13, 1.14], [0.245, 0.85]];
-    var TRUCK_CAB = [[-0.50, 0.30], [-0.50, 2.10], [-0.30, 2.18], [0.28, 1.50], [0.47, 0.95], [0.50, 0.85], [0.50, 0.30]];
+    // (The v2 SEDAN_BELT / SPORT_BELT / TRUCK_CAB extrusion tables were
+    // retired by the Rev 9 lofts below; profileMesh survives only as
+    // the motorcycle spine builder.)
     function profileMesh(pts, width, mat, lenScale) {
       var shape = new THREE.Shape();
       for (var i = 0; i < pts.length; i++) {
@@ -148,16 +196,106 @@
       return m;
     }
 
+    // ---- Rev 9 (cars v3): LOFTED SHELLS --------------------------------
+    // The v2 bodies were straight side-profile extrusions: constant
+    // width along the whole length, so every car read as a slab-sided
+    // block with a bevel. A loft sweeps an 8-point cross-section
+    // (rocker -> belt -> shoulder -> cambered roof) through stations
+    // along the length, each station with its own half-width and deck
+    // height: the nose can taper narrower than the cabin, the rear
+    // shoulders can swell over the back wheels, and the roof is a
+    // continuous arc instead of a flat lid. One builder serves body,
+    // glasshouse, roof skin (topBand), truck cab/cargo and boat hull.
+    // Station: {z, hw (half width at belt), yB (floor), yM (belt
+    // height), hwT (half width at top edge), yT (top centre height),
+    // cam (roof camber: top edge sits cam below the centre)}.
+    function loftMesh(stations, mat, opts) {
+      opts = opts || {};
+      function ringOf(s) {
+        return [
+          [0, s.yB], [s.hw * 0.90, s.yB + 0.03], [s.hw, s.yM], [s.hwT, s.yT - s.cam],
+          [0, s.yT], [-s.hwT, s.yT - s.cam], [-s.hw, s.yM], [-s.hw * 0.90, s.yB + 0.03]
+        ];
+      }
+      var rings = [];
+      for (var i = 0; i < stations.length; i++) rings.push(ringOf(stations[i]));
+      var pos = [];
+      function tri(a, b, c) { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+      function P(ring, j, z) { return [ring[j][0], ring[j][1], z]; }
+      var edges = opts.edges || [0, 1, 2, 3, 4, 5, 6, 7];
+      for (var si = 0; si < stations.length - 1; si++) {
+        var zA = stations[si].z, zB = stations[si + 1].z;
+        for (var ei = 0; ei < edges.length; ei++) {
+          var j = edges[ei], jn = (j + 1) % 8;
+          var a = P(rings[si], j, zA), b = P(rings[si], jn, zA), c = P(rings[si + 1], jn, zB), d = P(rings[si + 1], j, zB);
+          tri(a, b, c); tri(a, c, d);
+        }
+      }
+      if (!opts.edges) {
+        // End caps: fans around each end ring's centroid.
+        var s0 = stations[0], sN = stations[stations.length - 1];
+        var c0 = [0, (s0.yB + s0.yT) / 2, s0.z], cN = [0, (sN.yB + sN.yT) / 2, sN.z];
+        for (var cj = 0; cj < 8; cj++) {
+          var cn = (cj + 1) % 8;
+          tri(c0, P(rings[0], cn, s0.z), P(rings[0], cj, s0.z));
+          tri(cN, P(rings[rings.length - 1], cj, sN.z), P(rings[rings.length - 1], cn, sN.z));
+        }
+      }
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((pos.length / 3) * 2), 2)); // merge-compatible
+      geo.computeVertexNormals(); // non-indexed -> flat facets
+      var mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      g.add(mesh);
+      return mesh;
+    }
+    // Fraction tables -> absolute stations for a given spec L/W.
+    function loftStations(table, LL, WW) {
+      var out = [];
+      for (var i = 0; i < table.length; i++) {
+        var t = table[i];
+        out.push({ z: t[0] * LL, hw: t[1] * WW, yB: t[2], yM: t[3], hwT: t[4] * WW, yT: t[5], cam: t[6] });
+      }
+      return out;
+    }
+    // Sedan body: nose 0.385W vs cabin 0.489W (bold plan taper), rear
+    // shoulder swells at the back wheel, deck heights from the v2 belt.
+    var SEDAN_BODY = [
+      [-0.500, 0.440, 0.37, 0.62, 0.407, 0.92, 0.10], [-0.466, 0.473, 0.27, 0.66, 0.440, 0.97, 0.10],
+      [-0.305, 0.486, 0.26, 0.70, 0.456, 1.00, 0.09], [-0.136, 0.489, 0.26, 0.72, 0.462, 1.03, 0.09],
+      [0.068, 0.486, 0.26, 0.72, 0.456, 1.02, 0.09], [0.305, 0.473, 0.26, 0.68, 0.429, 0.95, 0.10],
+      [0.443, 0.429, 0.27, 0.62, 0.374, 0.86, 0.11], [0.500, 0.385, 0.30, 0.58, 0.330, 0.80, 0.12]
+    ];
+    var SEDAN_GLASS = [
+      [-0.364, 0.319, 0.96, 1.04, 0.275, 1.14, 0.05], [-0.273, 0.360, 0.98, 1.20, 0.316, 1.365, 0.07],
+      [-0.080, 0.371, 0.99, 1.23, 0.327, 1.415, 0.075], [0.114, 0.365, 0.99, 1.22, 0.321, 1.40, 0.07],
+      [0.227, 0.346, 0.98, 1.15, 0.286, 1.30, 0.06], [0.323, 0.302, 0.96, 1.04, 0.236, 1.09, 0.05]
+    ];
+    var SPORT_BODY = [
+      [-0.500, 0.436, 0.35, 0.56, 0.404, 0.80, 0.09], [-0.453, 0.471, 0.25, 0.60, 0.441, 0.86, 0.09],
+      [-0.305, 0.487, 0.24, 0.64, 0.457, 0.885, 0.08], [-0.116, 0.479, 0.24, 0.65, 0.452, 0.90, 0.08],
+      [0.093, 0.471, 0.24, 0.64, 0.441, 0.885, 0.08], [0.305, 0.460, 0.24, 0.60, 0.420, 0.83, 0.09],
+      [0.442, 0.415, 0.25, 0.54, 0.362, 0.74, 0.10], [0.500, 0.372, 0.28, 0.50, 0.319, 0.68, 0.11]
+    ];
+    var SPORT_GLASS = [
+      [-0.337, 0.319, 0.84, 0.92, 0.277, 0.99, 0.05], [-0.244, 0.362, 0.86, 1.02, 0.319, 1.125, 0.065],
+      [-0.070, 0.372, 0.87, 1.05, 0.327, 1.15, 0.07], [0.105, 0.367, 0.87, 1.04, 0.322, 1.135, 0.065],
+      [0.209, 0.346, 0.86, 0.99, 0.287, 1.06, 0.055], [0.302, 0.303, 0.84, 0.92, 0.239, 0.94, 0.05]
+    ];
+
     if (type === 'motor') {
       // Art Pass 3 rebuild: a slim extruded spine, a rounded tank, twin
       // fork legs, bars and a visible rider (posed seated by the figure
       // builder) who only appears while the bike is actually ridden.
-      var MOTOR_BELT = [[-0.50, 0.30], [-0.50, 0.52], [-0.30, 0.60], [-0.05, 0.66], [0.18, 0.60], [0.38, 0.50], [0.50, 0.42], [0.50, 0.30]];
-      profileMesh(MOTOR_BELT, 0.20, paint, L).userData.mergeKey = 'paint';
+      // Rev 9: slimmer spine — the bottom edge kicks UP between the
+      // wheels so the wheels read as wheels, not as bumps under a slab.
+      var MOTOR_BELT = [[-0.50, 0.36], [-0.50, 0.56], [-0.32, 0.63], [-0.08, 0.60], [0.14, 0.65], [0.34, 0.57], [0.50, 0.47], [0.50, 0.38]];
+      profileMesh(MOTOR_BELT, 0.16, paint, L).userData.mergeKey = 'paint';
       var tankM = new THREE.Mesh(new THREE.SphereGeometry(0.145, 10, 8), paint);
       tankM.scale.set(0.85, 0.55, 1.6); tankM.position.set(0, 0.68, 0.10); tankM.castShadow = true; tankM.userData.mergeKey = 'paint'; g.add(tankM);
       box(0.30, 0.28, 0.52, dark, 0, 0.38, 0.02, 'dark');                       // engine block
-      box(0.26, 0.07, 0.62, dark, 0, 0.67, -0.34, 'dark');                      // seat
+      box(0.26, 0.07, 0.62, dark, 0, 0.645, -0.34, 'dark');                     // seat
       box(0.20, 0.08, 0.30, paint, 0, 0.63, -0.82, 'paint');                     // tail cowl
       var forkL = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.88, 6), dark);
       forkL.position.set(-0.055, 0.56, 0.84); forkL.rotation.x = 0.38; forkL.castShadow = true; forkL.userData.mergeKey = 'dark'; g.add(forkL);
@@ -168,6 +306,16 @@
       var exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.046, 0.72, 8), chromeMat);
       exhaust.rotation.x = Math.PI / 2; exhaust.position.set(0.15, 0.30, -0.32); exhaust.userData.mergeKey = 'chrome'; g.add(exhaust);
       wheel(0, 0.80, 0.34, 0.12); wheel(0, -0.80, 0.34, 0.12);
+      // Rev 9: curved fender shells hugging both wheels (open cylinder
+      // arcs centred over the tyre) — the bike stops reading as two
+      // bare discs bolted to a spine.
+      var fenderMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.6, roughness: 0.35, flatShading: true, side: THREE.DoubleSide });
+      var fenGeoF = new THREE.CylinderGeometry(0.375, 0.375, 0.15, 10, 1, true, Math.PI / 2 - 0.62, 1.24);
+      fenGeoF.rotateZ(Math.PI / 2);
+      var fenF = new THREE.Mesh(fenGeoF, fenderMat); fenF.position.set(0, 0.34, 0.80); g.add(fenF);
+      var fenGeoR = new THREE.CylinderGeometry(0.375, 0.375, 0.14, 10, 1, true, Math.PI / 2 - 0.5, 1.0);
+      fenGeoR.rotateZ(Math.PI / 2);
+      var fenR = new THREE.Mesh(fenGeoR, fenderMat); fenR.position.set(0, 0.34, -0.80); g.add(fenR);
       // Rider: a full figure from the shared builder, posed on the bike
       // (thighs forward, arms reaching the bars, slight forward lean).
       var rider = SH.Pedestrians.buildFigure({
@@ -181,22 +329,66 @@
       g.add(rider.group);
       g.userData.rider = rider.group;
     } else if (type === 'truck') {
-      var cab = profileMesh(TRUCK_CAB, W * 0.92, paint, 2.0);   // sloped-windshield cab
-      cab.position.z = L * 0.5 - 1.0;
-      cab.userData.mergeKey = 'paint';
-      var cabGlass = box(W * 0.76, 0.66, 0.07, glass, 0, 1.86, L * 0.5 - 0.28);
-      cabGlass.rotation.x = -0.6;                                // laid onto the windshield slope
-      box(W * 1.02, 0.3, 0.24, dark, 0, 0.32, L * 0.47, 'dark');   // front bumper
-      box(0.09, 0.12, 0.2, dark, -W * 0.52, 1.7, L * 0.36, 'dark');        // mirrors
-      box(0.09, 0.12, 0.2, dark, W * 0.52, 1.7, L * 0.36, 'dark');
-      box(W, H - 0.7, L * 0.58, new THREE.MeshLambertMaterial({ color: 0xd8d3c8, flatShading: true }), 0, (H - 0.7) / 2 + 0.55, -L * 0.18); // cargo
-      wheel(-W / 2, L * 0.3, 0.5); wheel(W / 2, L * 0.3, 0.5);
-      wheel(-W / 2, -L * 0.32, 0.5); wheel(W / 2, -L * 0.32, 0.5);
+      // Rev 9: the cab is a LOFT too (tapered nose, cambered cab roof,
+      // windshield raked through the stations) and the cargo box became
+      // a soft-tapered loft with rub rails and a centre door seam — the
+      // truck keeps its boxy job but loses the toy-crate read.
+      var cabLoft = loftMesh([
+        { z: 1.00, hw: 1.02, yB: 0.30, yM: 0.62, hwT: 0.94, yT: 1.06, cam: 0.08 },
+        { z: 0.72, hw: 1.12, yB: 0.28, yM: 0.82, hwT: 1.04, yT: 1.64, cam: 0.07 },
+        { z: 0.32, hw: 1.14, yB: 0.28, yM: 0.95, hwT: 1.06, yT: 2.14, cam: 0.06 },
+        { z: -0.60, hw: 1.14, yB: 0.28, yM: 1.00, hwT: 1.07, yT: 2.18, cam: 0.06 },
+        { z: -1.00, hw: 1.10, yB: 0.30, yM: 1.00, hwT: 1.03, yT: 2.16, cam: 0.06 }
+      ], paint);
+      cabLoft.position.z = L * 0.5 - 1.0;
+      cabLoft.userData.mergeKey = 'paint';
+      var cabGlass = box(W * 0.78, 0.98, 0.05, glass, 0, 1.88, L * 0.5 - 0.48);
+      cabGlass.rotation.x = -0.675;                              // laid onto the windshield slope
+      box(0.04, 0.52, 0.85, glass, -1.13, 1.86, L * 0.5 - 0.85);   // side glass
+      box(0.04, 0.52, 0.85, glass, 1.13, 1.86, L * 0.5 - 0.85);
+      box(W * 0.70, 0.34, 0.05, dark, 0, 0.62, L / 2 + 0.02, 'dark');        // grille
+      box(W * 0.66, 0.03, 0.02, chromeMat, 0, 0.62, L / 2 + 0.05, 'chrome'); // grille slat
+      box(W * 1.0, 0.3, 0.22, dark, 0, 0.32, L * 0.47, 'dark');              // front bumper
+      box(0.16, 0.03, 0.03, dark, -1.20, 1.98, L * 0.36, 'dark');            // mirror stalks + heads
+      box(0.16, 0.03, 0.03, dark, 1.20, 1.98, L * 0.36, 'dark');
+      box(0.05, 0.20, 0.12, dark, -1.29, 1.94, L * 0.36, 'dark');
+      box(0.05, 0.20, 0.12, dark, 1.29, 1.94, L * 0.36, 'dark');
+      var tankGeo = new THREE.CylinderGeometry(0.19, 0.19, 1.5, 10); tankGeo.rotateX(Math.PI / 2);
+      var tankL = new THREE.Mesh(tankGeo, chromeMat); tankL.position.set(-0.95, 0.52, 0.9); tankL.userData.mergeKey = 'chrome'; g.add(tankL);
+      var tankR = new THREE.Mesh(tankGeo, chromeMat); tankR.position.set(0.95, 0.52, 0.9); tankR.userData.mergeKey = 'chrome'; g.add(tankR);
+      box(1.6, 0.3, 5.6, dark, 0, 0.42, -0.6, 'dark');                       // chassis rail
+      var cargoMat = new THREE.MeshLambertMaterial({ color: 0xd8d3c8, flatShading: true });
+      loftMesh([
+        { z: -3.57, hw: 1.16, yB: 0.55, yM: 1.55, hwT: 1.10, yT: 2.90, cam: 0.05 },
+        { z: -3.30, hw: 1.24, yB: 0.55, yM: 1.60, hwT: 1.18, yT: 2.95, cam: 0.05 },
+        { z: 0.50, hw: 1.24, yB: 0.55, yM: 1.60, hwT: 1.18, yT: 2.95, cam: 0.05 },
+        { z: 0.83, hw: 1.20, yB: 0.55, yM: 1.58, hwT: 1.13, yT: 2.92, cam: 0.05 }
+      ], cargoMat);
+      box(0.03, 0.06, 4.2, dark, -1.245, 1.1, -1.37, 'dark');                // rub rails
+      box(0.03, 0.06, 4.2, dark, 1.245, 1.1, -1.37, 'dark');
+      box(0.03, 0.06, 4.2, dark, -1.245, 2.2, -1.37, 'dark');
+      box(0.03, 0.06, 4.2, dark, 1.245, 2.2, -1.37, 'dark');
+      box(0.04, 2.3, 0.02, dark, 0, 1.72, -3.58, 'dark');                    // rear door seam
+      box(0.4, 0.3, 0.04, dark, -1.04, 0.35, -L * 0.32 - 0.55, 'dark');      // mudflaps
+      box(0.4, 0.3, 0.04, dark, 1.04, 0.35, -L * 0.32 - 0.55, 'dark');
+      wheel(-1.04, L * 0.3, 0.5, 0.38); wheel(1.04, L * 0.3, 0.5, 0.38);
+      wheel(-1.04, -L * 0.32, 0.5, 0.38); wheel(1.04, -L * 0.32, 0.5, 0.38);
     } else if (type === 'boat') {
-      box(W, 0.7, L * 0.78, paint, 0, 0.45, -L * 0.08, 'paint');            // hull
-      var bow = box(W * 0.72, 0.7, W * 0.72, paint, 0, 0.45, L * 0.38, 'paint'); bow.rotation.y = Math.PI / 4; // tapered bow
-      box(W * 0.62, 0.42, 0.08, glass, 0, 1.02, L * 0.14);         // windscreen
-      box(W * 0.5, 0.34, L * 0.3, dark, 0, 0.78, -L * 0.18, 'dark');       // bench seat
+      // Rev 9: lofted hull — a shallow V at the keel, flared topsides
+      // and a bow that tapers to a near-point with a rising sheer,
+      // replacing the box + rotated-box bow.
+      var hull = loftMesh([
+        { z: -3.20, hw: 1.02, yB: 0.16, yM: 0.66, hwT: 0.98, yT: 0.86, cam: 0.03 },
+        { z: -1.50, hw: 1.13, yB: 0.12, yM: 0.68, hwT: 1.08, yT: 0.85, cam: 0.03 },
+        { z: 0.80, hw: 1.10, yB: 0.12, yM: 0.68, hwT: 1.05, yT: 0.87, cam: 0.03 },
+        { z: 2.20, hw: 0.80, yB: 0.20, yM: 0.70, hwT: 0.76, yT: 0.92, cam: 0.03 },
+        { z: 3.00, hw: 0.36, yB: 0.32, yM: 0.74, hwT: 0.33, yT: 0.96, cam: 0.02 },
+        { z: 3.20, hw: 0.05, yB: 0.42, yM: 0.78, hwT: 0.04, yT: 0.98, cam: 0.01 }
+      ], paint);
+      hull.userData.mergeKey = 'paint';
+      box(W * 0.70, 0.06, L * 0.5, dark, 0, 0.84, -L * 0.10, 'dark');       // cockpit floor
+      box(W * 0.62, 0.42, 0.08, glass, 0, 1.04, L * 0.14);         // windscreen
+      box(W * 0.5, 0.34, L * 0.3, dark, 0, 0.80, -L * 0.18, 'dark');       // bench seat
       box(0.5, 0.62, 0.3, dark, 0, 0.62, -L * 0.52, 'dark');               // outboard motor
     } else {
       // Cars (sedan / sport / taxi / police): extruded beltline shell +
@@ -204,8 +396,39 @@
       // ~0.09 m inset per side is the tumblehome — one full-width
       // extrusion reads as a toy).
       var isSport = type === 'sport';
-      profileMesh(isSport ? SPORT_BELT : SEDAN_BELT, W * 0.94, paint, L).userData.mergeKey = 'paint';
-      profileMesh(isSport ? SPORT_GLASS : SEDAN_GLASS, W * 0.84, glass, L);
+      // Rev 9: LOFTED body + glasshouse (see loftMesh). The glass band
+      // wraps continuously — windshield and rear glass are the loft's
+      // sloped top facets — and a thin roof skin rides 18 mm proud of
+      // the glass crown, leaving body-colour (sedan) or gloss-black
+      // (sport) pillars as the only breaks in the band.
+      var bodyLoft = loftMesh(loftStations(isSport ? SPORT_BODY : SEDAN_BODY, L, W), paint);
+      bodyLoft.userData.mergeKey = 'paint';
+      var glassSt = loftStations(isSport ? SPORT_GLASS : SEDAN_GLASS, L, W);
+      loftMesh(glassSt, glass);
+      var roofSt = [];
+      for (var ri = 1; ri <= 3; ri++) {
+        var rs = glassSt[ri];
+        roofSt.push({ z: rs.z, hw: rs.hw * 1.01, yB: rs.yB, yM: rs.yM + 0.01, hwT: rs.hwT * 1.06, yT: rs.yT + 0.018, cam: rs.cam });
+      }
+      var roofSkin;
+      if (isSport) {
+        var roofBlackMat = new THREE.MeshStandardMaterial({ color: 0x0b0c0f, metalness: 0.7, roughness: 0.24, envMapIntensity: 1.1, flatShading: true });
+        roofSkin = loftMesh(roofSt, roofBlackMat, { edges: [3, 4] });
+      } else {
+        roofSkin = loftMesh(roofSt, paint, { edges: [3, 4] });
+        roofSkin.userData.mergeKey = 'paint';
+      }
+      // Pillars: thin strips laid along the glass slopes (A/C in body
+      // colour, B in black) so the band reads as framed glass, not a
+      // glass box dropped onto the body.
+      var pilY = isSport ? 1.0 : 1.19;
+      for (var pd = -1; pd <= 1; pd += 2) {
+        var pilA = box(0.05, 0.5, 0.07, paint, pd * W * 0.30, pilY, L * 0.27, 'paint');
+        pilA.rotation.x = isSport ? -1.05 : -1.13;
+        var pilC = box(0.06, 0.5, 0.09, paint, pd * W * 0.30, pilY, -L * 0.315, 'paint');
+        pilC.rotation.x = 1.10;
+        box(0.04, 0.36, 0.05, dark, pd * W * 0.368, isSport ? 1.02 : 1.21, -L * 0.01, 'dark');
+      }
       // Panel details (Art Bible): split grille with slats, thin door
       // seams + handles, wheel-arch shadow discs with a paint fender
       // flare over each, a rear plate and an exhaust — the ~15% black
@@ -219,20 +442,20 @@
       var seamMat = new THREE.MeshLambertMaterial({ color: 0x0d0e12, flatShading: true });
       var archMat = new THREE.MeshLambertMaterial({ color: 0x0a0b0f, side: THREE.DoubleSide });
       var wr = isSport ? 0.34 : 0.33; // wheel radius: O 0.66-0.68 m (bible)
-      var sideX = W * 0.47 + 0.075;   // just proud of the bevelled flank
+      var sideX = W * 0.489 + 0.015;   // just proud of the lofted flank (Rev 9)
       for (var sd = -1; sd <= 1; sd += 2) {
         box(0.02, 0.42, 0.03, seamMat, sd * sideX, 0.64, L * 0.10, 'dark');
         box(0.02, 0.42, 0.03, seamMat, sd * sideX, 0.64, -L * 0.17, 'dark');
         box(0.02, 0.035, 0.15, seamMat, sd * sideX, 0.88, L * 0.05, 'dark');   // door handles
         box(0.02, 0.035, 0.15, seamMat, sd * sideX, 0.88, -L * 0.21, 'dark');
         for (var wz = -1; wz <= 1; wz += 2) {
-          var arch = new THREE.Mesh(new THREE.CircleGeometry(wr * 1.24, 14), archMat);
+          var arch = new THREE.Mesh(new THREE.CircleGeometry(wr * 1.24, 8), archMat);
           arch.position.set(sd * sideX, wr * 0.96, wz * L * 0.305);
           arch.rotation.y = sd * Math.PI / 2;
           arch.userData.mergeKey = 'dark';
           g.add(arch);
-          var flare = new THREE.Mesh(new THREE.TorusGeometry(wr * 1.17, 0.048, 6, 10, Math.PI), paint);
-          flare.position.set(sd * (W * 0.47 + 0.055), wr * 0.96, wz * L * 0.305);
+          var flare = new THREE.Mesh(new THREE.TorusGeometry(wr * 1.17, 0.048, 5, 7, Math.PI), paint);
+          flare.position.set(sd * (W * 0.489 + 0.005), wr * 0.96, wz * L * 0.305);
           flare.rotation.y = Math.PI / 2;
           flare.castShadow = true;
           flare.userData.mergeKey = 'paint';
@@ -240,25 +463,31 @@
         }
       }
       var plateMat = new THREE.MeshLambertMaterial({ color: 0xe8e6da, flatShading: true });
-      box(0.36, 0.11, 0.015, plateMat, 0, 0.31, -L / 2 - 0.196);               // rear plate
-      var exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 8), chromeMat);
-      exhaust.rotation.x = Math.PI / 2;
-      exhaust.position.set(W * 0.28, 0.20, -L / 2 - 0.15);
-      exhaust.userData.mergeKey = 'chrome';
-      g.add(exhaust);
-      var roofY = isSport ? 1.15 : 1.4;
-      box(W * 0.78, 0.07, L * 0.32, paint, 0, roofY, -L * 0.03, 'paint');   // roof panel
-      box(W * 0.83, 0.36, 0.07, paint, 0, roofY - 0.2, L * 0.045, 'paint'); // B-pillar band
+      box(0.36, 0.11, 0.015, plateMat, 0, 0.52, -L / 2 - 0.03);               // rear plate (on the lofted tail face)
+      // Rev 9: DUAL exhausts, one per side, tucked under the rear bumper.
+      for (var ex = -1; ex <= 1; ex += 2) {
+        var exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.038, 0.16, 8), chromeMat);
+        exhaust.rotation.x = Math.PI / 2;
+        exhaust.position.set(ex * W * 0.27, 0.21, -L / 2 - 0.06);
+        exhaust.userData.mergeKey = 'chrome';
+        g.add(exhaust);
+      }
+      box(W * 0.66, 0.018, 0.02, seamMat, 0, isSport ? 0.78 : 0.90, -L * 0.345, 'dark'); // trunk seam line
+      var roofY = isSport ? 1.17 : 1.44;   // glass crown + roof skin (Rev 9)
       box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, L / 2 + 0.05, 'dark');       // front bumper
       box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05, 'dark');      // rear bumper
-      box(0.07, 0.07, 0.18, dark, -(W * 0.47 + 0.10), 1.02, L * 0.16, 'dark');       // mirrors
-      box(0.07, 0.07, 0.18, dark, W * 0.47 + 0.10, 1.02, L * 0.16, 'dark');
+      // Rev 9: dark side skirts / lower cladding on EVERY car (the
+      // two-tone break at the rocker line) + mirrors on thin stalks.
+      box(0.07, 0.15, L * 0.52, dark, -(W * 0.489 - 0.015), 0.235, 0, 'dark');
+      box(0.07, 0.15, L * 0.52, dark, W * 0.489 - 0.015, 0.235, 0, 'dark');
+      box(0.11, 0.022, 0.03, dark, -(W * 0.489 + 0.045), 1.03, L * 0.16, 'dark');  // mirror stalks
+      box(0.11, 0.022, 0.03, dark, W * 0.489 + 0.045, 1.03, L * 0.16, 'dark');
+      box(0.035, 0.075, 0.17, dark, -(W * 0.489 + 0.105), 1.05, L * 0.16, 'dark'); // mirror heads
+      box(0.035, 0.075, 0.17, dark, W * 0.489 + 0.105, 1.05, L * 0.16, 'dark');
       if (isSport) {
         box(0.09, 0.22, 0.09, dark, -W * 0.3, 0.92, -L * 0.47, 'dark');    // spoiler struts
         box(0.09, 0.22, 0.09, dark, W * 0.3, 0.92, -L * 0.47, 'dark');
         box(W * 0.96, 0.08, 0.42, dark, 0, 1.05, -L * 0.47, 'dark');       // rear wing
-        box(0.08, 0.16, L * 0.66, dark, -W * 0.49, 0.2, 0, 'dark');       // side skirts
-        box(0.08, 0.16, L * 0.66, dark, W * 0.49, 0.2, 0, 'dark');
       }
       if (type === 'taxi') {
         box(0.62, 0.16, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd23f }), 0, roofY + 0.11, -L * 0.03); // roof sign
@@ -266,8 +495,8 @@
       if (type === 'police') {
         // Contrast door panels over the white body + the lightbar.
         var doorMat = new THREE.MeshLambertMaterial({ color: 0x1c2f6e, flatShading: true });
-        box(0.05, 0.36, L * 0.46, doorMat, -W * 0.485, 0.64, -L * 0.02);
-        box(0.05, 0.36, L * 0.46, doorMat, W * 0.485, 0.64, -L * 0.02);
+        box(0.05, 0.36, L * 0.46, doorMat, -(W * 0.489 + 0.008), 0.64, -L * 0.02);
+        box(0.05, 0.36, L * 0.46, doorMat, W * 0.489 + 0.008, 0.64, -L * 0.02);
         // Two-tone lightbar: red left, blue right, each with its own glow
         // sprite; materials are per-car so the flash phase can alternate.
         var barBase = box(W * 0.72, 0.1, 0.42, dark, 0, roofY + 0.05, -L * 0.03, 'dark');
@@ -283,9 +512,9 @@
       }
       // Wheels sit at the bible wheelbase (+/-0.305 L ≈ 2.68 m on the
       // sedan), tucked so the tyre face is flush with the bevelled flank.
-      var wx = W * 0.47 - 0.06;
-      wheel(-wx, L * 0.305, wr); wheel(wx, L * 0.305, wr);
-      wheel(-wx, -L * 0.305, wr); wheel(wx, -L * 0.305, wr);
+      var wx = W * 0.489 - 0.125;   // Rev 9: wider track, tyre face tucked under the flare
+      wheel(-wx, L * 0.305, wr, 0.30); wheel(wx, L * 0.305, wr, 0.30);
+      wheel(-wx, -L * 0.305, wr, 0.30); wheel(wx, -L * 0.305, wr, 0.30);
     }
     // Contact blob shadow under every land vehicle (not the boat).
     if (type !== 'boat') {
@@ -305,14 +534,25 @@
       var mt = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.05), tailMat);
       mt.position.set(0, 0.66, -L / 2 + 0.02); mt.userData.mergeKey = 'tail'; g.add(mt);
       var mhg = new THREE.Sprite(getHeadGlowMat()); mhg.scale.set(0.7, 0.55, 1); mhg.position.set(0, 0.74, L / 2 + 0.12); g.add(mhg);
+    } else if (type === 'truck') {
+      var th1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), headMat); th1.position.set(-0.78, 0.80, L / 2 + 0.03); th1.userData.mergeKey = 'head'; g.add(th1);
+      var th2 = th1.clone(); th2.position.x = 0.78; g.add(th2);
+      var tband = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.05), tailMat); tband.position.set(0, 0.72, -L / 2 - 0.02); tband.userData.mergeKey = 'tail'; g.add(tband);
+    } else if (type === 'boat') {
+      var bh1 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.05), headMat); bh1.position.set(-0.55, 0.82, L * 0.30); bh1.rotation.y = 0.3; bh1.userData.mergeKey = 'head'; g.add(bh1);
+      var bh2 = bh1.clone(); bh2.position.x = 0.55; bh2.rotation.y = -0.3; g.add(bh2);
+      var bt1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.07, 0.04), tailMat); bt1.position.set(0, 0.80, -L / 2 - 0.02); bt1.userData.mergeKey = 'tail'; g.add(bt1);
     } else {
-      var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat); h1.position.set(-hw, H * 0.5, L / 2 + 0.05); h1.userData.mergeKey = 'head'; g.add(h1);
+      var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat); h1.position.set(-hw, H * 0.52, L / 2 + 0.05); h1.userData.mergeKey = 'head'; g.add(h1);
       var h2 = h1.clone(); h2.position.x = hw; g.add(h2);
-      var t1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat); t1.position.set(-hw, H * 0.52, -L / 2 - 0.05); t1.userData.mergeKey = 'tail'; g.add(t1);
-      var t2 = t1.clone(); t2.position.x = hw; g.add(t2);
-      if (type === 'sedan' || type === 'sport' || type === 'taxi' || type === 'police') {
-        h1.rotation.y = 0.38; h2.rotation.y = -0.38; // wedge lamps wrap the front corners
-      }
+      h1.rotation.y = 0.38; h2.rotation.y = -0.38; // wedge lamps wrap the front corners
+      // Rev 9: DRL strips under the wedge lamps + the continuous rear
+      // light BAND (gradient texture, brake-reactive via tailMat).
+      var drl1 = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.032, 0.03), headMat); drl1.position.set(-hw, H * 0.44, L / 2 + 0.045); drl1.rotation.y = 0.38; drl1.userData.mergeKey = 'head'; g.add(drl1);
+      var drl2 = drl1.clone(); drl2.position.x = hw; drl2.rotation.y = -0.38; g.add(drl2);
+      var band = new THREE.Mesh(new THREE.BoxGeometry(W * 0.76, 0.085, 0.045), tailMat);
+      band.position.set(0, type === 'sport' ? 0.64 : 0.74, -L / 2 - 0.025);
+      band.userData.mergeKey = 'tail'; g.add(band);
     }
     // Headlight glow sprites + a fake light cone (opacity driven globally by
     // the time of day via Vehicles.setLightLevel). No cone on the motor.
@@ -433,13 +673,24 @@
         var type = types[ti];
         var built = buildMesh(type, 0xffffff);
         var paintGeos = [], trimGeos = [];
-        var kids = built.group.children;
+        // Rev 9: wheels are spinning GROUPS now, so the bake walks the
+        // whole subtree (matrixWorld) instead of direct children — the
+        // far shell keeps the v3 wheels and loft silhouette. The motor
+        // rider subtree and the light cone are pruned.
+        built.group.updateMatrixWorld(true);
+        var kids = [];
+        (function collect(node) {
+          for (var ci = 0; ci < node.children.length; ci++) {
+            var ch = node.children[ci];
+            if (ch === built.group.userData.rider || ch === built.group.userData.cone) continue;
+            if (ch.isMesh) kids.push(ch);
+            collect(ch);
+          }
+        })(built.group);
         for (var ci = 0; ci < kids.length; ci++) {
           var child = kids[ci];
-          if (!child.isMesh) continue;
-          if (child === built.group.userData.cone || child.userData.isBlob) continue;
-          child.updateMatrix();
-          var geo = child.geometry.clone().applyMatrix4(child.matrix);
+          if (child.userData.isBlob) continue;
+          var geo = child.geometry.clone().applyMatrix4(child.matrixWorld);
           if (child.material === built.paintMat) { paintGeos.push(geo); continue; }
           var col = (child.material && child.material.map) ? new THREE.Color(0x777d85)
             : (child.material && child.material.color ? child.material.color : new THREE.Color(0x777d85));
