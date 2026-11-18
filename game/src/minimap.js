@@ -32,6 +32,17 @@
     seaGrad.addColorStop(1, '#1d5f8a');
     g.fillStyle = seaGrad;
     g.fillRect(0, 0, MAP, MAP);
+    // Shallow band: a wide pale stroke just seaward of the shore, drawn
+    // under the landmass so the coast reads as shelving water.
+    g.strokeStyle = 'rgba(70,160,205,0.55)';
+    g.lineWidth = 30 / WORLD_W * MAP;
+    g.lineJoin = 'round';
+    g.beginPath();
+    for (x = -680; x <= 680; x += 20) {
+      var shy = w2my(SH.World.coastZ(x) + 16);
+      if (x === -680) g.moveTo(w2mx(x), shy); else g.lineTo(w2mx(x), shy);
+    }
+    g.stroke();
 
     // Landmass: a dark-cream island whose south shore follows coastZ(x).
     g.fillStyle = '#b89a6a';
@@ -48,15 +59,9 @@
     g.fillStyle = '#4d8a48';
     g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx - 12) / WORLD_W * MAP, (isl.rz - 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
 
-    // Districts in their own colours (the pause-map legend made visible).
-    var districts = SH.Config.districts;
-    for (i = 0; i < districts.length; i++) {
-      var d = districts[i];
-      g.fillStyle = d.map;
-      g.globalAlpha = 0.88;
-      g.fillRect(w2mx(d.x0), w2my(d.z0), w2mx(d.x1) - w2mx(d.x0), w2my(d.z1) - w2my(d.z0));
-    }
-    g.globalAlpha = 1;
+    // Taman Arus parkland around the pond (drawn under the road net).
+    g.fillStyle = 'rgba(93,145,83,0.6)';
+    g.beginPath(); g.ellipse(w2mx(0), w2my(58), 108 / WORLD_W * MAP, 82 / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
     // Sand stroke tracing the curved shoreline.
     g.strokeStyle = '#e8cf9a';
     g.lineWidth = 15 / WORLD_W * MAP;
@@ -80,22 +85,131 @@
       var c = cols[i];
       g.fillRect(w2mx(c.x - c.hx), w2my(c.z - c.hz), (c.hx * 2) / WORLD_W * MAP, (c.hz * 2) / WORLD_H * MAP);
     }
-    // Roads from the shared graph: city streets light, the ring highway
-    // and the diagonal boulevard in orange accent on their real paths,
-    // alleys as thin dark lanes.
+    // Roads from the shared graph, drawn in passes (Art Bible v2 layer
+    // order): a dark casing under a lighter centre line. Weights follow
+    // the bible scaled to this canvas: ring ~6px, arterials ~3.6px,
+    // alleys ~1.6px. The bridge deck rides over the water.
     var graph = SH.World.graph;
-    for (var pass = 0; pass < 3; pass++) {
+    function roadPath(pass) {
       for (var e = 0; e < graph.edges.length; e++) {
         var ed = graph.edges[e], a = graph.nodes[ed.a], b = graph.nodes[ed.b];
         var kind = ed.kind || 'grid';
         var accent = kind === 'ring' || kind === 'diag';
-        if (pass === 0 && !accent) continue;
-        if (pass === 1 && (accent || kind === 'alley')) continue;
-        if (pass === 2 && kind !== 'alley') continue;
-        g.strokeStyle = accent ? '#e07b2a' : (kind === 'alley' ? '#5d5648' : '#ddd6c4');
-        g.lineWidth = (accent ? 14 : (kind === 'alley' ? 4 : 10)) / WORLD_W * MAP;
+        var wPx, style;
+        if (pass === 'casing') {
+          if (kind === 'alley') continue;
+          wPx = accent ? 8.6 : 5.8; style = '#45413a';
+        } else if (pass === 'centre') {
+          if (accent) { wPx = kind === 'ring' ? 6 : 5; style = '#e07b2a'; }
+          else if (kind === 'alley') { wPx = 1.6; style = '#6a6252'; }
+          else { wPx = 3.6; style = '#e6dfca'; }
+        } else { // accent redraw, over the district tint
+          if (!accent) continue;
+          wPx = kind === 'ring' ? 4.2 : 3.6; style = '#f08a35';
+        }
+        g.strokeStyle = style;
+        g.lineWidth = wPx;
         g.beginPath(); g.moveTo(w2mx(a.x), w2my(a.z)); g.lineTo(w2mx(b.x), w2my(b.z)); g.stroke();
       }
+    }
+    g.lineCap = 'round';
+    roadPath('casing');
+    roadPath('centre');
+    // District tint OVER the road network (alpha 0.13, inside the
+    // bible's 0.08-0.15 range): districts read as washes of colour and
+    // the streets stay visible through them.
+    var districts = SH.Config.districts;
+    for (i = 0; i < districts.length; i++) {
+      var d = districts[i];
+      g.fillStyle = d.map;
+      g.globalAlpha = 0.15;
+      g.fillRect(w2mx(d.x0), w2my(d.z0), w2mx(d.x1) - w2mx(d.x0), w2my(d.z1) - w2my(d.z0));
+    }
+    g.globalAlpha = 1;
+    roadPath('accent');
+    // Foam lines: a bright waterline right on the shore, a fainter
+    // second line seaward, and a foam ring around Pulau Seberang.
+    function foamPath(offM, alpha, wPx) {
+      g.strokeStyle = 'rgba(255,255,255,' + alpha + ')';
+      g.lineWidth = wPx;
+      g.beginPath();
+      for (x = -680; x <= 680; x += 16) {
+        var fy = w2my(SH.World.coastZ(x) + offM);
+        if (x === -680) g.moveTo(w2mx(x), fy); else g.lineTo(w2mx(x), fy);
+      }
+      g.stroke();
+    }
+    foamPath(3, 0.85, 2.2);
+    foamPath(12, 0.30, 1.6);
+    g.strokeStyle = 'rgba(255,255,255,0.7)';
+    g.lineWidth = 2;
+    g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx + 7) / WORLD_W * MAP, (isl.rz + 7) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.stroke();
+    drawLandmarks(g);
+  }
+
+  // Landmark icons: tiny dark glyphs, each drawn twice — a pale offset
+  // pass as halo, then the dark glyph on top (crane, ferry pier, market
+  // tent, drum hotel, island lighthouse).
+  function drawLandmarks(g) {
+    var spots = [
+      { kind: 'crane', x: 505, z: 168 },
+      { kind: 'ferry', x: 60, z: 400 },
+      { kind: 'tent', x: -306, z: 92 },
+      { kind: 'hotel', x: -60, z: 176 },
+      { kind: 'faro', x: 334, z: 452 }
+    ];
+    for (var i = 0; i < spots.length; i++) {
+      var cx = w2mx(spots[i].x), cy = w2my(spots[i].z);
+      // Pale pin disc so the glyph reads at pause-map scale.
+      g.fillStyle = 'rgba(255,246,220,0.6)';
+      g.beginPath(); g.arc(cx, cy, 12.5, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(38,34,48,0.55)';
+      g.lineWidth = 1.2;
+      g.beginPath(); g.arc(cx, cy, 12.5, 0, Math.PI * 2); g.stroke();
+      g.save();
+      g.translate(cx, cy);
+      g.scale(1.55, 1.55);
+      for (var pass = 0; pass < 2; pass++) {
+        g.strokeStyle = pass === 0 ? 'rgba(255,246,220,0.85)' : '#262230';
+        g.fillStyle = g.strokeStyle;
+        g.lineWidth = pass === 0 ? 2.4 : 1.6;
+        glyph(g, spots[i].kind, pass === 0 ? 0.7 : 0, pass === 0 ? 0.7 : 0);
+      }
+      g.restore();
+    }
+  }
+
+  function glyph(g, kind, cx, cy) {
+    g.beginPath();
+    if (kind === 'crane') {
+      g.moveTo(cx - 5, cy + 7); g.lineTo(cx - 5, cy - 7);
+      g.lineTo(cx + 7, cy - 7);
+      g.moveTo(cx - 5, cy - 1); g.lineTo(cx + 3, cy - 7);
+      g.moveTo(cx + 5, cy - 7); g.lineTo(cx + 5, cy - 2);
+      g.stroke();
+      g.fillRect(cx + 3.8, cy - 2, 2.4, 2.4);
+    } else if (kind === 'ferry') {
+      g.moveTo(cx - 7, cy + 2); g.lineTo(cx + 7, cy + 2); g.lineTo(cx + 4, cy + 6); g.lineTo(cx - 4, cy + 6); g.closePath(); g.fill();
+      g.beginPath();
+      g.moveTo(cx, cy + 2); g.lineTo(cx, cy - 7); g.stroke();
+      g.beginPath();
+      g.moveTo(cx, cy - 7); g.lineTo(cx + 4.5, cy - 4.5); g.lineTo(cx, cy - 2); g.closePath(); g.fill();
+    } else if (kind === 'tent') {
+      g.moveTo(cx - 7, cy + 6); g.lineTo(cx, cy - 5); g.lineTo(cx + 7, cy + 6); g.closePath(); g.fill();
+      g.beginPath();
+      g.moveTo(cx, cy - 5); g.lineTo(cx, cy - 8); g.stroke();
+      g.beginPath();
+      g.moveTo(cx, cy - 8); g.lineTo(cx + 3.6, cy - 6.4); g.lineTo(cx, cy - 4.8); g.closePath(); g.fill();
+    } else if (kind === 'hotel') {
+      g.fillRect(cx - 4.5, cy - 7, 9, 14);
+      g.fillStyle = 'rgba(255,246,220,0.9)';
+      g.fillRect(cx - 2.6, cy - 4.4, 1.8, 1.8); g.fillRect(cx + 0.9, cy - 4.4, 1.8, 1.8);
+      g.fillRect(cx - 2.6, cy - 0.9, 1.8, 1.8); g.fillRect(cx + 0.9, cy - 0.9, 1.8, 1.8);
+      g.fillRect(cx - 2.6, cy + 2.6, 1.8, 1.8); g.fillRect(cx + 0.9, cy + 2.6, 1.8, 1.8);
+    } else if (kind === 'faro') {
+      g.moveTo(cx - 3, cy + 7); g.lineTo(cx - 1.6, cy - 4); g.lineTo(cx + 1.6, cy - 4); g.lineTo(cx + 3, cy + 7); g.closePath(); g.fill();
+      g.fillStyle = '#ffd23f';
+      g.beginPath(); g.arc(cx, cy - 6, 2.1, 0, Math.PI * 2); g.fill();
     }
   }
 

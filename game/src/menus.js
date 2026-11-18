@@ -62,7 +62,7 @@
       sen.addEventListener('input', applySettings);
       qual.addEventListener('change', applySettings);
 
-      // Full-map click → waypoint.
+      // Full-map click → waypoint; right-click clears it again.
       var big = byId('bigmap');
       big.addEventListener('click', function (e) {
         var w = SH.Minimap.mapClickToWorld(big, e.clientX, e.clientY);
@@ -70,6 +70,14 @@
           SH.State.waypoint = w;
           SH.Minimap.drawFullMap(big);
           SH.HUD.notify('Waypoint set');
+        }
+      });
+      big.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        if (SH.State.waypoint) {
+          SH.State.waypoint = null;
+          SH.Minimap.drawFullMap(big);
+          SH.HUD.notify('Waypoint cleared');
         }
       });
 
