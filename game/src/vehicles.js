@@ -308,13 +308,38 @@
       var cfg = SH.Config.world;
       if (v.type === 'boat') {
         // Boats live on the water: free range across the bay, but the hull
-        // grounds on the beach line and cannot climb onto land.
+        // grounds a couple of metres past the curved waterline, and Pulau
+        // Seberang is solid — the island rim pushes a hull back out.
         v.x = Math.max(-cfg.halfX - 260, Math.min(cfg.halfX + 260, v.x));
-        v.z = Math.max(cfg.beachZ + 16, Math.min(cfg.waterZ + 320, v.z));
+        v.z = Math.max(SH.World.coastZ(v.x) + 2, Math.min(cfg.waterZ + 320, v.z));
+        if (SH.World.onIsland(v.x, v.z, -4)) {
+          var islB = SH.Config.island;
+          var bx2 = v.x - islB.x, bz2 = v.z - islB.z;
+          var bl = Math.hypot(bx2 / islB.rx, bz2 / islB.rz) || 1;
+          v.x = islB.x + bx2 / bl;
+          v.z = islB.z + bz2 / bl;
+        }
         return;
       }
       v.x = Math.max(-cfg.halfX - 20, Math.min(cfg.halfX + 20, v.x));
-      v.z = Math.min(cfg.waterZ + 2, v.z);
+      // Land vehicles stop at the curved shoreline — except on the pier,
+      // the bridge corridor (rails hold them, like the player) and the
+      // island, whose rim pulls them back instead of teleporting them.
+      if (v.z > SH.World.coastZ(v.x) + 2 && !SH.World.isLand(v.x, v.z)) {
+        var bcv = SH.World.bridgeClosest(v.x, v.z);
+        if (bcv.dist < 30) {
+          var pullv = Math.min(1, 6.8 / Math.max(bcv.dist, 0.001));
+          v.x = bcv.x + (v.x - bcv.x) * pullv;
+          v.z = bcv.z + (v.z - bcv.z) * pullv;
+        } else if (v.z < 380) {
+          v.z = SH.World.coastZ(v.x) + 2;
+        } else {
+          var islV = SH.Config.island;
+          var exv = (v.x - islV.x) / (islV.rx + 6), ezv = (v.z - islV.z) / (islV.rz + 6);
+          var eev = exv * exv + ezv * ezv;
+          if (eev > 1) { var scv = 1 / Math.sqrt(eev); v.x = islV.x + (v.x - islV.x) * scv; v.z = islV.z + (v.z - islV.z) * scv; }
+        }
+      }
       v.z = Math.max(-cfg.halfZ - 20, v.z);
     },
 

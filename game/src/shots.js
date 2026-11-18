@@ -47,11 +47,15 @@
     var cars = SH.Traffic.cars;
     for (var i = 0; i < spots.length && i < cars.length; i++) {
       var s = spots[i]; // { from: [x,z], to: [x,z], t }
-      var ei = -1, fromIdx = -1;
+      // Nearest-endpoint match (not exact coords): the graph gained curved
+      // and diagonal edges in Art Pass 3, so staging spots name the area
+      // and the closest real edge wins.
+      var ei = -1, fromIdx = -1, bestScore = Infinity;
       for (var e = 0; e < g.edges.length; e++) {
         var a = g.nodes[g.edges[e].a], b = g.nodes[g.edges[e].b];
-        if (a.x === s.from[0] && a.z === s.from[1] && b.x === s.to[0] && b.z === s.to[1]) { ei = e; fromIdx = g.edges[e].a; break; }
-        if (b.x === s.from[0] && b.z === s.from[1] && a.x === s.to[0] && a.z === s.to[1]) { ei = e; fromIdx = g.edges[e].b; break; }
+        var s1 = Math.hypot(a.x - s.from[0], a.z - s.from[1]) + Math.hypot(b.x - s.to[0], b.z - s.to[1]);
+        var s2 = Math.hypot(b.x - s.from[0], b.z - s.from[1]) + Math.hypot(a.x - s.to[0], a.z - s.to[1]);
+        if (Math.min(s1, s2) < bestScore) { bestScore = Math.min(s1, s2); ei = e; fromIdx = s1 <= s2 ? g.edges[e].a : g.edges[e].b; }
       }
       if (ei < 0) continue;
       var v = cars[i];
@@ -85,11 +89,12 @@
       st.mode = 'playing';
 
       if (name === 'cover') {
-        // Golden-hour westbound drive on the Pantai Kencana beachfront street
-        // (z=228): hotels and palms on the right, open sea on the left, and
-        // the sun sprite visible ahead over the water.
+        // Golden-hour westbound drive on the Pantai Kencana beachfront
+        // street, which now bends with the coast (z from beachRoadZ):
+        // hotels and palms on the right, open sea on the left, and the
+        // sun sprite visible ahead over the water.
         SH.Main.setHour(17.85);
-        var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0xff4fa3, -30, 228, -Math.PI / 2);
+        var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0xff4fa3, -30, SH.World.beachRoadZ(-30), -Math.PI / 2);
         enterClean(car);
         st._shotCruise = { speed: 15 };
         st.camYaw = Math.PI / 2; st.camPitch = 0.04;
@@ -102,7 +107,7 @@
           { from: [-240, 228], to: [-120, 228], t: 0.75 },
           { from: [120, 228], to: [0, 228], t: 0.55 }
         ]);
-        stagePeds([[-52, 237], [-18, 219.5], [8, 237], [-84, 219.5]]);
+        stagePeds([[-52, 241], [-18, 224], [8, 246], [-84, 221]]);
         if (SH.HUD) SH.HUD.subtitle('Mami Ratna', 'Beach road, Raka. Sunset is pretty — the debt is not. Move.', 30);
       } else if (name === 'drive') {
         // Northbound through Pelita Heights at golden hour, towers both sides.

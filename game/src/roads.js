@@ -113,38 +113,69 @@
       scene.add(ground);
       this.groundMesh = ground;
 
-      // Sand strip along the beach.
-      var sand = new THREE.Mesh(
-        new THREE.PlaneGeometry(cfg.halfX * 2 + 400, 90),
-        new THREE.MeshLambertMaterial({ color: pal.sand })
-      );
-      sand.rotation.x = -Math.PI / 2;
-      sand.position.set(0, -0.03, cfg.beachZ + 55);
-      sand.receiveShadow = true;
-      scene.add(sand);
+      // Shore ribbons (Art Pass 3): sand, shallow water and foam all follow
+      // the organic coastZ(x) curve — bays and headlands instead of the old
+      // straight ruler line at z=waterZ.
+      function coastRibbon(offNear, offFar, y, mat) {
+        var xs2 = [], step = 24;
+        for (var rx = -860; rx <= 860; rx += step) xs2.push(rx);
+        var posArr = new Float32Array(xs2.length * 2 * 3);
+        var uvArr = new Float32Array(xs2.length * 2 * 2);
+        var idx = [];
+        for (var vi = 0; vi < xs2.length; vi++) {
+          var vx = xs2[vi], cz = SH.World.coastZ(vx);
+          posArr.set([vx, y, cz + offNear, vx, y, offFar === null ? 820 : cz + offFar], vi * 6);
+          uvArr.set([vx / 46, 0, vx / 46, 1], vi * 4);
+          if (vi > 0) {
+            var b0 = (vi - 1) * 2;
+            idx.push(b0, b0 + 1, b0 + 2, b0 + 1, b0 + 3, b0 + 2);
+          }
+        }
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        return mesh;
+      }
+      var sand = coastRibbon(-64, 8, -0.025, new THREE.MeshLambertMaterial({ color: pal.sand }));
       this.sandMesh = sand;
 
-      // Sea: big animated-tinted plane south of the beach + around the land.
-      var water = new THREE.Mesh(
-        new THREE.PlaneGeometry(4000, 4000),
-        new THREE.MeshPhongMaterial({ color: pal.water, shininess: 90, specular: 0x99ddff, transparent: true, opacity: 0.94 })
-      );
+      // Sea: one shared water material — the big deep plane plus a shore
+      // ribbon that starts at the curved waterline and runs south, so the
+      // bays actually fill with water instead of showing bare ground.
+      var waterMat = new THREE.MeshPhongMaterial({ color: pal.water, shininess: 90, specular: 0x99ddff, transparent: true, opacity: 0.94 });
+      var water = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), waterMat);
       water.rotation.x = -Math.PI / 2;
       water.position.set(0, -0.55, cfg.waterZ + 1750);
       scene.add(water);
       this.waterMesh = water;
+      coastRibbon(-6, null, -0.045, waterMat);
 
-      // Foam/wave lines creeping on the shore.
+      // Foam lines creeping on the curved shore.
       var foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
       for (var w = 0; w < 3; w++) {
-        var foam = new THREE.Mesh(new THREE.PlaneGeometry(cfg.halfX * 2 + 300, 2.2), foamMat);
-        foam.rotation.x = -Math.PI / 2;
-        foam.position.set(0, 0.02, cfg.waterZ + w * 7);
-        scene.add(foam);
+        var foam = coastRibbon(1.5 + w * 7, 3.7 + w * 7, 0.02, foamMat);
+        foam.receiveShadow = false;
         this.waveMeshes.push(foam);
       }
 
+      // Taman Arus canal: a straight water cut from the park pond to the
+      // sea, slipping under the streets (their y=0 decks read as bridges).
+      var canalBank = new THREE.Mesh(new THREE.PlaneGeometry(13.5, 252), new THREE.MeshLambertMaterial({ color: 0x4a3d2c }));
+      canalBank.rotation.x = -Math.PI / 2; canalBank.position.set(0, -0.03, 208);
+      scene.add(canalBank);
+      var canal = new THREE.Mesh(new THREE.PlaneGeometry(10, 252), waterMat);
+      canal.rotation.x = -Math.PI / 2; canal.position.set(0, -0.015, 208);
+      scene.add(canal);
+
       // Roads: one plane per graph edge, textured asphalt with dashes.
+      // Axis-aligned edges keep the original fast path; diagonal / coast /
+      // island edges go through a general heading path (Art Pass 3), alleys
+      // render narrow, and bridge edges get a real deck with rails.
       var tex = asphaltTexture();
       var edges = SH.World.graph.edges, nodes = SH.World.graph.nodes;
       var roadMat = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, shininess: 26, specular: 0x8a6a4a });
@@ -152,36 +183,88 @@
       this.roadMaterials = [];
       var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk, map: walkTexture() });
       this.walkMaterial = walkMat;
+      var deckMat = new THREE.MeshLambertMaterial({ color: 0x6a5f52 });
+      var railMat = new THREE.MeshLambertMaterial({ color: 0x8a4a3a });
       var lampEvery = 26;
 
       for (var i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].a], b = nodes[edges[i].b];
-        var len = Math.hypot(b.x - a.x, b.z - a.z);
+        var dx = b.x - a.x, dz = b.z - a.z;
+        var len = Math.hypot(dx, dz);
         var mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
-        var wRoad = cfg.roadHalf * 2;
+        var kind = edges[i].kind || 'grid';
+        var axis = Math.abs(dx) < 0.05 || Math.abs(dz) < 0.05;
+        var ux = dx / len, uz = dz / len;         // unit direction
+        var px = uz, pz = -ux;                    // unit perpendicular
+        var wRoad = kind === 'alley' ? 3.6 : (kind === 'ring' ? cfg.roadHalf * 2 + 2.4 : cfg.roadHalf * 2);
         var t2 = tex.clone(); t2.needsUpdate = true;
         t2.repeat.set(1, Math.max(1, Math.round(len / 9)));
-        if (!edges[i].vertical) t2.rotation = Math.PI / 2, t2.center.set(0.5, 0.5);
+        if (axis && !edges[i].vertical) { t2.rotation = Math.PI / 2; t2.center.set(0.5, 0.5); }
         var mat = new THREE.MeshPhongMaterial({ map: t2, shininess: 26, specular: 0x8a6a4a });
+        if (kind === 'alley') mat.color.setHex(0x9a9186);
         this.roadMaterials.push(mat);
+
+        if (kind === 'bridge') {
+          // Deck box + a marked driving plane on top + rails + pillars.
+          var deck = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.55, len + 3), deckMat);
+          deck.rotation.y = Math.atan2(dx, dz);
+          deck.position.set(mx, -0.26, mz);
+          deck.castShadow = true; deck.receiveShadow = true;
+          scene.add(deck);
+          var top = new THREE.Mesh(new THREE.PlaneGeometry(9.2, len + 9.2), mat);
+          top.rotation.order = 'YXZ';
+          top.rotation.y = Math.atan2(-dx, -dz);
+          top.rotation.x = -Math.PI / 2;
+          top.position.set(mx, 0.03, mz);
+          top.receiveShadow = true;
+          scene.add(top);
+          for (var rs = -1; rs <= 1; rs += 2) {
+            var rail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.85, len + 3), railMat);
+            rail.rotation.y = Math.atan2(dx, dz);
+            rail.position.set(mx + px * rs * 4.6, 0.42, mz + pz * rs * 4.6);
+            rail.castShadow = true;
+            scene.add(rail);
+          }
+          var nPil = Math.max(1, Math.floor(len / 26));
+          for (var np = 1; np <= nPil; np++) {
+            var pt = np / (nPil + 1);
+            var pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.95, 2.6, 7), deckMat);
+            pillar.position.set(a.x + dx * pt, -1.5, a.z + dz * pt);
+            scene.add(pillar);
+          }
+          continue;
+        }
+
         var road = new THREE.Mesh(new THREE.PlaneGeometry(wRoad, len + wRoad), mat);
-        road.rotation.x = -Math.PI / 2;
-        if (!edges[i].vertical) road.rotation.z = Math.PI / 2;
+        if (axis) {
+          road.rotation.x = -Math.PI / 2;
+          if (!edges[i].vertical) road.rotation.z = Math.PI / 2;
+        } else {
+          road.rotation.order = 'YXZ';
+          road.rotation.y = Math.atan2(-dx, -dz);
+          road.rotation.x = -Math.PI / 2;
+        }
         road.position.set(mx, 0, mz);
         road.receiveShadow = true;
         scene.add(road);
 
-        // Sidewalks on both sides of grid streets (not the ring highway).
-        var isRing = len > 700;
-        if (!isRing) {
+        // Sidewalks + lamps on city streets (not ring, alley or bridge).
+        if (kind === 'grid' || kind === 'diag' || kind === 'coast') {
           for (var s = -1; s <= 1; s += 2) {
             var walk = new THREE.Mesh(new THREE.PlaneGeometry(cfg.sidewalk, len + wRoad), walkMat);
-            walk.rotation.x = -Math.PI / 2;
-            if (!edges[i].vertical) walk.rotation.z = Math.PI / 2;
-            var off = cfg.roadHalf + cfg.sidewalk / 2;
-            walk.position.set(
-              mx + (edges[i].vertical ? s * off : 0), 0.04,
-              mz + (edges[i].vertical ? 0 : s * off));
+            var wOff = cfg.roadHalf + cfg.sidewalk / 2;
+            if (axis) {
+              walk.rotation.x = -Math.PI / 2;
+              if (!edges[i].vertical) walk.rotation.z = Math.PI / 2;
+              walk.position.set(
+                mx + (edges[i].vertical ? s * wOff : 0), 0.04,
+                mz + (edges[i].vertical ? 0 : s * wOff));
+            } else {
+              walk.rotation.order = 'YXZ';
+              walk.rotation.y = Math.atan2(-dx, -dz);
+              walk.rotation.x = -Math.PI / 2;
+              walk.position.set(mx + px * s * wOff, 0.04, mz + pz * s * wOff);
+            }
             walk.receiveShadow = true;
             scene.add(walk);
           }
@@ -191,8 +274,8 @@
             var t = k / (steps + 1);
             for (var side = -1; side <= 1; side += 2) {
               this.lampPositions.push({
-                x: mx + (b.x - a.x) * (t - 0.5) + (edges[i].vertical ? side * (cfg.roadHalf + 1) : 0),
-                z: mz + (b.z - a.z) * (t - 0.5) + (edges[i].vertical ? 0 : side * (cfg.roadHalf + 1))
+                x: a.x + dx * t + px * side * (cfg.roadHalf + 1),
+                z: a.z + dz * t + pz * side * (cfg.roadHalf + 1)
               });
             }
           }
@@ -201,9 +284,11 @@
     },
 
     update: function (dt, elapsed) {
+      // Foam ribbons are baked to the curved shore, so the creep is faked
+      // with a slow sideways drift + opacity pulse instead of a z shift.
       for (var i = 0; i < this.waveMeshes.length; i++) {
         var m = this.waveMeshes[i];
-        m.position.z = SH.Config.world.waterZ + i * 7 + Math.sin(elapsed * 0.7 + i * 1.7) * 2.4;
+        m.position.x = Math.sin(elapsed * 0.5 + i * 1.7) * 3.2;
         m.material.opacity = 0.32 + 0.18 * Math.sin(elapsed * 0.9 + i * 2.1);
       }
       if (this.waterMesh) this.waterMesh.position.y = -0.55 + Math.sin(elapsed * 0.5) * 0.06;

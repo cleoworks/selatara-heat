@@ -67,10 +67,29 @@
       }
       var cfg = SH.Config.world;
       p.x = Math.max(-cfg.halfX - 30, Math.min(cfg.halfX + 30, p.x));
-      // The pier deck is walkable over the water: its exception must be
-      // decided BEFORE the shoreline clamp, or the clamp eats it first.
-      var onPier = p.x > 53 && p.x < 67 && p.z > cfg.waterZ;
-      p.z = Math.min(onPier ? 392 : cfg.waterZ + 4, p.z);
+      // Shoreline (Art Pass 3): the waterline curves with coastZ(x). The
+      // pier, the bridge corridor and Pulau Seberang are walkable over the
+      // water (SH.World.isLand decides); everywhere else the shallows stop
+      // you a few metres past the waterline. Straying sideways off the
+      // bridge lands you back on the deck (the rails hold you), and the
+      // island has its own rim pull-back — stepping off it must never
+      // teleport you back to the mainland shore.
+      if (p.z > SH.World.coastZ(p.x) + 4 && !SH.World.isLand(p.x, p.z)) {
+        var bc = SH.World.bridgeClosest(p.x, p.z);
+        if (bc.dist < 30) {
+          var pull = Math.min(1, 7.2 / Math.max(bc.dist, 0.001));
+          p.x = bc.x + (p.x - bc.x) * pull;
+          p.z = bc.z + (p.z - bc.z) * pull;
+        } else if (p.z < 380) {
+          p.z = SH.World.coastZ(p.x) + 4;
+        } else {
+          var isl = SH.Config.island;
+          var ex = (p.x - isl.x) / (isl.rx + 6), ez = (p.z - isl.z) / (isl.rz + 6);
+          var ee = ex * ex + ez * ez;
+          if (ee > 1) { var sc = 1 / Math.sqrt(ee); p.x = isl.x + (p.x - isl.x) * sc; p.z = isl.z + (p.z - isl.z) * sc; }
+        }
+      }
+      if (p.x > 53 && p.x < 67 && p.z > 392) p.z = 392; // pier end cap
       p.z = Math.max(-cfg.halfZ - 30, p.z);
     },
 

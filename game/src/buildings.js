@@ -120,6 +120,7 @@
       // buildings placed one after another (i.e. neighbours on a street)
       // never share a facade texture.
       var towers = [], shops = [], warehouses = [], villas = [], podiums = [], awnings = [], hotels = [];
+      var plazaSpots = [];
       var bucketSeq = { tower: 0, shop: 0, warehouse: 0, villa: 0, hotel: 0 };
       var xs = cfg.avenuesX, zs = cfg.streetsZ;
       for (var i = 0; i + 1 < xs.length; i++) {
@@ -127,6 +128,9 @@
           var cx = (xs[i] + xs[i + 1]) / 2, cz = (zs[j] + zs[j + 1]) / 2;
           var d = SH.World.districtAt(cx, cz);
           if (!d || d.id === 'taman') continue;
+          // Cells the diagonal boulevard cuts through stay open: a paved
+          // plaza with palms instead of a building the road would pierce.
+          if (SH.World.diagCells[i + ',' + j]) { plazaSpots.push({ x: cx, z: cz }); continue; }
           var bw = xs[i + 1] - xs[i] - cfg.roadHalf * 2 - cfg.sidewalk * 2 - 6;
           var bd = zs[j + 1] - zs[j] - cfg.roadHalf * 2 - cfg.sidewalk * 2 - 6;
           if (d.id === 'pelita') {
@@ -172,8 +176,10 @@
             for (var kh2 = 0; kh2 < 2; kh2++) {
               var kh = d.minH + rng() * (d.maxH - d.minH);
               var kx = cx + (kh2 === 0 ? -1 : 1) * bw * 0.22;
-              hotels.push({ x: kx, y: kh / 2, z: cz - 8, sx: bw * 0.4, sy: kh, sz: bw * 0.4, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
-              SH.World.colliders.push({ x: kx, z: cz - 8, hx: bw * 0.2, hz: bw * 0.2 });
+              // Pulled north (cz-17) and slightly slimmer so the bending
+              // beach road's corridor stays clear at its southernmost dip.
+              hotels.push({ x: kx, y: kh / 2, z: cz - 17, sx: bw * 0.36, sy: kh, sz: bw * 0.36, base: 0, h: kh, bucket: (bucketSeq.hotel++) % 3 });
+              SH.World.colliders.push({ x: kx, z: cz - 17, hx: bw * 0.18, hz: bw * 0.18 });
             }
           }
         }
@@ -276,7 +282,21 @@
       var palms = [], parkTrees = [];
       var pi;
       for (pi = 0; pi < 130; pi++) {
-        palms.push({ x: -560 + rng() * 1120, z: 196 + rng() * 84, s: 0.9 + rng() * 0.4, lean: rng() * Math.PI * 2 });
+        var bx = -560 + rng() * 1120;
+        // Beach palms hug the curved shore: on the sand, north of the water.
+        palms.push({ x: bx, z: SH.World.coastZ(bx) - 66 + rng() * 40, s: 0.9 + rng() * 0.4, lean: rng() * Math.PI * 2 });
+      }
+      // Plaza greenery on the boulevard-cut blocks + the island shore.
+      for (pi = 0; pi < plazaSpots.length; pi++) {
+        var pz2 = plazaSpots[pi];
+        palms.push({ x: pz2.x - 26, z: pz2.z + 24, s: 0.9 + rng() * 0.3, lean: rng() * Math.PI * 2 });
+        palms.push({ x: pz2.x + 28, z: pz2.z - 22, s: 0.85 + rng() * 0.3, lean: rng() * Math.PI * 2 });
+        parkTrees.push({ x: pz2.x + 6, z: pz2.z + 30, s: 0.9 + rng() * 0.3 });
+      }
+      var isl = SH.Config.island;
+      for (pi = 0; pi < 16; pi++) {
+        var ia = rng() * Math.PI * 2, ir = 0.55 + rng() * 0.4;
+        palms.push({ x: isl.x + Math.cos(ia) * isl.rx * ir, z: isl.z + Math.sin(ia) * isl.rz * ir, s: 0.85 + rng() * 0.35, lean: rng() * Math.PI * 2 });
       }
       for (pi = 0; pi < 90; pi++) {
         var tx = -560 + rng() * 1120, tz = -440 + rng() * 620;
@@ -287,19 +307,24 @@
         }
       }
       // Street palms: a palm every ~24 m along both sides of the avenues and
-      // streets in the built districts, so no street reads empty.
+      // streets in the built districts, so no street reads empty. Offsets
+      // use the edge's perpendicular, so diagonal and coast edges plant
+      // correctly too; ring / bridge / alley edges stay bare.
       var gEdges = SH.World.graph.edges, gNodes = SH.World.graph.nodes;
       for (pi = 0; pi < gEdges.length; pi++) {
+        var gk = gEdges[pi].kind || 'grid';
+        if (gk === 'ring' || gk === 'bridge' || gk === 'alley') continue;
         var ga = gNodes[gEdges[pi].a], gb = gNodes[gEdges[pi].b];
-        var glen = Math.hypot(gb.x - ga.x, gb.z - ga.z);
-        if (glen > 700) continue; // ring highway stays bare
+        var gdx = gb.x - ga.x, gdz = gb.z - ga.z;
+        var glen = Math.hypot(gdx, gdz);
+        var gpx2 = gdz / glen, gpz2 = -gdx / glen;
         var gSteps = Math.floor(glen / 24);
         for (var gs = 1; gs <= gSteps; gs++) {
           var gt = gs / (gSteps + 1);
           for (var gSide = -1; gSide <= 1; gSide += 2) {
             if ((gs + (gSide > 0 ? 1 : 0)) % 2 !== 0) continue; // alternate sides
-            var gpx = ga.x + (gb.x - ga.x) * gt + (gEdges[pi].vertical ? gSide * (cfg.roadHalf + 2.6) : 0);
-            var gpz = ga.z + (gb.z - ga.z) * gt + (gEdges[pi].vertical ? 0 : gSide * (cfg.roadHalf + 2.6));
+            var gpx = ga.x + gdx * gt + gpx2 * gSide * (cfg.roadHalf + 2.6);
+            var gpz = ga.z + gdz * gt + gpz2 * gSide * (cfg.roadHalf + 2.6);
             var gd = SH.World.districtAt(gpx, gpz);
             if (!gd) continue;
             palms.push({ x: gpx, z: gpz, s: 0.85 + rng() * 0.3, lean: rng() * Math.PI * 2 });
@@ -431,17 +456,53 @@
       makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), new THREE.MeshLambertMaterial({ flatShading: true }), tents, scene, false);
 
       // ---- Boardwalk + pier at Pantai Kencana ----
+      // The boardwalk is laid in 30 m segments that follow the bending
+      // beach road (roadZ + 17), so it hugs the curved shore.
       var woodMat = new THREE.MeshLambertMaterial({ color: 0xa87c50 });
-      var board = new THREE.Mesh(new THREE.BoxGeometry(980, 0.5, 10), woodMat);
-      board.position.set(0, 0.25, 246); board.receiveShadow = true;
-      scene.add(board);
+      for (var bwx = -480; bwx < 480; bwx += 30) {
+        var bwz1 = SH.World.beachRoadZ(bwx) + 17, bwz2 = SH.World.beachRoadZ(bwx + 30) + 17;
+        var seg = new THREE.Mesh(new THREE.BoxGeometry(31, 0.5, 10), woodMat);
+        seg.position.set(bwx + 15, 0.25, (bwz1 + bwz2) / 2);
+        seg.rotation.y = -Math.atan2(bwz2 - bwz1, 30);
+        seg.receiveShadow = true;
+        scene.add(seg);
+      }
       var pier = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 110), woodMat);
       pier.position.set(60, 0.25, 340);
       scene.add(pier);
       this.pierEnd = { x: 60, z: 392 };
       var umbrellas = [];
-      for (pi = 0; pi < 30; pi++) umbrellas.push({ x: -520 + rng() * 1040, y: 2.2, z: 262 + rng() * 22, sx: 4.6, sy: 1.4, sz: 4.6, color: tentColors[(rng() * tentColors.length) | 0] });
+      for (pi = 0; pi < 30; pi++) {
+        var umx = -520 + rng() * 1040;
+        umbrellas.push({ x: umx, y: 2.2, z: SH.World.coastZ(umx) - 15 - rng() * 11, sx: 4.6, sy: 1.4, sz: 4.6, color: tentColors[(rng() * tentColors.length) | 0] });
+      }
       makeInstanced(new THREE.ConeGeometry(0.6, 1, 8), new THREE.MeshLambertMaterial({ flatShading: true }), umbrellas, scene, false);
+
+      // ---- Pulau Seberang: sand + grass discs, a hideout warehouse and a
+      // villa on the island the bridge reaches ----
+      var isl2 = SH.Config.island;
+      var islSand = new THREE.Mesh(new THREE.CircleGeometry(1, 28), new THREE.MeshLambertMaterial({ color: 0xe3c491 }));
+      islSand.rotation.x = -Math.PI / 2;
+      islSand.scale.set(isl2.rx + 12, isl2.rz + 12, 1);
+      islSand.position.set(isl2.x, -0.018, isl2.z);
+      islSand.receiveShadow = true;
+      scene.add(islSand);
+      var islGrass = new THREE.Mesh(new THREE.CircleGeometry(1, 28), new THREE.MeshLambertMaterial({ color: 0x55a34f }));
+      islGrass.rotation.x = -Math.PI / 2;
+      islGrass.scale.set(isl2.rx - 12, isl2.rz - 12, 1);
+      islGrass.position.set(isl2.x, -0.008, isl2.z);
+      islGrass.receiveShadow = true;
+      scene.add(islGrass);
+      var hideout = new THREE.Mesh(new THREE.BoxGeometry(17, 8, 12), new THREE.MeshLambertMaterial({ map: facadeTexture(999, 'warehouse') }));
+      hideout.position.set(396, 4, 482); hideout.rotation.y = 0.4;
+      hideout.castShadow = true; hideout.receiveShadow = true;
+      scene.add(hideout);
+      SH.World.colliders.push({ x: 396, z: 482, hx: 9, hz: 7 });
+      var islVilla = new THREE.Mesh(new THREE.BoxGeometry(13, 6.5, 11), new THREE.MeshLambertMaterial({ map: facadeTexture(998, 'villa') }));
+      islVilla.position.set(472, 3.25, 474); islVilla.rotation.y = -0.3;
+      islVilla.castShadow = true; islVilla.receiveShadow = true;
+      scene.add(islVilla);
+      SH.World.colliders.push({ x: 472, z: 474, hx: 7, hz: 6 });
 
       // ---- Billboards in Pelita Heights (canvas sign textures, invented brands) ----
       var signs = [

@@ -58,6 +58,7 @@
       var focus = SH.State.player;
       for (var tries = 0; tries < 10; tries++) {
         var node = g.nodes[(this.rng() * g.nodes.length) | 0];
+        if (node.overWater) continue; // never spawn a walker mid-bridge
         var x = node.x + (this.rng() - 0.5) * 16, z = node.z + (this.rng() - 0.5) * 16;
         var d = Math.hypot(x - focus.x, z - focus.z);
         if (!anywhere && (d < 50 || d > 300)) continue;

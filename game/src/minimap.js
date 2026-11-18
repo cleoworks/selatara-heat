@@ -22,33 +22,78 @@
     off.width = MAP; off.height = MAP;
     var g = off.getContext('2d');
     var cfg = SH.Config.world;
-    g.fillStyle = '#3d6b35'; g.fillRect(0, 0, MAP, MAP);                       // land
-    g.fillStyle = '#16486b';                                                    // sea
-    g.fillRect(0, w2my(cfg.waterZ), MAP, MAP - w2my(cfg.waterZ));
-    g.fillRect(w2mx(cfg.halfX + 40), 0, MAP, MAP);
-    g.fillStyle = '#c9a87a';                                                    // sand
-    g.fillRect(0, w2my(cfg.beachZ), MAP, w2my(cfg.waterZ) - w2my(cfg.beachZ));
-    g.fillStyle = '#2e5d33';                                                    // park
-    g.fillRect(w2mx(-132), w2my(-72), w2mx(132) - w2mx(-132), w2my(192) - w2my(-72));
+    var isl = SH.Config.island;
+    var x, z, i;
+
+    // Sea: deep-blue vertical gradient over the whole sheet.
+    var seaGrad = g.createLinearGradient(0, 0, 0, MAP);
+    seaGrad.addColorStop(0, '#0d2f52');
+    seaGrad.addColorStop(0.55, '#12456e');
+    seaGrad.addColorStop(1, '#1d5f8a');
+    g.fillStyle = seaGrad;
+    g.fillRect(0, 0, MAP, MAP);
+
+    // Landmass: a dark-cream island whose south shore follows coastZ(x).
+    g.fillStyle = '#b89a6a';
+    g.beginPath();
+    g.moveTo(w2mx(-680), w2my(-580));
+    g.lineTo(w2mx(680), w2my(-580));
+    g.lineTo(w2mx(680), w2my(SH.World.coastZ(680)));
+    for (x = 680; x >= -680; x -= 20) g.lineTo(w2mx(x), w2my(SH.World.coastZ(x)));
+    g.closePath();
+    g.fill();
+    // Pulau Seberang: sand ellipse + green heart.
+    g.fillStyle = '#d9ba7f';
+    g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx + 12) / WORLD_W * MAP, (isl.rz + 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#4d8a48';
+    g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx - 12) / WORLD_W * MAP, (isl.rz - 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+
+    // Districts in their own colours (the pause-map legend made visible).
+    var districts = SH.Config.districts;
+    for (i = 0; i < districts.length; i++) {
+      var d = districts[i];
+      g.fillStyle = d.map;
+      g.globalAlpha = 0.88;
+      g.fillRect(w2mx(d.x0), w2my(d.z0), w2mx(d.x1) - w2mx(d.x0), w2my(d.z1) - w2my(d.z0));
+    }
+    g.globalAlpha = 1;
+    // Sand stroke tracing the curved shoreline.
+    g.strokeStyle = '#e8cf9a';
+    g.lineWidth = 15 / WORLD_W * MAP;
+    g.lineJoin = 'round';
+    g.beginPath();
+    for (x = -680; x <= 680; x += 20) {
+      var sy = w2my(SH.World.coastZ(x) - 16);
+      if (x === -680) g.moveTo(w2mx(x), sy); else g.lineTo(w2mx(x), sy);
+    }
+    g.stroke();
+    // Park pond + the canal running from it to the sea.
+    g.strokeStyle = '#2e8fb5';
+    g.lineWidth = 9 / WORLD_W * MAP;
+    g.beginPath(); g.moveTo(w2mx(0), w2my(84)); g.lineTo(w2mx(0), w2my(SH.World.coastZ(0))); g.stroke();
     g.fillStyle = '#2e8fb5';
-    g.beginPath(); g.arc(w2mx(0), w2my(60), 26 / WORLD_W * MAP, 0, Math.PI * 2); g.fill(); // pond
-    // Building blocks from colliders.
-    g.fillStyle = '#565064';
+    g.beginPath(); g.arc(w2mx(0), w2my(60), 26 / WORLD_W * MAP, 0, Math.PI * 2); g.fill();
+    // Building blocks from colliders, muted so roads stay readable.
+    g.fillStyle = 'rgba(38,32,48,0.5)';
     var cols = SH.World.colliders;
-    for (var i = 0; i < cols.length; i++) {
+    for (i = 0; i < cols.length; i++) {
       var c = cols[i];
       g.fillRect(w2mx(c.x - c.hx), w2my(c.z - c.hz), (c.hx * 2) / WORLD_W * MAP, (c.hz * 2) / WORLD_H * MAP);
     }
-    // Roads from the shared graph.
+    // Roads from the shared graph: city streets light, the ring highway
+    // and the diagonal boulevard in orange accent on their real paths,
+    // alleys as thin dark lanes.
     var graph = SH.World.graph;
-    for (var pass = 0; pass < 2; pass++) {
+    for (var pass = 0; pass < 3; pass++) {
       for (var e = 0; e < graph.edges.length; e++) {
         var ed = graph.edges[e], a = graph.nodes[ed.a], b = graph.nodes[ed.b];
-        var isRing = Math.hypot(b.x - a.x, b.z - a.z) > 700;
-        if (pass === 0 && !isRing) continue;
-        if (pass === 1 && isRing) continue;
-        g.strokeStyle = isRing ? '#c97a3a' : '#8f8a96';
-        g.lineWidth = (isRing ? 15 : 11) / WORLD_W * MAP;
+        var kind = ed.kind || 'grid';
+        var accent = kind === 'ring' || kind === 'diag';
+        if (pass === 0 && !accent) continue;
+        if (pass === 1 && (accent || kind === 'alley')) continue;
+        if (pass === 2 && kind !== 'alley') continue;
+        g.strokeStyle = accent ? '#e07b2a' : (kind === 'alley' ? '#5d5648' : '#ddd6c4');
+        g.lineWidth = (accent ? 14 : (kind === 'alley' ? 4 : 10)) / WORLD_W * MAP;
         g.beginPath(); g.moveTo(w2mx(a.x), w2my(a.z)); g.lineTo(w2mx(b.x), w2my(b.z)); g.stroke();
       }
     }
@@ -93,7 +138,7 @@
       ctx.save();
       ctx.clearRect(0, 0, size, size);
       ctx.beginPath(); ctx.arc(c, c, radius, 0, Math.PI * 2); ctx.clip();
-      ctx.fillStyle = '#22301f'; ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#0d2f52'; ctx.fillRect(0, 0, size, size);
       ctx.translate(c, c);
       ctx.rotate(rot);
       var k = scale * (MAP / WORLD_W); // screen px per offscreen px
@@ -179,6 +224,31 @@
       g.fillStyle = '#fff';
       g.strokeStyle = '#000'; g.lineWidth = 2;
       g.beginPath(); g.arc(px(focus.x), pz(focus.z), 6, 0, Math.PI * 2); g.fill(); g.stroke();
+      // District labels: bold, letterspaced, dark-outlined so they read on
+      // every district colour. Taman Arus is labelled beside its pond
+      // because its rect centre sits under the Pelita label row.
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineJoin = 'round'; // rounded joins: bold strokes spike at W/A miters otherwise
+      g.font = 'bold 15px sans-serif';
+      var labelAt = {
+        pelita: [0, -240], ruko: [-372, -120], mawar: [372, -216],
+        karat: [412, 120], taman: [0, 130], kencana: [-160, 238]
+      };
+      var districts = SH.Config.districts;
+      for (i = 0; i < districts.length; i++) {
+        var lp = labelAt[districts[i].id];
+        if (!lp) continue;
+        var lx = px(lp[0]), ly = pz(lp[1]);
+        g.lineWidth = 4; g.strokeStyle = 'rgba(10,12,24,0.85)';
+        g.strokeText(districts[i].name, lx, ly);
+        g.fillStyle = '#ffffff';
+        g.fillText(districts[i].name, lx, ly);
+      }
+      g.font = 'bold 12px sans-serif';
+      g.lineWidth = 3.5; g.strokeStyle = 'rgba(10,12,24,0.85)';
+      g.strokeText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
+      g.fillStyle = '#ffffff';
+      g.fillText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
       // Expose the transform so menus can map clicks back to world coords.
       canvas._mapTransform = { s: s, ox: ox, oy: oy };
     },

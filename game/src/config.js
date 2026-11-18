@@ -50,15 +50,20 @@
       kencana: [0xf7ead2, 0xffd9c9, 0xbfe3ea, 0xf2e3c6]
     },
 
-    // ---- Districts: name, bounds, flavour ----
+    // ---- Districts: name, bounds, flavour, and the colour each district
+    // wears on the city map (minimap prerender + pause map) ----
     districts: [
-      { id: 'pelita', name: 'PELITA HEIGHTS', x0: -252, x1: 252, z0: -432, z1: -48, minH: 26, maxH: 74 },
-      { id: 'ruko', name: 'RUKO SENJA', x0: -492, x1: -252, z0: -432, z1: 192, minH: 7, maxH: 13 },
-      { id: 'mawar', name: 'BUKIT MAWAR', x0: 252, x1: 492, z0: -432, z1: 0, minH: 6, maxH: 11 },
-      { id: 'karat', name: 'PELABUHAN KARAT', x0: 252, x1: 572, z0: 0, z1: 240, minH: 9, maxH: 16 },
-      { id: 'taman', name: 'TAMAN ARUS', x0: -132, x1: 132, z0: -72, z1: 192, minH: 0, maxH: 0 },
-      { id: 'kencana', name: 'PANTAI KENCANA', x0: -492, x1: 492, z0: 192, z1: 292, minH: 8, maxH: 18 }
+      { id: 'pelita', name: 'PELITA HEIGHTS', x0: -252, x1: 252, z0: -432, z1: -48, minH: 26, maxH: 74, map: '#3e7ea6' },
+      { id: 'ruko', name: 'RUKO SENJA', x0: -492, x1: -252, z0: -432, z1: 192, minH: 7, maxH: 13, map: '#c96f4a' },
+      { id: 'mawar', name: 'BUKIT MAWAR', x0: 252, x1: 492, z0: -432, z1: 0, minH: 6, maxH: 11, map: '#8fce9e' },
+      { id: 'karat', name: 'PELABUHAN KARAT', x0: 252, x1: 572, z0: 0, z1: 240, minH: 9, maxH: 16, map: '#b5652a' },
+      { id: 'taman', name: 'TAMAN ARUS', x0: -132, x1: 132, z0: -72, z1: 192, minH: 0, maxH: 0, map: '#2e6b34' },
+      { id: 'kencana', name: 'PANTAI KENCANA', x0: -492, x1: 492, z0: 192, z1: 292, minH: 8, maxH: 18, map: '#e0c184' }
     ],
+
+    // ---- Pulau Seberang: the small island across the bay, reached by the
+    // bridge from the Kencana shore (ellipse in world metres) ----
+    island: { x: 430, z: 452, rx: 104, rz: 70, name: 'PULAU SEBERANG' },
 
     // ---- Player ----
     player: {

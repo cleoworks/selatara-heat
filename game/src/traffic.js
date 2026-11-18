@@ -29,6 +29,7 @@
       for (var tries = 0; tries < 12; tries++) {
         var ei = (this.rng() * g.edges.length) | 0;
         var e = g.edges[ei];
+        if (e.kind === 'alley') continue; // traffic never spawns in the lanes
         var a = g.nodes[e.a], b = g.nodes[e.b];
         var mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
         var d = Math.hypot(mx - focus.x, mz - focus.z);
@@ -70,6 +71,12 @@
       var options = [];
       for (var i = 0; i < node.edges.length; i++) {
         if (node.edges[i] !== came) options.push(node.edges[i]);
+      }
+      // Cars stay out of the Ruko alleys (they are lanes for people, not
+      // through-roads) unless the car is already inside one.
+      if (g.edges[came].kind !== 'alley') {
+        options = options.filter(function (ei) { return g.edges[ei].kind !== 'alley'; });
+        if (!options.length) options = [came];
       }
       if (!options.length) options = [came];
       // Prefer going straight: same axis as the edge we arrived on.

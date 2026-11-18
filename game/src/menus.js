@@ -73,6 +73,14 @@
         }
       });
 
+      // Alt-tabbing away mid-chase should not let the city run off without
+      // the player: blur while playing pauses, same as losing pointer lock.
+      window.addEventListener('blur', function () {
+        if (SH.State.mode === 'playing') {
+          SH.State.mode = 'paused';
+          Menus.syncMode();
+        }
+      });
       // Losing pointer lock while playing = pause (Esc is the pause key).
       document.addEventListener('pointerlockchange', function () {
         if (SH.State.mode === 'playing' && !SH.Input.locked && !(SH.Shots && SH.Shots.active)) {
