@@ -828,8 +828,8 @@
         scene.add(sm);
         // Fake-bloom halo (Step 5): a slightly larger additive plane
         // in the sign's own colour behind the board. No post chain.
-        var halo = new THREE.Mesh(new THREE.PlaneGeometry(31, 16),
-          new THREE.MeshBasicMaterial({ color: new THREE.Color(s.color), transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        var halo = new THREE.Mesh(new THREE.PlaneGeometry(29, 14.5),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(s.color), transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
         halo.position.set(s.x, 18, s.z);
         halo.rotation.y = sm.rotation.y;
         halo.translateZ(-0.4);

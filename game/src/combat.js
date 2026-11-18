@@ -383,7 +383,9 @@
         }
       }
       if (hit && SH.Audio) SH.Audio.blip(160, 0.08, 'triangle', 0.12, 90);
-      if (SH.Player.parts) { SH.Player.parts.armR.rotation.x = -2.1; }
+      // A landed punch keeps the arm raised briefly (procedural aim
+      // layer on the rig, Rev 7).
+      if (SH.State) SH.State.aimPulse = 0.35;
     },
 
     // ---- per-frame update --------------------------------------------------------------
@@ -477,7 +479,7 @@
                 e.burstTimer = 0.13;
                 e.burst--;
                 this.hostileFire(e.x, 1.45, e.z, f.x, f.z, e.damage, 0.52 - distP / 160);
-                e.parts.armR.rotation.x = -1.35;
+                e.parts.aimTarget = 1;
               }
             }
           }
@@ -501,14 +503,11 @@
           e.heading = Math.atan2(mvx, mvz);
           e.cycle += dt * spd * 2.6;
         }
-        var sw = Math.sin(e.cycle * 2.2) * (spd > 0 ? 0.5 : 0.03);
-        e.parts.legL.rotation.x = sw; e.parts.legR.rotation.x = -sw;
-        e.parts.armL.rotation.x = -sw * 0.7;
-        if (e.state !== 'attack') e.parts.armR.rotation.x = sw * 0.7;
-        if (e.parts.shinL) { // knees fold on the forward swing
-          e.parts.shinL.rotation.x = Math.max(0, -sw) * 0.85;
-          e.parts.shinR.rotation.x = Math.max(0, sw) * 0.85;
-        }
+        // Rig animation (Rev 7): clips by speed; the gun arm is a
+        // procedural aim layer while attacking.
+        if (e.state !== 'attack') e.parts.aimTarget = 0;
+        e.parts.setSpeed(spd / 4.3);
+        e.parts.update(dt);
         e.mesh.position.set(e.x, 0, e.z);
         e.mesh.rotation.y = e.state === 'attack' || e.state === 'alert' ? Math.atan2(f.x - e.x, f.z - e.z) : e.heading;
       }

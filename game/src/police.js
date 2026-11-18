@@ -557,14 +557,11 @@
         var los = od < cfgP.copFireRange + 14 && !losBlocked(off.x, off.z, f.x, f.z);
         off.mesh.position.set(off.x, 0, off.z);
         off.mesh.rotation.y = Math.atan2(f.x - off.x, f.z - off.z);
-        var sw = Math.sin(off.cycle * 2.2) * (spd2 > 0 ? 0.5 : 0.03);
-        off.parts.legL.rotation.x = sw; off.parts.legR.rotation.x = -sw;
-        off.parts.armL.rotation.x = -sw * 0.7;
-        off.parts.armR.rotation.x = st.wanted >= 3 && los ? -1.35 : sw * 0.7; // gun arm up
-        if (off.parts.shinL) { // knees fold on the forward swing
-          off.parts.shinL.rotation.x = Math.max(0, -sw) * 0.85;
-          off.parts.shinR.rotation.x = Math.max(0, sw) * 0.85;
-        }
+        // Rig animation (Rev 7): clips by speed; gun arm = procedural
+        // aim layer at 3+ stars with line of sight.
+        off.parts.aimTarget = st.wanted >= 3 && los ? 1 : 0;
+        off.parts.setSpeed(spd2 / 4.3);
+        off.parts.update(dt);
         // Shooting at high stars.
         if (st.wanted >= 3 && los && od < cfgP.copFireRange) {
           off.fireTimer -= dt;

@@ -24,7 +24,8 @@
         hatColor: 0x22242c,
         face: 0
       });
-      this.parts = built;
+      this.fig = built;
+      this.parts = built; // legacy alias (fig carries shirtMat + bones)
       this.mesh = built.group;
       scene.add(built.group);
       var p = SH.State.player;
@@ -102,27 +103,24 @@
 
       this.collide(p, SH.Config.player.radius);
 
-      // Character pose + procedural walk swing.
+      // Character animation (Rev 7): the bone rig runs the clips; the
+      // procedural layer aims the gun arm, turns the head toward the
+      // camera's look direction, and leans the body into movement.
       var spd = Math.hypot(p.vx, p.vz);
-      this.walkCycle += dt * (4 + spd * 1.6);
-      var swing = Math.min(1, spd / 4) * 0.62;
-      var s = Math.sin(this.walkCycle * 2.4);
-      this.parts.legL.rotation.x = s * swing;
-      // Knee bend follows the forward swing; elbows keep a soft bend.
-      if (this.parts.shinL) {
-        this.parts.shinL.rotation.x = Math.max(0, -s) * swing * 0.85;
-        this.parts.shinR.rotation.x = Math.max(0, s) * swing * 0.85;
-        this.parts.foreL.rotation.x = -0.16 - Math.abs(s) * swing * 0.15;
-        this.parts.foreR.rotation.x = -0.16 - Math.abs(s) * swing * 0.15;
-      }
-      this.parts.legR.rotation.x = -s * swing;
-      this.parts.armL.rotation.x = -s * swing * 0.8;
-      this.parts.armR.rotation.x = s * swing * 0.8;
-      // Gait (bible v2): 3 cm bob, hips yaw against the shoulders, the
-      // chest counter-rotates a few degrees.
-      this.mesh.position.set(p.x, p.y + Math.abs(Math.sin(this.walkCycle * 2.4)) * 0.032 * Math.min(1, spd / 4), p.z);
-      this.mesh.rotation.y = p.heading + s * 0.07 * Math.min(1, spd / 4);
-      if (this.parts.torso) this.parts.torso.rotation.y = -s * 0.06 * Math.min(1, spd / 4);
+      this.mesh.position.set(p.x, p.y, p.z);
+      this.mesh.rotation.y = p.heading;
+      this.fig.setSpeed(spd / 5.6);
+      this.fig.aimTarget = (st.aiming || (st.aimPulse || 0) > 0) ? 1 : 0;
+      if ((st.aimPulse || 0) > 0) st.aimPulse -= dt;
+      // Head look is relative to where the CAMERA looks (camYaw + PI
+      // is the view direction), so running straight reads as ~0.
+      var lookYaw = st.camYaw + Math.PI - p.heading;
+      while (lookYaw > Math.PI) lookYaw -= Math.PI * 2;
+      while (lookYaw < -Math.PI) lookYaw += Math.PI * 2;
+      this.fig.lookYaw = Math.max(-0.8, Math.min(0.8, lookYaw));
+      this.fig.lookPitch = Math.max(-0.4, Math.min(0.4, (st.camPitch || 0) * 0.7));
+      this.fig.leanX = Math.min(0.14, spd / 5.6 * 0.14) * (moving ? 1 : 0);
+      this.fig.update(dt);
       st.speedKmh = Math.round(spd * 3.6);
     },
 

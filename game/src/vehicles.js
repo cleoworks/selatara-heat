@@ -174,10 +174,7 @@
         skin: 0xa8763e, shirt: 0x2c3444, pants: 0x22242c,
         hairStyle: 'hat', hatColor: 0xd8402e, sleeves: 'long', face: 1
       });
-      rider.legL.rotation.x = -0.85; rider.legR.rotation.x = -0.85;
-      rider.shinL.rotation.x = 0.95; rider.shinR.rotation.x = 0.95; // knees bent to the pegs
-      rider.armL.rotation.x = -1.0; rider.armR.rotation.x = -1.0;
-      rider.foreL.rotation.x = -0.35; rider.foreR.rotation.x = -0.35;
+      rider.applySeated(); // rig pose: thighs forward, knees to the pegs, hands to the bars
       rider.group.position.set(0, -0.22, -0.05);
       rider.group.rotation.x = 0.15;
       rider.group.visible = false;
@@ -693,23 +690,14 @@
       // tracking the bike exactly. Player.update never runs while driving,
       // so the pose lives here.
       if (SH.Player && SH.Player.mesh) {
-        if (v.type === 'motor' && SH.Player.parts) {
+        if (v.type === 'motor' && SH.Player.fig) {
           var pm = SH.Player.mesh;
           pm.visible = true;
           pm.rotation.order = 'YXZ';
           pm.position.set(v.x - Math.sin(v.heading) * 0.05, -0.22, v.z - Math.cos(v.heading) * 0.05);
           pm.rotation.y = v.heading;
           pm.rotation.x = 0.15;
-          SH.Player.parts.legL.rotation.x = -0.85;
-          SH.Player.parts.legR.rotation.x = -0.85;
-          if (SH.Player.parts.shinL) {
-            SH.Player.parts.shinL.rotation.x = 0.95;
-            SH.Player.parts.shinR.rotation.x = 0.95;
-            SH.Player.parts.foreL.rotation.x = -0.35;
-            SH.Player.parts.foreR.rotation.x = -0.35;
-          }
-          SH.Player.parts.armL.rotation.x = -1.0;
-          SH.Player.parts.armR.rotation.x = -1.0;
+          SH.Player.fig.applySeated();
         } else {
           SH.Player.mesh.visible = false;
         }

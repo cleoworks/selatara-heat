@@ -7,59 +7,73 @@
 
   var shirtColors = [0xff8c5a, 0x37e0ff, 0xffd23f, 0x9fd8c0, 0xff4fa3, 0xf2e3c6, 0x7ac94f, 0xe8e3d8];
 
-  // ---- shared character builder (Art Pass 3, step 2) ----------------------
-  // One figure builder for EVERY human in the game — pedestrians, Raka,
-  // combat fighters, police officers, the mission courier — so the whole
-  // cast shares one anatomy: ~1.80 m tall, sphere head with a canvas face
-  // (eyes / brows / nose / mouth), trapezoid torso (shoulders wider than
-  // the waist), cylinder limbs with hands and shoes, and outfit variants
-  // (hair styles, hat, glasses, jacket, shorts, skirt). Returns the part
-  // interface every animator already uses: { group, legL, legR, armL,
-  // armR, torso, head, shirtMat } with limb pivots at hip/shoulder height.
+  // ---- shared character builder (Revision 7: bone rig + clips) ---------
+  // One figure system for EVERY human in the game — pedestrians, Raka,
+  // combat fighters, police officers, the mission courier, motor riders.
+  // Architecture (Codrops pattern, rebuilt from scratch in code):
+  //   * a real THREE.Skeleton of named bones (Hips > Spine > Chest >
+  //     Neck > Head; Shoulder > UpperArm > ForeArm > Hand; UpLeg >
+  //     Shin > Foot), bound in a 42-degree A-pose;
+  //   * the body is ONE SkinnedMesh whose geometry is authored in code
+  //     in bind-pose world space, every part hard-weighted to its bone
+  //     and vertex-coloured (60-30-10 outfit colours), plus a second
+  //     SkinnedMesh for the face-textured head;
+  //   * idle / walk / run are THREE.AnimationClips (quaternion tracks
+  //     per bone + a Hips position track for the bob) played through an
+  //     AnimationMixer with weight-blend crossfades;
+  //   * a procedural layer runs AFTER mixer.update: head look (neck
+  //     <= 50 deg), gun-arm aim, turn lean, and the seated motor pose
+  //     are applied on top of the clips, never written into them;
+  //   * hair / hats / glasses are rigid attachments parented to the
+  //     Head bone (max a handful per figure).
+  // Proportions follow ART-BIBLE v3: ~5.9 heads at 1.78 m, head 0.30 m,
+  // every limb tapered (thigh->knee 0.72x, shin->ankle 0.65x), trapezoid
+  // torso with trapezius slope and deltoid caps, belt/collar/shoes as
+  // silhouette breakers.
   var faceCache = {};
   function faceTexture(skinColor, variant) {
     var key = skinColor + '_' + variant;
     if (faceCache[key]) return faceCache[key];
-    var cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+    var cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
     var c = cv.getContext('2d');
     var col = '#' + ('000000' + skinColor.toString(16)).slice(-6);
-    c.fillStyle = col; c.fillRect(0, 0, 128, 128);
+    c.fillStyle = col; c.fillRect(0, 0, 256, 256);
     // Soft side shading so the sphere reads round even unlit.
-    var grad = c.createLinearGradient(0, 0, 128, 0);
+    var grad = c.createLinearGradient(0, 0, 256, 0);
     grad.addColorStop(0, 'rgba(0,0,0,0.18)');
     grad.addColorStop(0.25, 'rgba(0,0,0,0)');
     grad.addColorStop(0.5, 'rgba(0,0,0,0.18)');
     grad.addColorStop(0.75, 'rgba(0,0,0,0)');
     grad.addColorStop(1, 'rgba(0,0,0,0.18)');
-    c.fillStyle = grad; c.fillRect(0, 0, 128, 128);
+    c.fillStyle = grad; c.fillRect(0, 0, 256, 256);
     // The face sits at u = 0.25 on a THREE sphere (the +z meridian), so
-    // features are drawn around x = 32.
+    // features are drawn around x = 64. The canvas is 256px (v3 asks
+    // for a face that survives a 1.5-2 m close-up): the eye line sits
+    // at mid-head, eyes ~25% of face height.
     function ellipse(x, y, rx, ry, fill) {
       c.fillStyle = fill; c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); c.fill();
     }
-    ellipse(18, 74, 7, 5, 'rgba(255,110,80,0.10)');   // cheeks
-    ellipse(46, 74, 7, 5, 'rgba(255,110,80,0.10)');
-    // Feature heights follow the bible's thirds: eyes ~1/3, nose ~1/2,
-    // mouth ~2/3 of the head height.
+    ellipse(36, 148, 14, 10, 'rgba(255,110,80,0.10)');   // cheeks
+    ellipse(92, 148, 14, 10, 'rgba(255,110,80,0.10)');
     c.fillStyle = '#241a12';                           // brows
-    c.save(); c.translate(23, 42); c.rotate(-0.14); c.fillRect(-6, -1.6, 12, 3.2); c.restore();
-    c.save(); c.translate(41, 42); c.rotate(0.14); c.fillRect(-6, -1.6, 12, 3.2); c.restore();
-    ellipse(23, 52, 3.4, 4.8, '#1d1410');              // eyes
-    ellipse(41, 52, 3.4, 4.8, '#1d1410');
-    ellipse(24.2, 50.2, 1.1, 1.4, 'rgba(255,255,255,0.85)'); // glints
-    ellipse(42.2, 50.2, 1.1, 1.4, 'rgba(255,255,255,0.85)');
-    c.strokeStyle = 'rgba(60,30,15,0.45)'; c.lineWidth = 2;  // nose
-    c.beginPath(); c.moveTo(32.5, 58); c.lineTo(31, 68); c.stroke();
-    ellipse(28.6, 73.5, 1.4, 1, 'rgba(40,20,10,0.4)');
-    ellipse(35.4, 73.5, 1.4, 1, 'rgba(40,20,10,0.4)');
-    c.strokeStyle = '#6e3524'; c.lineWidth = 2.4; c.lineCap = 'round';
+    c.save(); c.translate(46, 84); c.rotate(-0.14); c.fillRect(-12, -3.2, 24, 6.4); c.restore();
+    c.save(); c.translate(82, 84); c.rotate(0.14); c.fillRect(-12, -3.2, 24, 6.4); c.restore();
+    ellipse(46, 104, 6.8, 9.6, '#1d1410');              // eyes
+    ellipse(82, 104, 6.8, 9.6, '#1d1410');
+    ellipse(48.4, 100.4, 2.2, 2.8, 'rgba(255,255,255,0.85)'); // glints
+    ellipse(84.4, 100.4, 2.2, 2.8, 'rgba(255,255,255,0.85)');
+    c.strokeStyle = 'rgba(60,30,15,0.45)'; c.lineWidth = 4;  // nose
+    c.beginPath(); c.moveTo(65, 116); c.lineTo(62, 136); c.stroke();
+    ellipse(57.2, 147, 2.8, 2, 'rgba(40,20,10,0.4)');
+    ellipse(70.8, 147, 2.8, 2, 'rgba(40,20,10,0.4)');
+    c.strokeStyle = '#6e3524'; c.lineWidth = 4.8; c.lineCap = 'round';
     if (variant === 1) {                               // flat, serious
-      c.beginPath(); c.moveTo(26, 83); c.lineTo(38, 83); c.stroke();
+      c.beginPath(); c.moveTo(52, 166); c.lineTo(76, 166); c.stroke();
     } else if (variant === 2) {                        // grin
-      c.fillStyle = '#5e2a1c'; c.beginPath(); c.ellipse(32, 82, 6.5, 4.6, 0, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#f5ede2'; c.fillRect(26.5, 79, 11, 3.4);
+      c.fillStyle = '#5e2a1c'; c.beginPath(); c.ellipse(64, 164, 13, 9.2, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#f5ede2'; c.fillRect(53, 158, 22, 6.8);
     } else {                                           // easy smile
-      c.beginPath(); c.arc(32, 79, 6, Math.PI * 0.2, Math.PI * 0.8); c.stroke();
+      c.beginPath(); c.arc(64, 158, 12, Math.PI * 0.2, Math.PI * 0.8); c.stroke();
     }
     var tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -67,161 +81,370 @@
     return tex;
   }
 
+  // ---- animation clips (shared by every figure) -------------------------
+  function eulerTrack(name, times, keys) {
+    var vals = [];
+    for (var i = 0; i < keys.length; i++) {
+      var q = new THREE.Quaternion().setFromEuler(new THREE.Euler(keys[i][0], keys[i][1], keys[i][2]));
+      vals.push(q.x, q.y, q.z, q.w);
+    }
+    return new THREE.QuaternionKeyframeTrack(name, times, vals);
+  }
+  function hipsTrack(times, ys) {
+    var vals = [];
+    for (var i = 0; i < ys.length; i++) vals.push(0, ys[i], 0);
+    return new THREE.VectorKeyframeTrack('Hips.position', times, vals);
+  }
+  function mirror(keys) { // phase-shift a cyclic key table by half a cycle
+    var n = keys.length - 1, half = n / 2, out = [];
+    for (var i = 0; i <= n; i++) out.push(keys[(i + half) % n]);
+    return out;
+  }
+  var clipCache = null;
+  function buildClips() {
+    if (clipCache) return clipCache;
+    // WALK — 1.0 s cycle (24 frames at 24 fps). Key poses follow the
+    // clinical cycle: Contact 0/50%, Down 12.5%, Passing 25%, Up 37.5%;
+    // knee peaks ~60 deg in mid-swing, toe-off at ~50-60% plants the
+    // foot 20 deg; arm swing totals ~38 deg; elbows never straighten
+    // past ~35 deg flexion walking. Forward leg swing = -x rotation.
+    var T = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
+    var legL = [[-0.45, 0, 0], [-0.30, 0, 0], [0.02, 0, 0], [0.34, 0, 0], [0.42, 0, 0], [0.30, 0, 0], [-0.02, 0, 0], [-0.30, 0, 0], [-0.45, 0, 0]];
+    var shinL = [[0.10, 0, 0], [0.16, 0, 0], [0.08, 0, 0], [0.10, 0, 0], [0.30, 0, 0], [0.85, 0, 0], [1.00, 0, 0], [0.55, 0, 0], [0.10, 0, 0]];
+    var footL = [[0, 0, 0], [0.05, 0, 0], [0, 0, 0], [0, 0, 0], [0.35, 0, 0], [0.10, 0, 0], [-0.08, 0, 0], [0, 0, 0], [0, 0, 0]];
+    var hipsYaw = [0.09, 0.05, 0, -0.05, -0.09, -0.05, 0, 0.05, 0.09];
+    var hipsRoll = [0.03, 0.045, 0.02, -0.02, -0.03, -0.045, -0.02, 0.02, 0.03];
+    function hipsKeys(f) {
+      return T.map(function (t, i) { return [0, hipsYaw[i] * f, hipsRoll[i] * f]; });
+    }
+    function armKeys(legKeys, sideSign) {
+      return legKeys.map(function (k) {
+        return [-k[0] * 0.72, 0, 0.15 * sideSign + k[0] * 0.05];
+      });
+    }
+    function foreKeys(legKeys, sideSign) {
+      return legKeys.map(function (k) {
+        return [-0.61 + k[0] * 0.22, 0, 0.06 * sideSign];
+      });
+    }
+    var walk = new THREE.AnimationClip('walk', 1.0, [
+      eulerTrack('UpLegL.quaternion', T, legL),
+      eulerTrack('UpLegR.quaternion', T, mirror(legL)),
+      eulerTrack('ShinL.quaternion', T, shinL),
+      eulerTrack('ShinR.quaternion', T, mirror(shinL)),
+      eulerTrack('FootL.quaternion', T, footL),
+      eulerTrack('FootR.quaternion', T, mirror(footL)),
+      eulerTrack('UpperArmL.quaternion', T, armKeys(legL, -1)),
+      eulerTrack('UpperArmR.quaternion', T, armKeys(mirror(legL), 1)),
+      eulerTrack('ForeArmL.quaternion', T, foreKeys(legL, -1)),
+      eulerTrack('ForeArmR.quaternion', T, foreKeys(mirror(legL), 1)),
+      eulerTrack('Hips.quaternion', T, hipsKeys(1)),
+      eulerTrack('Spine.quaternion', T, hipsKeys(-0.3)),
+      eulerTrack('Chest.quaternion', T, hipsKeys(-0.7)),
+      hipsTrack(T, [0.975, 0.955, 0.97, 0.985, 0.975, 0.955, 0.97, 0.985, 0.975])
+    ]);
+    // RUN — 0.62 s cycle with a flight phase: hips rise mid-stride,
+    // knees fold hard, elbows hold ~90 deg, chest leans in.
+    var RT = [0, 0.155, 0.31, 0.465, 0.62];
+    var rLegL = [[-0.95, 0, 0], [0.15, 0, 0], [0.85, 0, 0], [-0.20, 0, 0], [-0.95, 0, 0]];
+    var rShinL = [[0.45, 0, 0], [1.35, 0, 0], [0.75, 0, 0], [1.65, 0, 0], [0.45, 0, 0]];
+    var rArmL = [[0.75, 0, -0.18], [-0.10, 0, -0.16], [-0.75, 0, -0.18], [0.10, 0, -0.16], [0.75, 0, -0.18]];
+    var rArmR = mirror(rArmL).map(function (k) { return [k[0], 0, -k[2]]; });
+    var run = new THREE.AnimationClip('run', 0.62, [
+      eulerTrack('UpLegL.quaternion', RT, rLegL),
+      eulerTrack('UpLegR.quaternion', RT, mirror(rLegL)),
+      eulerTrack('ShinL.quaternion', RT, rShinL),
+      eulerTrack('ShinR.quaternion', RT, mirror(rShinL)),
+      eulerTrack('UpperArmL.quaternion', RT, rArmL),
+      eulerTrack('UpperArmR.quaternion', RT, rArmR),
+      eulerTrack('ForeArmL.quaternion', RT, rArmL.map(function (k) { return [-1.5 + k[0] * 0.15, 0, -0.06]; })),
+      eulerTrack('ForeArmR.quaternion', RT, rArmR.map(function (k) { return [-1.5 + k[0] * 0.15, 0, 0.06]; })),
+      eulerTrack('Chest.quaternion', RT, [[0.16, 0, 0], [0.13, 0, 0], [0.16, 0, 0], [0.13, 0, 0], [0.16, 0, 0]]),
+      eulerTrack('Hips.quaternion', RT, [[0, 0.06, 0.02], [0, 0, 0], [0, -0.06, -0.02], [0, 0, 0], [0, 0.06, 0.02]]),
+      hipsTrack(RT, [0.955, 1.025, 0.945, 1.025, 0.955])
+    ]);
+    // IDLE — 4 s breathing loop (15 breaths/min): chest rises <= 1 cm,
+    // weight shifts side to side (contrapposto roll), arms hang 8 deg
+    // out with elbows pre-bent 15-20 deg, head drifts in small glances.
+    var IT = [0, 1, 2, 3, 4];
+    var idle = new THREE.AnimationClip('idle', 4.0, [
+      eulerTrack('Spine.quaternion', IT, [[0.01, 0, 0], [0.035, 0, 0], [0.01, 0, 0], [0.03, 0, 0], [0.01, 0, 0]]),
+      eulerTrack('Chest.quaternion', IT, [[0.01, 0, 0], [0.03, 0, 0], [0.01, 0, 0], [0.028, 0, 0], [0.01, 0, 0]]),
+      eulerTrack('Hips.quaternion', IT, [[0, 0, 0.055], [0, 0.01, 0.05], [0, 0, -0.045], [0, -0.01, -0.05], [0, 0, 0.055]]),
+      hipsTrack(IT, [0.978, 0.976, 0.978, 0.976, 0.978]),
+      eulerTrack('UpperArmL.quaternion', IT, [[0.02, 0, -0.15], [-0.02, 0, -0.17], [0.03, 0, -0.15], [0, 0, -0.16], [0.02, 0, -0.15]]),
+      eulerTrack('UpperArmR.quaternion', IT, [[-0.01, 0, 0.16], [0.02, 0, 0.15], [-0.02, 0, 0.17], [0.01, 0, 0.15], [-0.01, 0, 0.16]]),
+      eulerTrack('ForeArmL.quaternion', IT, [[-0.30, 0, -0.05], [-0.26, 0, -0.05], [-0.33, 0, -0.05], [-0.28, 0, -0.05], [-0.30, 0, -0.05]]),
+      eulerTrack('ForeArmR.quaternion', IT, [[-0.28, 0, 0.05], [-0.32, 0, 0.05], [-0.27, 0, 0.05], [-0.31, 0, 0.05], [-0.28, 0, 0.05]]),
+      // NOTE: Neck/Head carry NO clip tracks anywhere — they belong
+      // entirely to the procedural look layer (set, never accumulated).
+      eulerTrack('UpLegL.quaternion', IT, [[0.02, 0, 0.01], [0.02, 0, 0.01], [0.02, 0, 0.01], [0.02, 0, 0.01], [0.02, 0, 0.01]]),
+      eulerTrack('UpLegR.quaternion', IT, [[-0.03, 0, -0.01], [-0.03, 0, -0.01], [-0.03, 0, -0.01], [-0.03, 0, -0.01], [-0.03, 0, -0.01]]),
+      eulerTrack('ShinL.quaternion', IT, [[0.06, 0, 0], [0.06, 0, 0], [0.06, 0, 0], [0.06, 0, 0], [0.06, 0, 0]]),
+      eulerTrack('ShinR.quaternion', IT, [[0.05, 0, 0], [0.05, 0, 0], [0.05, 0, 0], [0.05, 0, 0], [0.05, 0, 0]])
+    ]);
+    clipCache = { idle: idle, walk: walk, run: run };
+    return clipCache;
+  }
+
+  var _e = new THREE.Euler(), _q = new THREE.Quaternion(), _aimQ = new THREE.Quaternion();
+  function clampN(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
   function buildFigure(opts) {
     opts = opts || {};
     var skinColor = opts.skin != null ? opts.skin : 0xb87a4e;
-    var skin = new THREE.MeshLambertMaterial({ color: skinColor, flatShading: true });
-    var shirt = new THREE.MeshLambertMaterial({ color: opts.shirt != null ? opts.shirt : 0xff8c5a, flatShading: true });
-    var pants = new THREE.MeshLambertMaterial({ color: opts.pants != null ? opts.pants : 0x2a3040, flatShading: true });
-    var hairMat = new THREE.MeshLambertMaterial({ color: opts.hairColor != null ? opts.hairColor : 0x14100c, flatShading: true });
-    var dark = new THREE.MeshLambertMaterial({ color: 0x22242c, flatShading: true });
-    var g = new THREE.Group();
-    function add(mesh, parent, x, y, z) {
-      mesh.position.set(x, y, z); mesh.castShadow = true;
-      (parent || g).add(mesh); return mesh;
-    }
-    function cyl(rt, rb, h, seg, mat) { return new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); }
-    function ball(r, mat) { return new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), mat); }
-
-    // JOINTED construction (Art Bible v1+v2): no limb is a single
-    // stick. Every limb is tapered segments OVERLAPPING at ball/disc
-    // joints — deltoid cap + shoulder ball, elbow ball r 0.04, knee
-    // ball r 0.05 — and swings from the joint pivot, with the knee/
-    // elbow as a child pivot the animators bend. Proportions follow
-    // the professional 6-head table (total 1.80 m): head 0.30, chest
-    // centre y 1.32, waist 1.05, hip pivot 0.92, knee 0.50, shoulders
-    // ≈ 2 head-widths, face features at 1/3 - 1/2 - 2/3 of head height.
+    var shirtColor = opts.shirt != null ? opts.shirt : 0xff8c5a;
+    var pantsColor = opts.pants != null ? opts.pants : 0x2a3040;
+    var hairColor = opts.hairColor != null ? opts.hairColor : 0x14100c;
+    var darkColor = 0x22242c;
     var bottom = opts.bottom || 'pants';
-    var thighMat = bottom === 'skirt' ? skin : pants;
-    var shinMat = bottom === 'pants' ? pants : skin;
-    function makeLeg(side) {
-      var hip = new THREE.Group();
-      hip.position.set(0.105 * side, 0.92, 0);
-      g.add(hip);
-      // Thigh + knee ball share a material and never move apart: merged
-      // into one geometry (draw-call diet, Art Bible v2 perf mandate).
-      var thighGeo = SH.World.mergeGeos([
-        new THREE.CylinderGeometry(0.075, 0.055, 0.42, 7).translate(0, -0.21, 0),
-        new THREE.SphereGeometry(0.05, 8, 6).translate(0, -0.42, 0)
-      ]);
-      add(new THREE.Mesh(thighGeo, thighMat), hip, 0, 0, 0);
-      var knee = new THREE.Group();
-      knee.position.set(0, -0.42, 0);
-      hip.add(knee);
-      var calfGeo = new THREE.SphereGeometry(0.048, 8, 6);
-      calfGeo.scale(0.75, 1.35, 0.75);
-      calfGeo.translate(0, -0.11, -0.018);
-      var shinGeo = SH.World.mergeGeos([
-        new THREE.CylinderGeometry(0.05, 0.035, 0.42, 7).translate(0, -0.21, 0),
-        calfGeo
-      ]);
-      add(new THREE.Mesh(shinGeo, shinMat), knee, 0, 0, 0);
-      var shoe = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.07, 0.27), dark); // wedge shoe
-      shoe.rotation.x = 0.08;
-      add(shoe, knee, 0, -0.415, 0.055);
-      return { hip: hip, knee: knee };
+    var g = new THREE.Group();
+
+    // ---- skeleton -------------------------------------------------------
+    var bones = {}, boneList = [];
+    function bone(name, parent, x, y, z, rz) {
+      var b = new THREE.Bone();
+      b.name = name;
+      b.position.set(x, y, z);
+      if (rz) b.rotation.z = rz;
+      if (parent) parent.add(b);
+      bones[name] = b; boneList.push(b);
+      return b;
     }
-    var legL = makeLeg(-1), legR = makeLeg(1);
-    // Pelvis block + chest as TWO separate trapezoids with a belt line
-    // between them — the waist reads, the figure is not one slab.
-    var pelvis = cyl(0.175, 0.20, 0.20, 8, bottom === 'skirt' ? shirt : pants);
-    pelvis.scale.z = 0.66;
-    add(pelvis, g, 0, 1.00, 0);
-    if (bottom === 'skirt') {
-      var skirt = cyl(0.16, 0.27, 0.36, 9, pants);
-      add(skirt, g, 0, 0.86, 0);
+    var AZ = 0.73; // 42-degree A-pose bind for the arms
+    bone('Hips', null, 0, 0.98, 0);
+    bone('Spine', bones.Hips, 0, 0.10, 0);
+    bone('Chest', bones.Spine, 0, 0.16, 0);
+    bone('Neck', bones.Chest, 0, 0.26, 0);
+    bone('Head', bones.Neck, 0, 0.05, 0);
+    bone('ShoulderL', bones.Chest, -0.10, 0.20, 0);
+    bone('UpperArmL', bones.ShoulderL, -0.11, 0, 0, -AZ);
+    bone('ForeArmL', bones.UpperArmL, 0, -0.28, 0);
+    bone('HandL', bones.ForeArmL, 0, -0.27, 0);
+    bone('ShoulderR', bones.Chest, 0.10, 0.20, 0);
+    bone('UpperArmR', bones.ShoulderR, 0.11, 0, 0, AZ);
+    bone('ForeArmR', bones.UpperArmR, 0, -0.28, 0);
+    bone('HandR', bones.ForeArmR, 0, -0.27, 0);
+    bone('UpLegL', bones.Hips, -0.10, -0.03, 0);
+    bone('ShinL', bones.UpLegL, 0, -0.44, 0);
+    bone('FootL', bones.ShinL, 0, -0.44, 0);
+    bone('UpLegR', bones.Hips, 0.10, -0.03, 0);
+    bone('ShinR', bones.UpLegR, 0, -0.44, 0);
+    bone('FootR', bones.ShinR, 0, -0.44, 0);
+    var boneIndex = {};
+    for (var bi2 = 0; bi2 < boneList.length; bi2++) boneIndex[boneList[bi2].name] = bi2;
+    g.add(bones.Hips);
+
+    // ---- geometry authoring (bind-pose world space) ---------------------
+    function M(x, y, z, rx, ry, rz, sx, sy, sz) {
+      return new THREE.Matrix4().compose(
+        new THREE.Vector3(x, y, z),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0)),
+        new THREE.Vector3(sx == null ? 1 : sx, sy == null ? 1 : sy, sz == null ? 1 : sz));
     }
-    var belt = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.05, 0.185), dark);
-    add(belt, g, 0, 1.12, 0);
-    // Chest: ellipse-section (z-scale 0.66) tapering ~20% to the waist,
-    // centred on the bible's y 1.32, plus a trapezius cone to the neck.
-    // Chest + trapezius + both deltoid caps are one shirt material in
-    // group space, so they are merged into a single mesh; its Y-rotation
-    // (the gait counter-rotation) pivots on the body centreline either
-    // way, so the merged mesh animates exactly like the loose chest did.
-    var chestGeo = new THREE.CylinderGeometry(0.24, 0.195, 0.36, 8);
-    chestGeo.scale(1, 1, 0.66); chestGeo.translate(0, 1.32, 0);
-    var trapGeo = new THREE.CylinderGeometry(0.09, 0.155, 0.10, 8);
-    trapGeo.scale(1, 1, 0.66); trapGeo.translate(0, 1.515, 0);
-    var deltGeoL = new THREE.SphereGeometry(0.078, 8, 6);
-    deltGeoL.scale(1.05, 0.8, 1.05); deltGeoL.translate(-0.235, 1.45, 0);
-    var deltGeoR = new THREE.SphereGeometry(0.078, 8, 6);
-    deltGeoR.scale(1.05, 0.8, 1.05); deltGeoR.translate(0.235, 1.45, 0);
-    var torso = new THREE.Mesh(SH.World.mergeGeos([chestGeo, trapGeo, deltGeoL, deltGeoR]), shirt);
-    add(torso, g, 0, 0, 0);
+    function part(geo, boneName, colorHex, matrix) {
+      if (matrix) geo.applyMatrix4(matrix);
+      var n = geo.attributes.position.count;
+      var col = new THREE.Color(colorHex);
+      var cols = new Float32Array(n * 3);
+      var si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+      var idx = boneIndex[boneName];
+      for (var i = 0; i < n; i++) {
+        cols[i * 3] = col.r; cols[i * 3 + 1] = col.g; cols[i * 3 + 2] = col.b;
+        si[i * 4] = idx; sw[i * 4] = 1;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+      geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+      return geo;
+    }
+    function cyl(rt, rb, h, seg) { return new THREE.CylinderGeometry(rt, rb, h, seg); }
+    var sleeveColor = opts.sleeves === 'short' ? skinColor : shirtColor;
+    var thighColor = bottom === 'skirt' ? skinColor : pantsColor;
+    var shinColor = bottom === 'pants' ? pantsColor : skinColor;
+    var bodyGeos = [];
+    // Pelvis + belt (Hips), lower torso (Spine), chest + trapezius (Chest).
+    bodyGeos.push(part(cyl(0.175, 0.20, 0.20, 8), 'Hips', bottom === 'skirt' ? shirtColor : pantsColor, M(0, 1.00, 0, 0, 0, 0, 1, 1, 0.66)));
+    if (bottom === 'skirt') bodyGeos.push(part(cyl(0.16, 0.27, 0.36, 9), 'Hips', pantsColor, M(0, 0.86, 0)));
+    bodyGeos.push(part(new THREE.BoxGeometry(0.31, 0.05, 0.185), 'Hips', darkColor, M(0, 1.12, 0)));
+    bodyGeos.push(part(cyl(0.195, 0.175, 0.18, 8), 'Spine', shirtColor, M(0, 1.17, 0, 0, 0, 0, 1, 1, 0.66)));
+    bodyGeos.push(part(cyl(0.24, 0.195, 0.36, 8), 'Chest', shirtColor, M(0, 1.32, 0, 0, 0, 0, 1, 1, 0.66)));
+    bodyGeos.push(part(cyl(0.09, 0.155, 0.10, 8), 'Chest', shirtColor, M(0, 1.50, 0, 0, 0, 0, 1, 1, 0.66)));
     if (opts.jacket) {
-      var placket = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.015), dark);
-      add(placket, g, 0, 1.31, 0.115);
-      var collar = cyl(0.12, 0.145, 0.08, 8, dark);
-      add(collar, g, 0, 1.50, 0);
+      bodyGeos.push(part(new THREE.BoxGeometry(0.05, 0.32, 0.015), 'Chest', darkColor, M(0, 1.31, 0.115)));
+      bodyGeos.push(part(cyl(0.12, 0.145, 0.08, 8), 'Chest', darkColor, M(0, 1.50, 0)));
     }
-    // Arms: deltoid cap over the shoulder joint, tapered upper arm in
-    // a light A-pose (12° out), elbow ball, tapered forearm with a
-    // slight natural bend, flat hand with a thumb nub.
-    function makeArm(side) {
-      // (The deltoid cap lives in the merged torso mesh above.)
-      var shoulder = new THREE.Group();
-      shoulder.position.set(0.24 * side, 1.455, 0);
-      shoulder.rotation.z = -0.21 * side;
-      g.add(shoulder);
-      var sleeveMat = opts.sleeves === 'short' ? skin : shirt;
-      add(cyl(0.05, 0.04, 0.30, 7, sleeveMat), shoulder, 0, -0.15, 0);   // upper arm
-      add(ball(0.04, skin), shoulder, 0, -0.30, 0);                      // elbow ball
-      var elbow = new THREE.Group();
-      elbow.position.set(0, -0.30, 0);
-      elbow.rotation.x = -0.16;
-      shoulder.add(elbow);
-      // Forearm + hand + thumb: one skin material, rigid — merged.
-      var foreGeo = SH.World.mergeGeos([
-        new THREE.CylinderGeometry(0.04, 0.03, 0.28, 7).translate(0, -0.14, 0),
-        new THREE.BoxGeometry(0.05, 0.09, 0.025).translate(0, -0.315, 0),
-        new THREE.BoxGeometry(0.02, 0.04, 0.02).translate(-0.032 * side, -0.285, 0.012)
-      ]);
-      add(new THREE.Mesh(foreGeo, skin), elbow, 0, 0, 0);
-      return { shoulder: shoulder, elbow: elbow };
+    bodyGeos.push(part(cyl(0.055, 0.06, 0.10, 6), 'Neck', skinColor, M(0, 1.50, 0)));
+    // Ears ride the Head bone but live in the vertex-coloured body mesh
+    // (the head mesh's UV space belongs to the face).
+    bodyGeos.push(part(new THREE.SphereGeometry(0.038, 6, 5), 'Head', skinColor, M(-0.135, 1.63, 0)));
+    bodyGeos.push(part(new THREE.SphereGeometry(0.038, 6, 5), 'Head', skinColor, M(0.135, 1.63, 0)));
+    // Arms: deltoid cap, tapered upper arm, elbow ball, tapered forearm,
+    // flat hand — authored along the A-pose direction from the shoulder.
+    function armGeos(side) { // side: -1 = left (-x), +1 = right (+x)
+      var sx = 0.21 * side;
+      var rz = AZ * side;
+      // Direction the arm points in bind pose: (0,-1,0) rotated by rz
+      // around Z. Left (rz=-0.73): (-0.667, -0.745) — down and outward.
+      var dX = Math.sin(rz);
+      var dY = -Math.cos(rz);
+      var ex = sx + dX * 0.28, ey = 1.44 + dY * 0.28;
+      var out = [];
+      var delt = new THREE.SphereGeometry(0.078, 8, 6);
+      delt.scale(1.05, 0.8, 1.05);
+      out.push(part(delt, side < 0 ? 'UpperArmL' : 'UpperArmR', shirtColor, M(sx, 1.45, 0)));
+      out.push(part(cyl(0.052, 0.042, 0.28, 7).translate(0, -0.14, 0), side < 0 ? 'UpperArmL' : 'UpperArmR', sleeveColor, M(sx, 1.44, 0, 0, 0, rz)));
+      out.push(part(new THREE.SphereGeometry(0.042, 7, 6), side < 0 ? 'ForeArmL' : 'ForeArmR', skinColor, M(ex, ey, 0)));
+      out.push(part(cyl(0.042, 0.032, 0.27, 7).translate(0, -0.135, 0), side < 0 ? 'ForeArmL' : 'ForeArmR', skinColor, M(ex, ey, 0, 0, 0, rz)));
+      out.push(part(new THREE.BoxGeometry(0.05, 0.10, 0.025).translate(0, -0.05, 0), side < 0 ? 'ForeArmL' : 'ForeArmR', skinColor, M(ex + dX * 0.28, ey + dY * 0.28, 0, 0, 0, rz)));
+      return out;
     }
-    var armL = makeArm(-1), armR = makeArm(1);
-    // Neck + head: faceted sphere (r 0.15 = the 0.30 head unit) with
-    // the canvas face, ears, then a hair shell at 1.05x or a hat.
-    add(cyl(0.055, 0.06, 0.08, 6, skin), g, 0, 1.545, 0);
-    var headGroup = new THREE.Group();
-    headGroup.position.set(0, 1.50, 0);
-    g.add(headGroup);
+    bodyGeos = bodyGeos.concat(armGeos(-1), armGeos(1));
+    // Legs: tapered thigh, knee ball, tapered shin with calf bulge, shoe.
+    function legGeos(side) {
+      var sx = 0.10 * side;
+      var bn = side < 0 ? 'L' : 'R';
+      var out = [];
+      out.push(part(cyl(0.078, 0.056, 0.44, 7), 'UpLeg' + bn, thighColor, M(sx, 0.73, 0)));
+      out.push(part(new THREE.SphereGeometry(0.052, 7, 6), 'Shin' + bn, shinColor, M(sx, 0.51, 0)));
+      out.push(part(cyl(0.052, 0.034, 0.44, 7), 'Shin' + bn, shinColor, M(sx, 0.29, 0)));
+      var calf = new THREE.SphereGeometry(0.048, 7, 6);
+      calf.scale(0.75, 1.35, 0.75);
+      out.push(part(calf, 'Shin' + bn, shinColor, M(sx, 0.40, -0.02)));
+      out.push(part(new THREE.BoxGeometry(0.105, 0.07, 0.27), 'Foot' + bn, darkColor, M(sx, 0.035, 0.055, 0.08, 0, 0)));
+      return out;
+    }
+    bodyGeos = bodyGeos.concat(legGeos(-1), legGeos(1));
+
+    var bodyMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    var bodyMesh = new THREE.SkinnedMesh(SH.World.mergeGeos(bodyGeos), bodyMat);
+    var headGeo = part(new THREE.SphereGeometry(0.15, 12, 10), 'Head', skinColor, M(0, 1.63, 0, 0, 0, 0, 0.94, 1, 0.97));
     var headMat = new THREE.MeshLambertMaterial({ map: faceTexture(skinColor, opts.face || 0), flatShading: true });
-    var head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), headMat);
-    head.scale.set(0.94, 1, 0.97);
-    add(head, headGroup, 0, 0.15, 0);
-    // Ears merged into one skin mesh; hair/hat pieces merged per style.
-    var earGeo = SH.World.mergeGeos([
-      new THREE.SphereGeometry(0.038, 6, 5).translate(-0.135, 0.14, 0),
-      new THREE.SphereGeometry(0.038, 6, 5).translate(0.135, 0.14, 0)
-    ]);
-    add(new THREE.Mesh(earGeo, skin), headGroup, 0, 0, 0);
+    var headMesh = new THREE.SkinnedMesh(headGeo, headMat);
+    g.updateMatrixWorld(true); // bind inverses need true bind-pose worlds
+    var skeleton = new THREE.Skeleton(boneList);
+    bodyMesh.add(bones.Hips);
+    bodyMesh.bind(skeleton);
+    headMesh.bind(skeleton);
+    bodyMesh.castShadow = true;
+    headMesh.castShadow = true;
+    bodyMesh.frustumCulled = false;
+    headMesh.frustumCulled = false;
+    g.add(bodyMesh);
+    g.add(headMesh);
+
+    // ---- rigid attachments on the Head bone ------------------------------
+    var hairMat = new THREE.MeshLambertMaterial({ color: hairColor, flatShading: true });
+    function attach(geo, mat, x, y, z) {
+      var m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      bones.Head.add(m);
+      return m;
+    }
     var hairStyle = opts.hairStyle || 'cap';
     if (hairStyle === 'hat') {
       var hatMat = new THREE.MeshLambertMaterial({ color: opts.hatColor != null ? opts.hatColor : 0x22242c, flatShading: true });
-      var hatGeo = SH.World.mergeGeos([
-        new THREE.CylinderGeometry(0.20, 0.20, 0.02, 10).translate(0, 0.235, 0),
-        new THREE.CylinderGeometry(0.135, 0.145, 0.10, 10).translate(0, 0.275, 0)
-      ]);
-      add(new THREE.Mesh(hatGeo, hatMat), headGroup, 0, 0, 0);
+      attach(SH.World.mergeGeos([
+        new THREE.CylinderGeometry(0.20, 0.20, 0.02, 10).translate(0, 0.175, 0),
+        new THREE.CylinderGeometry(0.135, 0.145, 0.10, 10).translate(0, 0.215, 0)
+      ]), hatMat, 0, 0, 0);
     } else if (hairStyle !== 'bald') {
-      var hairParts = [new THREE.SphereGeometry(0.158, 10, 6, 0, Math.PI * 2, 0, 1.75).translate(0, 0.16, -0.01)];
-      if (hairStyle === 'long') hairParts.push(new THREE.BoxGeometry(0.24, 0.32, 0.05).translate(0, 0.0, -0.125));
-      else if (hairStyle === 'bun') hairParts.push(new THREE.SphereGeometry(0.065, 7, 6).translate(0, 0.26, -0.09));
-      else if (hairStyle === 'mohawk') hairParts.push(new THREE.BoxGeometry(0.05, 0.13, 0.30).translate(0, 0.27, 0));
-      add(new THREE.Mesh(SH.World.mergeGeos(hairParts), hairMat), headGroup, 0, 0, 0);
+      var hairParts = [new THREE.SphereGeometry(0.158, 10, 6, 0, Math.PI * 2, 0, 1.75).translate(0, 0.10, -0.01)];
+      if (hairStyle === 'long') hairParts.push(new THREE.BoxGeometry(0.24, 0.32, 0.05).translate(0, -0.06, -0.125));
+      else if (hairStyle === 'bun') hairParts.push(new THREE.SphereGeometry(0.065, 7, 6).translate(0, 0.20, -0.09));
+      else if (hairStyle === 'mohawk') hairParts.push(new THREE.BoxGeometry(0.05, 0.13, 0.30).translate(0, 0.21, 0));
+      attach(SH.World.mergeGeos(hairParts), hairMat, 0, 0, 0);
     }
     if (opts.glasses) {
-      var shades = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.055, 0.015), dark);
-      add(shades, headGroup, 0, 0.15, 0.138);
+      attach(new THREE.BoxGeometry(0.24, 0.055, 0.015), new THREE.MeshLambertMaterial({ color: darkColor, flatShading: true }), 0, 0.10, 0.138);
     }
-    return {
+
+    // ---- animation state --------------------------------------------------
+    var clips = buildClips();
+    var mixer = new THREE.AnimationMixer(g);
+    var actions = {};
+    var weights = { idle: 1, walk: 0, run: 0 };
+    for (var stateName in clips) {
+      var act = mixer.clipAction(clips[stateName]);
+      act.enabled = true;
+      act.setEffectiveWeight(stateName === 'idle' ? 1 : 0);
+      act.play();
+      actions[stateName] = act;
+    }
+    var tris = 0;
+    [bodyMesh, headMesh].forEach(function (mm) {
+      var gi = mm.geometry;
+      tris += (gi.index ? gi.index.count : gi.attributes.position.count) / 3;
+    });
+
+    var fig = {
       group: g,
-      legL: legL.hip, legR: legR.hip, shinL: legL.knee, shinR: legR.knee,
-      armL: armL.shoulder, armR: armR.shoulder, foreL: armL.elbow, foreR: armR.elbow,
-      torso: torso, head: headGroup, shirtMat: shirt
+      bones: bones,
+      mixer: mixer,
+      actions: actions,
+      shirtMat: bodyMat, // per-figure material: combat hit-flash target
+      skinMat: bodyMat,
+      headMesh: headMesh,
+      tris: Math.round(tris),
+      state: 'idle',
+      speedNorm: 0,
+      aimTarget: 0, aim: 0,
+      lookYaw: 0, lookPitch: 0,
+      leanX: 0, leanZ: 0,
+      setSpeed: function (n) { this.speedNorm = clampN(n, 0, 1.3); },
+      // Direct seated pose (motor riders): writes the bones once, no
+      // mixer involvement — used for NPC riders and, per frame, for the
+      // player while Vehicles drives the bike.
+      applySeated: function () {
+        bones.UpLegL.quaternion.setFromEuler(_e.set(-1.45, 0, 0));
+        bones.UpLegR.quaternion.setFromEuler(_e.set(-1.45, 0, 0));
+        bones.ShinL.quaternion.setFromEuler(_e.set(1.55, 0, 0));
+        bones.ShinR.quaternion.setFromEuler(_e.set(1.55, 0, 0));
+        bones.FootL.quaternion.setFromEuler(_e.set(0.5, 0, 0));
+        bones.FootR.quaternion.setFromEuler(_e.set(0.5, 0, 0));
+        bones.UpperArmL.quaternion.setFromEuler(_e.set(-0.95, 0, -0.25));
+        bones.UpperArmR.quaternion.setFromEuler(_e.set(-0.95, 0, 0.25));
+        bones.ForeArmL.quaternion.setFromEuler(_e.set(-0.35, 0, 0));
+        bones.ForeArmR.quaternion.setFromEuler(_e.set(-0.35, 0, 0));
+        bones.Chest.quaternion.setFromEuler(_e.set(0.12, 0, 0));
+      },
+      update: function (dt) {
+        // State by speed, with a little hysteresis at the run line.
+        var want = this.state;
+        if (this.speedNorm > 0.62) want = 'run';
+        else if (this.speedNorm > 0.06) want = 'walk';
+        else if (this.speedNorm < 0.04) want = 'idle';
+        if (want !== this.state) this.state = want;
+        for (var k in actions) {
+          var target = k === this.state ? 1 : 0;
+          weights[k] += clampN(target - weights[k], -dt / 0.25, dt / 0.25);
+          actions[k].setEffectiveWeight(weights[k]);
+        }
+        actions.walk.timeScale = 0.7 + this.speedNorm * 0.9;
+        actions.run.timeScale = 0.9 + this.speedNorm * 0.35;
+        mixer.update(dt);
+        // ---- procedural layer (post-mixer, Codrops-style) ----
+        this.aim += clampN(this.aimTarget - this.aim, -dt * 5, dt * 5);
+        if (this.aim > 0.001) {
+          _aimQ.setFromEuler(_e.set(-1.5, 0, 0.12));
+          bones.UpperArmR.quaternion.slerp(_aimQ, this.aim);
+          _aimQ.setFromEuler(_e.set(-0.3, 0, 0));
+          bones.ForeArmR.quaternion.slerp(_aimQ, this.aim * 0.85);
+        }
+        // Look: Neck/Head are purely procedural bones (no clip ever
+        // writes them), so the layer SETS their quaternions outright.
+        // (Multiplying into an untracked bone accumulates frame over
+        // frame — the head spun -137 degrees before this was caught.)
+        var ly = clampN(this.lookYaw, -0.85, 0.85), lp = clampN(this.lookPitch, -0.5, 0.5);
+        bones.Neck.quaternion.setFromEuler(_e.set(lp * 0.6, ly * 0.6, 0));
+        bones.Head.quaternion.setFromEuler(_e.set(lp * 0.4, ly * 0.4, 0));
+        if (this.leanX) bones.Chest.quaternion.multiply(_q.setFromEuler(_e.set(this.leanX, 0, 0)));
+        if (this.leanZ) bones.Hips.quaternion.multiply(_q.setFromEuler(_e.set(0, 0, this.leanZ)));
+      }
     };
+    fig._skinTone = skinColor;
+    return fig;
   }
 
   var skinTones = [0x8a5a34, 0xa8763e, 0xb87a4e, 0xc98a5e, 0x7a4a28, 0xd9a06a];
@@ -231,7 +454,7 @@
   function buildPedMesh(rng) {
     var bottom = ['pants', 'pants', 'shorts', 'skirt'][(rng() * 4) | 0];
     var skinTone = skinTones[(rng() * skinTones.length) | 0];
-    var built = buildFigure({
+    return buildFigure({
       skin: skinTone,
       shirt: shirtColors[(rng() * shirtColors.length) | 0],
       pants: 0x2a3040 + ((rng() * 0x101018) | 0),
@@ -243,14 +466,12 @@
       glasses: rng() < 0.2,
       face: (rng() * 3) | 0
     });
-    built._skinTone = skinTone;
-    return built;
   }
 
-  // Far LOD (perf mandate): bake the whole articulated figure into ONE
-  // vertex-coloured mesh. Beyond ~46 m the limb swing is a few pixels;
-  // the baked walker still moves, turns and bobs via the ped update,
-  // and the full figure returns inside 42 m (hysteresis, no flicker).
+  // Far LOD (perf mandate): bake the whole rigged figure in bind pose
+  // into ONE vertex-coloured mesh. Beyond ~46 m the limb swing is a few
+  // pixels; the baked walker still moves, turns and bobs via the ped
+  // update, and the full rig returns inside 42 m (hysteresis).
   var lodMatShared = null;
   function bakeLOD(built) {
     if (!lodMatShared) lodMatShared = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -258,14 +479,21 @@
     var geos = [];
     built.group.traverse(function (o) {
       if (!o.isMesh) return;
-      var geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      var geo = o.geometry.clone();
+      geo.deleteAttribute('skinIndex');
+      geo.deleteAttribute('skinWeight');
+      geo.applyMatrix4(o.matrixWorld);
       var col = (o.material && o.material.map)
         ? new THREE.Color(built._skinTone != null ? built._skinTone : 0xb87a4e)
         : (o.material && o.material.color ? o.material.color : new THREE.Color(0x888888));
-      var n = geo.attributes.position.count;
-      var arr = new Float32Array(n * 3);
-      for (var i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
-      geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      // Skinned body parts carry their outfit colour per-vertex; the
+      // material colour (white) would erase it — prefer vertex colours.
+      if (!geo.attributes.color) {
+        var n = geo.attributes.position.count;
+        var arr = new Float32Array(n * 3);
+        for (var i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+        geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      }
       geos.push(geo);
     });
     var mesh = new THREE.Mesh(SH.World.mergeGeos(geos), lodMatShared);
@@ -287,7 +515,7 @@
         var lod = bakeLOD(built);
         scene.add(lod);
         var ped = {
-          mesh: built.group, parts: built, lod: lod, far: false,
+          mesh: built.group, fig: built, lod: lod, far: false,
           x: 0, z: 0, heading: 0, speed: 0, cycle: this.rng() * 6,
           tx: 0, tz: 0, state: 'walk', timer: this.rng() * 3, panic: 0, down: 0,
           market: i < 8 // Rev 6: the first eight walkers belong to the night market
@@ -426,30 +654,24 @@
           if (ped.lod) ped.lod.visible = wantFar;
         }
         var gait = speed > 0 ? 1 : 0;
-        var bobY = Math.abs(Math.sin(ped.cycle * 2.2)) * 0.028 * gait;
-        var swayY = ped.heading + Math.sin(ped.cycle * 2.2) * 0.08 * gait;
-        ped.mesh.position.set(ped.x, bobY, ped.z);
-        ped.mesh.rotation.y = swayY;
         if (ped.far) {
-          // The baked walker just rides the same bob and sway.
+          // The baked walker just rides a bob and sway.
+          var bobY = Math.abs(Math.sin(ped.cycle * 2.2)) * 0.028 * gait;
+          var swayY = ped.heading + Math.sin(ped.cycle * 2.2) * 0.08 * gait;
           if (ped.lod) {
             ped.lod.position.set(ped.x, bobY, ped.z);
             ped.lod.rotation.y = swayY;
           }
           continue;
         }
-        var s = Math.sin(ped.cycle * 2.2) * (speed > 0 ? 0.55 : 0.04);
-        ped.parts.legL.rotation.x = s; ped.parts.legR.rotation.x = -s;
-        ped.parts.armL.rotation.x = -s * 0.8; ped.parts.armR.rotation.x = s * 0.8;
-        // Knees bend as each leg swings forward (Art Bible gait: the
-        // swing comes from the hip joint, the knee folds behind it).
-        if (ped.parts.shinL) {
-          ped.parts.shinL.rotation.x = Math.max(0, -s) * 0.85;
-          ped.parts.shinR.rotation.x = Math.max(0, s) * 0.85;
-        }
-        // Gait life (bible v2): hips yaw a few degrees against the
-        // shoulders, the chest counter-rotates.
-        if (ped.parts.torso) ped.parts.torso.rotation.y = -Math.sin(ped.cycle * 2.2) * 0.07 * gait;
+        // Near figure: the rig does the work — clips carry the gait,
+        // the mixer crossfades idle/walk/run by speed (Rev 7). Idle
+        // walkers glance around slowly (procedural look layer).
+        ped.mesh.position.set(ped.x, 0, ped.z);
+        ped.mesh.rotation.y = ped.heading;
+        ped.fig.setSpeed(speed / 4.3);
+        ped.fig.lookYaw = ped.state === 'idle' ? Math.sin(st.time * 0.4 + i * 1.7) * 0.35 : 0;
+        ped.fig.update(dt);
       }
     }
   };

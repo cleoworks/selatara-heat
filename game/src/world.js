@@ -284,8 +284,13 @@
       total += g.attributes.position.count;
     }
     var hasColor = parts.length && parts[0].attributes.color != null;
+    // Skinning attributes ride along when present (Rev 7 figures):
+    // without them a merged SkinnedMesh has nothing to bind to.
+    var hasSkin = parts.length && parts[0].attributes.skinIndex != null;
     var pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), uv = new Float32Array(total * 2);
     var col = hasColor ? new Float32Array(total * 3) : null;
+    var ski = hasSkin ? new Uint16Array(total * 4) : null;
+    var skw = hasSkin ? new Float32Array(total * 4) : null;
     var off = 0;
     for (i = 0; i < parts.length; i++) {
       g = parts[i];
@@ -293,6 +298,8 @@
       nor.set(g.attributes.normal.array, off * 3);
       if (g.attributes.uv) uv.set(g.attributes.uv.array, off * 2);
       if (col && g.attributes.color) col.set(g.attributes.color.array, off * 3);
+      if (ski && g.attributes.skinIndex) ski.set(g.attributes.skinIndex.array, off * 4);
+      if (skw && g.attributes.skinWeight) skw.set(g.attributes.skinWeight.array, off * 4);
       off += g.attributes.position.count;
     }
     var out = new THREE.BufferGeometry();
@@ -300,6 +307,8 @@
     out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (ski) out.setAttribute('skinIndex', new THREE.BufferAttribute(ski, 4));
+    if (skw) out.setAttribute('skinWeight', new THREE.BufferAttribute(skw, 4));
     return out;
   }
 
