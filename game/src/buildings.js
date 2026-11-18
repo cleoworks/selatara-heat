@@ -331,8 +331,12 @@
           }
         }
       }
-      // Bent palm trunk: vertices lean further the higher they sit.
-      var trunkGeo = new THREE.CylinderGeometry(0.13, 0.34, 6, 5, 5);
+      // Palm trunk (Art Bible v2): a tapered stack look — the bend is
+      // quadratic (offset = bend * t^2, total lean ~0.95 m over a 6 m
+      // trunk with a flared base), and a canvas ring texture bands the
+      // bark every ~0.45 m so the trunk reads as stacked segments, not
+      // one smooth pipe.
+      var trunkGeo = new THREE.CylinderGeometry(0.13, 0.34, 6, 5, 10);
       trunkGeo.translate(0, 3, 0);
       var tp = trunkGeo.attributes.position;
       for (pi = 0; pi < tp.count; pi++) {
@@ -340,42 +344,71 @@
         tp.setX(pi, tp.getX(pi) + tt * tt * 0.95);
       }
       trunkGeo.computeVertexNormals();
-      // Frond ribbons in two droop flavours: extends +x from the crown,
-      // tapers and falls. Mixing both around one crown (9-12 fronds) with
-      // per-frond scale jitter keeps crowns from looking stamped out.
-      function makeFrondGeo(droop, len) {
-        var fg = new THREE.PlaneGeometry(len, 0.8, 6, 1);
+      var barkCv = document.createElement('canvas'); barkCv.width = 32; barkCv.height = 128;
+      var barkCx = barkCv.getContext('2d');
+      barkCx.fillStyle = '#9a7a56'; barkCx.fillRect(0, 0, 32, 128);
+      for (var bri = 0; bri < 13; bri++) {
+        barkCx.fillStyle = 'rgba(62,42,24,0.6)';
+        barkCx.fillRect(0, bri * 10 + 7, 32, 3);
+        barkCx.fillStyle = 'rgba(214,182,138,0.35)';
+        barkCx.fillRect(0, bri * 10 + 5, 32, 2);
+      }
+      var barkTex = new THREE.CanvasTexture(barkCv);
+      barkTex.colorSpace = THREE.SRGBColorSpace;
+      // Fronds (Art Bible v2): SOLID shaped blades, no alpha. One blade
+      // is a 6x2 plane reshaped by hand: width peaks ~0.5 m at t=0.45
+      // and closes to a point, edges zig-zag notched on alternating
+      // rows, a V-fold lifts the centre rib, and the length curve rises
+      // ~30 degrees before falling past horizontal at the tip. Vertex
+      // colours run yellow-green at the base to deep green at the tip.
+      function makeFrondGeo(len, fall) {
+        var fg = new THREE.PlaneGeometry(len, 1, 6, 2);
         fg.translate(len / 2, 0, 0);
         fg.rotateX(-Math.PI / 2);
         var fp2 = fg.attributes.position;
+        var cols = [];
+        var cBase = new THREE.Color(0x86cc52), cTip = new THREE.Color(0x2e7d3a), cTmp = new THREE.Color();
         for (var qi = 0; qi < fp2.count; qi++) {
           var fu = fp2.getX(qi) / len;
-          fp2.setY(qi, -fu * fu * droop - Math.abs(fp2.getZ(qi)) * 0.4);
-          fp2.setZ(qi, fp2.getZ(qi) * (1 - fu * 0.82));
+          var row = Math.round(fu * 6);
+          var wHalf = (0.03 + 0.55 * Math.sin(Math.PI * Math.pow(fu, 0.85)) * (1 - 0.25 * fu)) / 2;
+          var zn = fp2.getZ(qi) * 2; // -1 / 0 / +1 across the 3 columns
+          var edge = Math.abs(zn) > 0.5;
+          var zNew = zn * wHalf * (edge && row % 2 === 1 ? 0.78 : 1); // zig-zag notches
+          fp2.setZ(qi, zNew);
+          var yNew = len * (0.55 * fu - fall * fu * fu) + (edge ? -0.06 : 0.05);
+          fp2.setY(qi, yNew);
+          cTmp.copy(cBase).lerp(cTip, fu);
+          if (!edge) cTmp.multiplyScalar(1.12);
+          cols.push(cTmp.r, cTmp.g, cTmp.b);
         }
+        fg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
         fg.computeVertexNormals();
         return fg;
       }
-      var frondGeoA = makeFrondGeo(1.5, 3.6);  // mature, heavy droop
-      var frondGeoB = makeFrondGeo(0.75, 3.1); // younger, held higher
+      var frondGeoA = makeFrondGeo(2.3, 1.02); // lower tier: longer, falls past horizontal
+      var frondGeoB = makeFrondGeo(2.0, 0.78); // upper tier: shorter, held higher
       var palmTrunks = [], frondsA = [], frondsB = [], coconuts = [], treeTrunks = [], canopies = [];
       for (pi = 0; pi < palms.length; pi++) {
         var pm = palms[pi];
         palmTrunks.push({ x: pm.x, y: 0, z: pm.z, sx: pm.s, sy: pm.s, sz: pm.s, rotY: pm.lean });
         // Crown sits at the top of the bent trunk (local +0.95x, 6y).
+        // 8-9 fronds in two tiers: even slots take the long drooping
+        // tier, odd slots the shorter upright tier (bible v2).
         var ccx = pm.x + 0.95 * pm.s * Math.cos(pm.lean);
         var ccz = pm.z - 0.95 * pm.s * Math.sin(pm.lean);
-        var nFr = 9 + ((rng() * 4) | 0);
+        var nFr = 8 + ((rng() * 2) | 0);
         for (var fi = 0; fi < nFr; fi++) {
+          var lowerTier = fi % 2 === 0;
           var frondP = {
-            x: ccx, y: 6 * pm.s - 0.1 + (fi % 3) * 0.07, z: ccz,
+            x: ccx, y: 6 * pm.s - 0.08 + (lowerTier ? 0 : 0.14), z: ccz,
             sx: pm.s * (0.9 + rng() * 0.4), sy: pm.s, sz: pm.s * (0.9 + rng() * 0.3),
             rotY: (fi / nFr) * Math.PI * 2 + rng() * 0.55
           };
-          if (rng() < 0.55) frondsA.push(frondP); else frondsB.push(frondP);
+          if (lowerTier) frondsA.push(frondP); else frondsB.push(frondP);
         }
         for (var ci = 0; ci < 3; ci++) {
-          coconuts.push({ x: ccx + (rng() - 0.5) * 0.5, y: 6 * pm.s - 0.35, z: ccz + (rng() - 0.5) * 0.5, sx: 0.34, sy: 0.34, sz: 0.34 });
+          coconuts.push({ x: ccx + (rng() - 0.5) * 0.5, y: 6 * pm.s - 0.35, z: ccz + (rng() - 0.5) * 0.5, sx: 0.26, sy: 0.26, sz: 0.26 });
         }
       }
       for (pi = 0; pi < parkTrees.length; pi++) {
@@ -385,8 +418,8 @@
         canopies.push({ x: tr.x + 0.9 * tr.s, y: 6.8 * tr.s, z: tr.z + 0.5 * tr.s, sx: 4.6 * tr.s, sy: 2.7 * tr.s, sz: 4.6 * tr.s, color: 0x57b85e });
         canopies.push({ x: tr.x - 0.6 * tr.s, y: 8 * tr.s, z: tr.z - 0.7 * tr.s, sx: 3.2 * tr.s, sy: 2.3 * tr.s, sz: 3.2 * tr.s, color: 0x439148 });
       }
-      var trunkMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
-      var frondMat = new THREE.MeshLambertMaterial({ color: 0x3f9e4d, flatShading: true, side: THREE.DoubleSide });
+      var trunkMat = new THREE.MeshLambertMaterial({ map: barkTex });
+      var frondMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
       var treeMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
       makeInstanced(trunkGeo, trunkMat, palmTrunks, scene, false);
       makeInstanced(frondGeoA, frondMat, frondsA, scene, false);
