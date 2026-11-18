@@ -16,12 +16,18 @@
       var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z); m.castShadow = true; g.add(m); return m;
     }
-    var legL = box(0.2, 0.78, 0.24, pants, -0.15, 0.78, 0); legL.geometry.translate(0, -0.3, 0);
-    var legR = box(0.2, 0.78, 0.24, pants, 0.15, 0.78, 0); legR.geometry.translate(0, -0.3, 0);
-    box(0.56, 0.64, 0.3, shirt, 0, 1.1, 0);
-    var armL = box(0.16, 0.6, 0.2, shirt, -0.38, 1.38, 0); armL.geometry.translate(0, -0.24, 0);
-    var armR = box(0.16, 0.6, 0.2, shirt, 0.38, 1.38, 0); armR.geometry.translate(0, -0.24, 0);
-    box(0.32, 0.36, 0.32, skin, 0, 1.62, 0);
+    var hair = new THREE.MeshLambertMaterial({ color: [0x14100c, 0x3a2415, 0x5e3a1e, 0x7a1f3d][(rng() * 4) | 0], flatShading: true });
+    var legL = box(0.19, 0.8, 0.23, pants, -0.13, 0.82, 0); legL.geometry.translate(0, -0.34, 0);
+    var legR = box(0.19, 0.8, 0.23, pants, 0.13, 0.82, 0); legR.geometry.translate(0, -0.34, 0);
+    box(0.54, 0.6, 0.3, shirt, 0, 1.13, 0);
+    var armL = box(0.14, 0.42, 0.18, shirt, -0.35, 1.4, 0); armL.geometry.translate(0, -0.17, 0);
+    var armR = box(0.14, 0.42, 0.18, shirt, 0.35, 1.4, 0); armR.geometry.translate(0, -0.17, 0);
+    var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.15), skin);
+    foreL.position.set(0, -0.44, 0); foreL.castShadow = true; armL.add(foreL);
+    var foreR = foreL.clone(); armR.add(foreR);
+    box(0.14, 0.1, 0.14, skin, 0, 1.47, 0);
+    box(0.27, 0.3, 0.27, skin, 0, 1.64, 0);
+    box(0.29, 0.09, 0.29, hair, 0, 1.81, 0);
     return { group: g, legL: legL, legR: legR, armL: armL, armR: armR };
   }
 

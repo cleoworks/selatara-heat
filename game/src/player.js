@@ -24,17 +24,24 @@
         m.position.set(x, y, z); m.castShadow = true;
         g.add(m); return m;
       }
-      var legL = box(0.22, 0.8, 0.26, pants, -0.16, 0.4, 0);
-      var legR = box(0.22, 0.8, 0.26, pants, 0.16, 0.4, 0);
-      legL.geometry.translate(0, -0.32, 0); legL.position.y = 0.8;
-      legR.geometry.translate(0, -0.32, 0); legR.position.y = 0.8;
-      box(0.62, 0.68, 0.34, shirt, 0, 1.14, 0);
-      var armL = box(0.18, 0.66, 0.22, shirt, -0.42, 1.32, 0);
-      var armR = box(0.18, 0.66, 0.22, shirt, 0.42, 1.32, 0);
-      armL.geometry.translate(0, -0.26, 0); armL.position.y = 1.44;
-      armR.geometry.translate(0, -0.26, 0); armR.position.y = 1.44;
-      box(0.34, 0.38, 0.34, skin, 0, 1.68, 0);
-      box(0.38, 0.1, 0.38, dark, 0, 1.9, 0); // cap
+      // Proportions: slim legs, two-segment arms (shirt sleeve + skin
+      // forearm), small head — reads as a person, not a stacking of crates.
+      var legL = box(0.19, 0.8, 0.23, pants, -0.13, 0.82, 0);
+      var legR = box(0.19, 0.8, 0.23, pants, 0.13, 0.82, 0);
+      legL.geometry.translate(0, -0.34, 0);
+      legR.geometry.translate(0, -0.34, 0);
+      box(0.54, 0.6, 0.3, shirt, 0, 1.13, 0);
+      var armL = box(0.14, 0.42, 0.18, shirt, -0.35, 1.4, 0);
+      var armR = box(0.14, 0.42, 0.18, shirt, 0.35, 1.4, 0);
+      armL.geometry.translate(0, -0.17, 0);
+      armR.geometry.translate(0, -0.17, 0);
+      var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.15), skin);
+      foreL.position.set(0, -0.44, 0); foreL.castShadow = true; armL.add(foreL);
+      var foreR = foreL.clone(); armR.add(foreR);
+      box(0.14, 0.1, 0.14, skin, 0, 1.47, 0);      // neck
+      box(0.27, 0.3, 0.27, skin, 0, 1.64, 0);      // head
+      box(0.3, 0.09, 0.3, dark, 0, 1.81, 0);       // cap
+      box(0.3, 0.04, 0.16, dark, 0, 1.77, 0.2);    // cap brim
 
       this.parts = { legL: legL, legR: legR, armL: armL, armR: armR };
       this.mesh = g;
@@ -109,7 +116,7 @@
     updateCamera: function (dt, camera) {
       var st = SH.State, p = st.player;
       var target = st.driving ? st.vehiclePos : p;
-      var dist = st.aiming ? 3.1 : (st.driving ? 5.4 : 6.4);
+      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || 5.4) : 6.4);
       var height = st.driving ? 1.55 : 1.9;
       var back = new THREE.Vector3(Math.sin(st.camYaw) * Math.cos(st.camPitch), Math.sin(st.camPitch), Math.cos(st.camYaw) * Math.cos(st.camPitch));
       var cx = target.x + back.x * dist;

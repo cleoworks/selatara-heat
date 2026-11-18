@@ -107,6 +107,9 @@
 
     update: function (dt) {
       var st = SH.State;
+      // Screenshot staging is deterministic: traffic holds exactly where
+      // shots.js placed it instead of wandering into (or out of) the frame.
+      if (SH.Shots && SH.Shots.active) return;
       var focus = st.driving ? st.vehiclePos : st.player;
       for (var i = 0; i < this.cars.length; i++) {
         var veh = this.cars[i];

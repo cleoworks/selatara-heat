@@ -81,13 +81,18 @@
       var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z); m.castShadow = true; g.add(m); return m;
     }
-    var legL = box(0.2, 0.78, 0.24, dark, -0.15, 0.78, 0); legL.geometry.translate(0, -0.3, 0);
-    var legR = box(0.2, 0.78, 0.24, dark, 0.15, 0.78, 0); legR.geometry.translate(0, -0.3, 0);
-    box(0.56, 0.64, 0.3, navy, 0, 1.1, 0);
-    var armL = box(0.16, 0.6, 0.2, navy, -0.38, 1.38, 0); armL.geometry.translate(0, -0.24, 0);
-    var armR = box(0.16, 0.6, 0.2, navy, 0.38, 1.38, 0); armR.geometry.translate(0, -0.24, 0);
-    box(0.32, 0.36, 0.32, skin, 0, 1.62, 0);
-    box(0.36, 0.09, 0.36, navy, 0, 1.84, 0);
+    var legL = box(0.19, 0.8, 0.23, dark, -0.13, 0.82, 0); legL.geometry.translate(0, -0.34, 0);
+    var legR = box(0.19, 0.8, 0.23, dark, 0.13, 0.82, 0); legR.geometry.translate(0, -0.34, 0);
+    box(0.54, 0.6, 0.3, navy, 0, 1.13, 0);
+    var armL = box(0.14, 0.42, 0.18, navy, -0.35, 1.4, 0); armL.geometry.translate(0, -0.17, 0);
+    var armR = box(0.14, 0.42, 0.18, navy, 0.35, 1.4, 0); armR.geometry.translate(0, -0.17, 0);
+    var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.15), skin);
+    foreL.position.set(0, -0.44, 0); foreL.castShadow = true; armL.add(foreL);
+    var foreR = foreL.clone(); armR.add(foreR);
+    box(0.14, 0.1, 0.14, skin, 0, 1.47, 0);
+    box(0.27, 0.3, 0.27, skin, 0, 1.64, 0);
+    box(0.3, 0.08, 0.3, navy, 0, 1.81, 0);        // police cap
+    box(0.3, 0.04, 0.18, navy, 0, 1.77, 0.2);    // cap brim
     return { group: g, legL: legL, legR: legR, armL: armL, armR: armR };
   }
 
@@ -436,6 +441,16 @@
       for (var i2 = 0; i2 < this.units.length; i2++) {
         var unit = this.units[i2], veh = unit.veh;
         var distP = Math.hypot(veh.x - f.x, veh.z - f.z);
+        if (unit.staged) {
+          // Screenshot formation: match the player car's velocity exactly so
+          // the staged gap never closes or opens.
+          var pvx = st.vehicle ? Math.sin(st.vehicle.heading) * st.vehicle.speed : 0;
+          var pvz = st.vehicle ? Math.cos(st.vehicle.heading) * st.vehicle.speed : 0;
+          veh.x += pvx * dt; veh.z += pvz * dt;
+          veh.speed = st.vehicle ? st.vehicle.speed : 0;
+          SH.Vehicles.syncMesh(veh);
+          continue;
+        }
         unit.pathTimer -= dt;
         var direct = distP < 62 && !losBlocked(veh.x, veh.z, f.x, f.z);
         var tx, tz;
@@ -543,7 +558,9 @@
         this.ensureHeli();
         var h = this.heli;
         if (h.cx === undefined) { h.cx = this.lastKnown.x; h.cz = this.lastKnown.z; }
-        h.angle += dt * 0.45;
+        // In a staged screenshot the orbit angle stays where stageChase put
+        // it, so the helicopter is guaranteed inside the frame.
+        if (!(SH.Shots && SH.Shots.active)) h.angle += dt * 0.45;
         // The orbit centre flies toward the last known position at speed; it
         // does NOT track the player magically — losing the heli is possible.
         var hdx = this.lastKnown.x - h.cx, hdz = this.lastKnown.z - h.cz;
@@ -561,27 +578,41 @@
     },
 
     // Instant staging for the ?shot=chase screenshot: units already on scene.
+    // Composition rules: the chase camera sits ~5 m behind the player car, so
+    // a unit 12+ m behind is BEHIND the camera and invisible. Staged units
+    // ride in the adjacent lanes a few metres back (front half + lightbar in
+    // frame, never intersecting the player car) and hold formation at the
+    // player's speed (see the `staged` branch in update()).
     stageChase: function () {
       var st = SH.State;
       var f = this.focus();
       this.forceWanted(4);
-      for (var i = 0; i < 3; i++) {
+      var h = st.vehicle ? st.vehicle.heading : Math.PI;
+      var fx = Math.sin(h), fz = Math.cos(h);       // player forward
+      var rx = fz, rz = -fx;                        // player right
+      var spots = [[2.9, 4.5], [-2.9, 6.8]];
+      for (var i = 0; i < spots.length; i++) {
         var unit = this.spawnCar(true);
         if (unit) {
-          unit.veh.x = f.x + (i - 1) * 7;
-          unit.veh.z = f.z + 13 + i * 6;
-          unit.veh.heading = Math.PI;
+          unit.staged = true;
+          unit.veh.x = f.x + rx * spots[i][0] - fx * spots[i][1];
+          unit.veh.z = f.z + rz * spots[i][0] - fz * spots[i][1];
+          unit.veh.heading = h;
+          unit.veh.speed = 0;
           SH.Vehicles.syncMesh(unit.veh);
         }
       }
-      // A roadblock ahead of the player car.
+      // A roadblock across the road ~60 m ahead of the player car.
       var scene = this.ensureScene();
+      var bx = f.x + fx * 60, bz = f.z + fz * 60;
       for (var j = 0; j < 2; j++) {
-        var veh = SH.Vehicles.spawnVehicle(scene, 'police', 0xf2f2f2, f.x + (j === 0 ? -3 : 3), f.z - 46, Math.PI / 2);
+        var side = j === 0 ? -2.9 : 2.9;
+        var veh = SH.Vehicles.spawnVehicle(scene, 'police', 0xf2f2f2, bx + rx * side, bz + rz * side, h + Math.PI / 2);
         veh.driver = 'roadblock';
         this.blocks.push({ veh: veh, life: 999 });
       }
       this.ensureHeli();
+      if (this.heli) { this.heli.cx = f.x; this.heli.cz = f.z; this.heli.angle = -0.7; }
       this.searching = false;
       this.lastKnown.x = f.x; this.lastKnown.z = f.z;
     },

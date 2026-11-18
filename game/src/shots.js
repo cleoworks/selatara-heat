@@ -128,14 +128,18 @@
         SH.Main.setHour(18.1);
         var car3 = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xe83a3a, -120, -118, Math.PI);
         enterClean(car3);
-        st._shotCruise = { speed: 19 };
+        st._shotCruise = { speed: 16 };
+        st._shotCamDist = 8.5; // wider chase framing: staged units + lightbars fit
         st.camYaw = 0; st.camPitch = 0.05;
         snapCamera();
         st.cash = 3120;
         st.objective = { title: 'PORT OF LIES', text: 'Lose the police completely', x: -120, z: -118 };
         if (SH.Police) SH.Police.stageChase();
+        // Traffic stays OUT of the player's avenue: one car far ahead in the
+        // same avenue, one crossing on the next avenue — nothing can stack
+        // onto the staged pursuit formation.
         stageTraffic([
-          { from: [-120, -180], to: [-120, -60], t: 0.75 },
+          { from: [-120, -300], to: [-120, -180], t: 0.45 },
           { from: [-240, -180], to: [-120, -180], t: 0.5 }
         ]);
         stagePeds([[-127.5, -150], [-112.5, -96]]);
@@ -150,11 +154,31 @@
         st.weapon = 'pistol'; st.ammo = 9; st.ammoReserve = 24;
         if (SH.Combat) {
           SH.Combat.owned.pistol = true;
-          SH.Combat.spawnEnemy(-313, 78, { color: 0x1f6f6f, hp: 45 });
-          SH.Combat.spawnEnemy(-322, 84, { color: 0x1f6f6f, hp: 45 });
-          SH.Combat.spawnEnemy(-306, 86, { color: 0x274b4f, hp: 45 });
+          // Enemies at mid-range (11-17 m) ahead of the aim camera, spread
+          // laterally so they read around Raka's silhouette, in bright rival
+          // colours that survive the dusk light.
+          SH.Combat.spawnEnemy(-323, 74, { color: 0x2a8a8a, hp: 45 });
+          SH.Combat.spawnEnemy(-317, 77, { color: 0xc96f2a, hp: 45 });
+          SH.Combat.spawnEnemy(-326, 80, { color: 0x2a8a8a, hp: 45 });
+          // Freeze the firing frame: persistent additive flash sprites at
+          // the nearest enemy's muzzle and at Raka's gun (the live particle
+          // flash lasts 0.12 s and would almost never land in a still).
+          var fc = document.createElement('canvas'); fc.width = fc.height = 64;
+          var fg = fc.getContext('2d');
+          var fgrad = fg.createRadialGradient(32, 32, 2, 32, 32, 32);
+          fgrad.addColorStop(0, 'rgba(255,255,240,1)'); fgrad.addColorStop(0.3, 'rgba(255,190,80,0.85)'); fgrad.addColorStop(1, 'rgba(255,120,30,0)');
+          fg.fillStyle = fgrad; fg.fillRect(0, 0, 64, 64);
+          var ftex = new THREE.CanvasTexture(fc);
+          function flash(x, y, z, s) {
+            var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, color: 0xffd9a0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+            sp.scale.set(s, s, 1); sp.position.set(x, y, z);
+            scene.add(sp);
+          }
+          flash(-322.4, 1.45, 72.6, 1.5);   // nearest enemy's muzzle, aimed at Raka
+          SH.Effects.tracer(-322.4, 1.45, 72.6, -320.1, 1.3, 64.2, true);
         }
         st._shotAim = true;
+        st._shotAimDist = 4.8; // pull the aim camera back so Raka doesn't fill the frame
         st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -322, z: 92 };
         stagePeds([[-306, 62], [-336, 74]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);

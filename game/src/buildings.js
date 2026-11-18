@@ -6,19 +6,30 @@
 (function (SH) {
   'use strict';
 
-  function facadeTexture(seed, litRatio, sign) {
+  function facadeTexture(seed, litRatio, sign, pattern) {
     var c = document.createElement('canvas'); c.width = 128; c.height = 256;
     var g = c.getContext('2d');
     g.fillStyle = '#f4ead6'; g.fillRect(0, 0, 128, 256);
     var rng = SH.World.makeRng(seed);
-    for (var y = 6; y < 246; y += 12) {
-      for (var x = 6; x < 122; x += 12) {
+    // Three window grammars so neighbouring buildings never share one grid:
+    // 0 = square grid, 1 = tall vertical strips, 2 = wide windows + balcony
+    // bands every third row.
+    var rowH = pattern === 1 ? 24 : 12;
+    for (var y = 6; y < 246; y += rowH) {
+      if (pattern === 2 && ((y / rowH) | 0) % 3 === 2) {
+        g.fillStyle = 'rgba(90,60,40,0.55)';
+        g.fillRect(0, y + 8, 128, 3); // balcony shadow line
+      }
+      for (var x = 6; x < 122; x += (pattern === 2 ? 18 : 12)) {
         var lit = rng() < litRatio;
+        if (rng() < 0.08) continue; // a few windows simply absent
         // Deep blue-teal glass against the warm wall: strong readable contrast.
         g.fillStyle = lit ? '#274b5c' : '#3d6a7d';
-        g.fillRect(x, y, 8, 8);
+        if (pattern === 1) g.fillRect(x, y, 7, 19);
+        else if (pattern === 2) g.fillRect(x, y, 13, 8);
+        else g.fillRect(x, y, 8, 8);
         g.fillStyle = 'rgba(255,255,255,0.35)';
-        g.fillRect(x, y, 8, 2);
+        g.fillRect(x, y, pattern === 2 ? 13 : 8, 2);
       }
     }
     if (sign) {
@@ -82,7 +93,7 @@
               var h = d.minH + rng() * (d.maxH - d.minH);
               var ox = (tw === 0 ? -1 : 1) * bw * 0.21 + (rng() - 0.5) * 6;
               var oz = (tw === 0 ? -1 : 1) * bd * 0.18 + (rng() - 0.5) * 6;
-              towers.push({ x: cx + ox, y: 4.2 + h / 2, z: cz + oz, sx: bw * 0.34, sy: h, sz: bd * 0.34, color: palettes.pelita[(rng() * palettes.pelita.length) | 0] });
+              towers.push({ x: cx + ox, y: 4.2 + h / 2, z: cz + oz, sx: bw * 0.34, sy: h, sz: bd * 0.34, base: 4.2, h: h, color: palettes.pelita[(rng() * palettes.pelita.length) | 0] });
             }
           } else if (d.id === 'ruko') {
             // Two shophouse rows per block (street front + back lane), each
@@ -90,17 +101,17 @@
             for (var k = 0; k < 4; k++) {
               var sx = xs[i] + 16 + k * ((xs[i + 1] - xs[i] - 32) / 3);
               var sh = d.minH + rng() * (d.maxH - d.minH);
-              shops.push({ x: sx, y: sh / 2, z: cz - bd * 0.24, sx: 17, sy: sh, sz: bd * 0.32, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+              shops.push({ x: sx, y: sh / 2, z: cz - bd * 0.24, sx: 17, sy: sh, sz: bd * 0.32, base: 0, h: sh, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
               SH.World.colliders.push({ x: sx, z: cz - bd * 0.24, hx: 8.5, hz: bd * 0.16 });
               awnings.push({ x: sx, y: 3.1, z: cz - bd * 0.24 - bd * 0.16 - 1.6, sx: 16.4, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
               var sh2 = d.minH + rng() * (d.maxH - d.minH) * 0.8;
-              shops.push({ x: sx, y: sh2 / 2, z: cz + bd * 0.30, sx: 17, sy: sh2, sz: bd * 0.26, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+              shops.push({ x: sx, y: sh2 / 2, z: cz + bd * 0.30, sx: 17, sy: sh2, sz: bd * 0.26, base: 0, h: sh2, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
               SH.World.colliders.push({ x: sx, z: cz + bd * 0.30, hx: 8.5, hz: bd * 0.13 });
               awnings.push({ x: sx, y: 3.1, z: cz + bd * 0.30 + bd * 0.13 + 1.6, sx: 16.4, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
             }
           } else if (d.id === 'karat') {
             var wh = d.minH + rng() * (d.maxH - d.minH);
-            warehouses.push({ x: cx, y: wh / 2, z: cz, sx: bw * 0.68, sy: wh, sz: bd * 0.62, color: palettes.karat[(rng() * palettes.karat.length) | 0] });
+            warehouses.push({ x: cx, y: wh / 2, z: cz, sx: bw * 0.68, sy: wh, sz: bd * 0.62, base: 0, h: wh, color: palettes.karat[(rng() * palettes.karat.length) | 0] });
             SH.World.colliders.push({ x: cx, z: cz, hx: bw * 0.34, hz: bd * 0.31 });
             warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: bw * 0.3, sy: 6, sz: bd * 0.2, color: palettes.karat[(rng() * palettes.karat.length) | 0] });
             SH.World.colliders.push({ x: cx + bw * 0.3, z: cz + bd * 0.38, hx: bw * 0.15, hz: bd * 0.1 });
@@ -108,7 +119,7 @@
             for (var v2 = 0; v2 < 3; v2++) {
               var vx = cx + (v2 - 1) * bw * 0.3;
               var vh = d.minH + rng() * (d.maxH - d.minH);
-              villas.push({ x: vx, y: vh / 2, z: cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14), sx: 20, sy: vh, sz: 18, color: palettes.mawar[(rng() * palettes.mawar.length) | 0] });
+              villas.push({ x: vx, y: vh / 2, z: cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14), sx: 20, sy: vh, sz: 18, base: 0, h: vh, color: palettes.mawar[(rng() * palettes.mawar.length) | 0] });
               SH.World.colliders.push({ x: vx, z: cz + (v2 % 2 ? bd * 0.14 : -bd * 0.14), hx: 10, hz: 9 });
             }
           } else if (d.id === 'kencana') {
@@ -116,7 +127,7 @@
             for (var kh2 = 0; kh2 < 2; kh2++) {
               var kh = d.minH + rng() * (d.maxH - d.minH);
               var kx = cx + (kh2 === 0 ? -1 : 1) * bw * 0.22;
-              towers.push({ x: kx, y: kh / 2, z: cz - 8, sx: bw * 0.36, sy: kh, sz: 20, color: palettes.kencana[(rng() * palettes.kencana.length) | 0] });
+              towers.push({ x: kx, y: kh / 2, z: cz - 8, sx: bw * 0.36, sy: kh, sz: 20, base: 0, h: kh, color: palettes.kencana[(rng() * palettes.kencana.length) | 0] });
               SH.World.colliders.push({ x: kx, z: cz - 8, hx: bw * 0.18, hz: 10 });
             }
           }
@@ -124,34 +135,90 @@
       }
 
       var box = new THREE.BoxGeometry(1, 1, 1);
-      var towerMat = new THREE.MeshLambertMaterial({ map: facadeTexture(11, 0.35, null) });
-      var shopMat = new THREE.MeshLambertMaterial({ map: facadeTexture(23, 0.2, '#c94f7a') });
-      var wareMat = new THREE.MeshLambertMaterial({ map: facadeTexture(37, 0.08, null), color: 0xbfb4a4 });
-      var villaMat = new THREE.MeshLambertMaterial({ map: facadeTexture(51, 0.25, null) });
-      makeInstanced(box, towerMat, towers, scene, true);
-      makeInstanced(box, shopMat, shops, scene, true);
-      makeInstanced(box, wareMat, warehouses, scene, true);
-      makeInstanced(box, villaMat, villas, scene, true);
-      makeInstanced(box, shopMat, podiums, scene, true);
-      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), awnings, scene, false);
-      this.windowMaterials = [towerMat, shopMat, villaMat];
+      // Facade variants per archetype: three window grammars, bucketed at
+      // random so a street never repeats one identical window slab.
+      var towerMats = [facadeTexture(11, 0.35, null, 0), facadeTexture(12, 0.3, null, 1), facadeTexture(13, 0.4, null, 2)]
+        .map(function (t) { return new THREE.MeshLambertMaterial({ map: t }); });
+      var shopMats = [facadeTexture(23, 0.2, '#c94f7a', 2), facadeTexture(24, 0.25, null, 0), facadeTexture(25, 0.18, '#3f9db5', 1)]
+        .map(function (t) { return new THREE.MeshLambertMaterial({ map: t }); });
+      var wareMats = [facadeTexture(37, 0.08, null, 0), facadeTexture(38, 0.12, null, 2)]
+        .map(function (t) { return new THREE.MeshLambertMaterial({ map: t, color: 0xbfb4a4 }); });
+      var villaMats = [facadeTexture(51, 0.25, null, 2), facadeTexture(52, 0.3, null, 0)]
+        .map(function (t) { return new THREE.MeshLambertMaterial({ map: t }); });
 
-      // ---- Palms + park trees (instanced trunk + crown) ----
-      var trunks = [], crowns = [], treeCrowns = [];
+      // Massing pass: stepped setbacks on towers, pitched roofs on villas /
+      // shops / some warehouses, rooftop clutter (AC units, water tanks) and
+      // balcony slabs — no more single uniform slabs.
+      var roofProps = [], tanks = [], hipRoofs = [];
+      var roofColors = [0xb5563c, 0x9a4a34, 0x7a5a48, 0xc96f4a];
+      function bucketize(list, mats, opts) {
+        var buckets = mats.map(function () { return []; });
+        for (var bi = 0; bi < list.length; bi++) {
+          var b = list[bi];
+          var bucket = buckets[(rng() * mats.length) | 0];
+          bucket.push(b);
+          var topY = (b.base || 0) + b.h;
+          if (opts.tiers && rng() < 0.85) {
+            var h2 = b.h * (0.22 + rng() * 0.25);
+            var t2x = b.x + (rng() - 0.5) * 2.4, t2z = b.z + (rng() - 0.5) * 2.4;
+            bucket.push({ x: t2x, y: topY + h2 / 2, z: t2z, sx: b.sx * 0.62, sy: h2, sz: b.sz * 0.62, color: b.color });
+            topY += h2;
+            if (rng() < 0.45) {
+              var h3 = b.h * (0.14 + rng() * 0.12);
+              bucket.push({ x: t2x, y: topY + h3 / 2, z: t2z, sx: b.sx * 0.4, sy: h3, sz: b.sz * 0.4, color: b.color });
+              topY += h3;
+            }
+          }
+          if (opts.hipRoof && rng() < opts.hipRoof) {
+            var rh = 1.8 + rng() * 1.4;
+            hipRoofs.push({ x: b.x, y: topY + rh / 2 - 0.15, z: b.z, sx: b.sx * 1.02, sy: rh, sz: b.sz * 1.02, rotY: Math.PI / 4, color: roofColors[(rng() * roofColors.length) | 0] });
+          } else if (opts.roofProps) {
+            var nProps = 1 + ((rng() * 3) | 0);
+            for (var rp = 0; rp < nProps; rp++) {
+              var px2 = b.x + (rng() - 0.5) * b.sx * 0.55, pz2 = b.z + (rng() - 0.5) * b.sz * 0.55;
+              if (rng() < 0.3) tanks.push({ x: px2, y: topY + 0.85, z: pz2, sx: 1.5, sy: 1.7, sz: 1.5, color: rng() < 0.5 ? 0xb9c0c9 : 0xa8763e });
+              else roofProps.push({ x: px2, y: topY + 0.4, z: pz2, sx: 1.9, sy: 0.8, sz: 1.3, color: 0x9aa0a8 });
+            }
+          }
+          if (opts.balconies && rng() < 0.55) {
+            var nBal = 2 + ((rng() * 2) | 0);
+            for (var bb = 0; bb < nBal; bb++) {
+              roofProps.push({
+                x: b.x + (rng() - 0.5) * b.sx * 0.45, y: (b.base || 0) + b.h * (0.35 + bb * 0.22),
+                z: b.z + b.sz / 2 + 0.5, sx: 3.4, sy: 0.22, sz: 1.0, color: 0xe8e0d0
+              });
+            }
+          }
+        }
+        for (var mi = 0; mi < mats.length; mi++) makeInstanced(box, mats[mi], buckets[mi], scene, true);
+      }
+      bucketize(towers, towerMats, { tiers: true, roofProps: true, balconies: true });
+      bucketize(shops, shopMats, { hipRoof: 0.3, roofProps: true });
+      bucketize(warehouses, wareMats, { hipRoof: 0.4, roofProps: true });
+      bucketize(villas, villaMats, { hipRoof: 0.75, balconies: true });
+      makeInstanced(box, towerMats[1], podiums, scene, true);
+      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), awnings, scene, false);
+      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), roofProps, scene, false);
+      makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), tanks, scene, false);
+      makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), hipRoofs, scene, false);
+      this.windowMaterials = towerMats.concat(shopMats, villaMats);
+
+      // ---- Palms + park trees ----
+      // A palm is a BENT trunk (curve baked into the geometry) carrying 7-9
+      // drooping fronds: each frond is a tapered ribbon bent downward along
+      // its length, instanced once per frond around the crown. Park trees get
+      // 2-3 stacked flattened canopy blobs instead of one flat disc.
+      var palms = [], parkTrees = [];
       var pi;
       for (pi = 0; pi < 130; pi++) {
-        var px = -560 + rng() * 1120, pz = 196 + rng() * 84;
-        trunks.push({ x: px, y: 3, z: pz, sx: 0.5, sy: 6, sz: 0.5 });
-        crowns.push({ x: px, y: 6.9, z: pz, sx: 4.6, sy: 2.7, sz: 4.6 });
+        palms.push({ x: -560 + rng() * 1120, z: 196 + rng() * 84, s: 0.9 + rng() * 0.4, lean: rng() * Math.PI * 2 });
       }
       for (pi = 0; pi < 90; pi++) {
         var tx = -560 + rng() * 1120, tz = -440 + rng() * 620;
         if (SH.World.districtAt(tx, tz) && SH.World.districtAt(tx, tz).id === 'taman' || (tx > -130 && tx < 130 && tz > -70 && tz < 190)) {
-          trunks.push({ x: tx, y: 2.4, z: tz, sx: 0.6, sy: 4.8, sz: 0.6 });
-          treeCrowns.push({ x: tx, y: 6.4, z: tz, sx: 5 + rng() * 3, sy: 4.6, sz: 5 + rng() * 3 });
+          parkTrees.push({ x: tx, z: tz, s: 0.85 + rng() * 0.5 });
         } else if ((pi % 3) === 0) {
-          trunks.push({ x: tx, y: 3, z: tz, sx: 0.5, sy: 6, sz: 0.5 });
-          crowns.push({ x: tx, y: 6.9, z: tz, sx: 4.4, sy: 2.6, sz: 4.4 });
+          palms.push({ x: tx, z: tz, s: 0.85 + rng() * 0.35, lean: rng() * Math.PI * 2 });
         }
       }
       // Street palms: a palm every ~24 m along both sides of the avenues and
@@ -170,17 +237,64 @@
             var gpz = ga.z + (gb.z - ga.z) * gt + (gEdges[pi].vertical ? 0 : gSide * (cfg.roadHalf + 2.6));
             var gd = SH.World.districtAt(gpx, gpz);
             if (!gd) continue;
-            trunks.push({ x: gpx, y: 3, z: gpz, sx: 0.5, sy: 6, sz: 0.5 });
-            crowns.push({ x: gpx, y: 6.9, z: gpz, sx: 4.6, sy: 2.7, sz: 4.6 });
+            palms.push({ x: gpx, z: gpz, s: 0.85 + rng() * 0.3, lean: rng() * Math.PI * 2 });
           }
         }
       }
+      // Bent palm trunk: vertices lean further the higher they sit.
+      var trunkGeo = new THREE.CylinderGeometry(0.13, 0.34, 6, 5, 5);
+      trunkGeo.translate(0, 3, 0);
+      var tp = trunkGeo.attributes.position;
+      for (pi = 0; pi < tp.count; pi++) {
+        var tt = tp.getY(pi) / 6;
+        tp.setX(pi, tp.getX(pi) + tt * tt * 0.95);
+      }
+      trunkGeo.computeVertexNormals();
+      // Frond ribbon: extends +x from the crown, tapers and droops.
+      var frondGeo = new THREE.PlaneGeometry(2.9, 0.62, 6, 1);
+      frondGeo.translate(1.45, 0, 0);
+      frondGeo.rotateX(-Math.PI / 2);
+      var fp = frondGeo.attributes.position;
+      for (pi = 0; pi < fp.count; pi++) {
+        var fu = fp.getX(pi) / 2.9;
+        fp.setY(pi, -fu * fu * 1.35 - Math.abs(fp.getZ(pi)) * 0.4);
+        fp.setZ(pi, fp.getZ(pi) * (1 - fu * 0.82));
+      }
+      frondGeo.computeVertexNormals();
+      var palmTrunks = [], fronds = [], coconuts = [], treeTrunks = [], canopies = [];
+      for (pi = 0; pi < palms.length; pi++) {
+        var pm = palms[pi];
+        palmTrunks.push({ x: pm.x, y: 0, z: pm.z, sx: pm.s, sy: pm.s, sz: pm.s, rotY: pm.lean });
+        // Crown sits at the top of the bent trunk (local +0.95x, 6y).
+        var ccx = pm.x + 0.95 * pm.s * Math.cos(pm.lean);
+        var ccz = pm.z - 0.95 * pm.s * Math.sin(pm.lean);
+        var nFr = 7 + ((rng() * 3) | 0);
+        for (var fi = 0; fi < nFr; fi++) {
+          fronds.push({
+            x: ccx, y: 6 * pm.s - 0.1, z: ccz,
+            sx: pm.s * (0.9 + rng() * 0.35), sy: pm.s, sz: pm.s * (0.9 + rng() * 0.3),
+            rotY: (fi / nFr) * Math.PI * 2 + rng() * 0.5
+          });
+        }
+        for (var ci = 0; ci < 3; ci++) {
+          coconuts.push({ x: ccx + (rng() - 0.5) * 0.5, y: 6 * pm.s - 0.35, z: ccz + (rng() - 0.5) * 0.5, sx: 0.34, sy: 0.34, sz: 0.34 });
+        }
+      }
+      for (pi = 0; pi < parkTrees.length; pi++) {
+        var tr = parkTrees[pi];
+        treeTrunks.push({ x: tr.x, y: 2.4 * tr.s, z: tr.z, sx: 0.6 * tr.s, sy: 4.8 * tr.s, sz: 0.6 * tr.s });
+        canopies.push({ x: tr.x, y: 5.4 * tr.s, z: tr.z, sx: 6.4 * tr.s, sy: 3.2 * tr.s, sz: 6.4 * tr.s, color: 0x4da653 });
+        canopies.push({ x: tr.x + 0.9 * tr.s, y: 6.8 * tr.s, z: tr.z + 0.5 * tr.s, sx: 4.6 * tr.s, sy: 2.7 * tr.s, sz: 4.6 * tr.s, color: 0x57b85e });
+        canopies.push({ x: tr.x - 0.6 * tr.s, y: 8 * tr.s, z: tr.z - 0.7 * tr.s, sx: 3.2 * tr.s, sy: 2.3 * tr.s, sz: 3.2 * tr.s, color: 0x439148 });
+      }
       var trunkMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
-      var crownMat = new THREE.MeshLambertMaterial({ color: 0x3f9e4d, flatShading: true });
-      var treeMat = new THREE.MeshLambertMaterial({ color: 0x4da653, flatShading: true });
-      makeInstanced(new THREE.CylinderGeometry(0.32, 0.5, 1, 5), trunkMat, trunks, scene, false);
-      makeInstanced(new THREE.IcosahedronGeometry(0.62, 0), crownMat, crowns, scene, false);
-      makeInstanced(new THREE.IcosahedronGeometry(0.62, 0), treeMat, treeCrowns, scene, false);
+      var frondMat = new THREE.MeshLambertMaterial({ color: 0x3f9e4d, flatShading: true, side: THREE.DoubleSide });
+      var treeMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+      makeInstanced(trunkGeo, trunkMat, palmTrunks, scene, false);
+      makeInstanced(frondGeo, frondMat, fronds, scene, false);
+      makeInstanced(new THREE.IcosahedronGeometry(0.5, 0), new THREE.MeshLambertMaterial({ color: 0x6a7a2e, flatShading: true }), coconuts, scene, false);
+      makeInstanced(new THREE.CylinderGeometry(0.32, 0.5, 1, 5), trunkMat, treeTrunks, scene, false);
+      makeInstanced(new THREE.IcosahedronGeometry(0.62, 0), treeMat, canopies, scene, false);
 
       // Park pond.
       var pond = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshPhongMaterial({ color: 0x2e8fb5, shininess: 80 }));
