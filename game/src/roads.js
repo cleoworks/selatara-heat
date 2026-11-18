@@ -45,20 +45,59 @@
   }
 
   function groundTexture() {
-    var c = document.createElement('canvas'); c.width = c.height = 256;
+    var c = document.createElement('canvas'); c.width = c.height = 512;
     var g = c.getContext('2d');
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 512, 512);
     var rng = SH.World.makeRng(31);
-    for (var i = 0; i < 2600; i++) {
+    // Large soft blotches (Rev 6): three grass tones + dry dirt, so
+    // open ground reads as patchy terrain, not one flat colour.
+    var tones = ['rgba(38,74,26,0.20)', 'rgba(84,110,40,0.16)', 'rgba(140,124,62,0.13)', 'rgba(122,94,52,0.12)'];
+    for (var b = 0; b < 90; b++) {
+      var bx = rng() * 512, by = rng() * 512, br = 26 + rng() * 90;
+      var gr = g.createRadialGradient(bx, by, 2, bx, by, br);
+      gr.addColorStop(0, tones[(rng() * tones.length) | 0]);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(bx - br, by - br, br * 2, br * 2);
+    }
+    for (var i = 0; i < 9000; i++) {
       var v = rng();
       g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.16)' : (v > 0.3 ? 'rgba(120,100,50,0.10)' : 'rgba(255,255,220,0.05)');
-      g.fillRect(rng() * 256, rng() * 256, 3 + rng() * 9, 3 + rng() * 9);
+      g.fillRect(rng() * 512, rng() * 512, 3 + rng() * 9, 3 + rng() * 9);
     }
     var t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(46, 40);
+    t.repeat.set(34, 30);
     t.anisotropy = 4;
     return t;
+  }
+
+  // Sidewalk slab (Rev 6): a raised kerb block in the same local frame
+  // as the old walk planes (XY, +Z up) — textured top at z=h with the
+  // paving repeat baked in, plain shaded sides dropping to the ground,
+  // so streets get a real kerb step instead of a painted strip.
+  function slabGeo(w, len, h, rep) {
+    var hw = w / 2, hl = len / 2, zb = -0.06;
+    var pos = [], uv = [], col = [], idx = [];
+    function quad(a, b, c, d, uvs, shade) {
+      var base = pos.length / 3;
+      pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], d[0], d[1], d[2]);
+      for (var q = 0; q < 4; q++) { uv.push(uvs[q * 2], uvs[q * 2 + 1]); col.push(shade, shade, shade); }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+    quad([-hw, -hl, h], [hw, -hl, h], [hw, hl, h], [-hw, hl, h], [0, 0, 1, 0, 1, rep, 0, rep], 1);
+    var S = 0.62;
+    quad([-hw, -hl, zb], [-hw, -hl, h], [-hw, hl, h], [-hw, hl, zb], [0, 0, 0, 0, 0, 0, 0, 0], S);
+    quad([hw, hl, zb], [hw, hl, h], [hw, -hl, h], [hw, -hl, zb], [0, 0, 0, 0, 0, 0, 0, 0], S);
+    quad([-hw, hl, zb], [-hw, hl, h], [hw, hl, h], [hw, hl, zb], [0, 0, 0, 0, 0, 0, 0, 0], S * 0.9);
+    quad([hw, -hl, zb], [hw, -hl, h], [-hw, -hl, h], [-hw, -hl, zb], [0, 0, 0, 0, 0, 0, 0, 0], S * 0.9);
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
   }
 
   function walkTexture() {
@@ -217,7 +256,7 @@
       var roadMat = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, shininess: 26, specular: 0x8a6a4a });
       this.roadMaterial = roadMat;
       this.roadMaterials = [];
-      var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk, map: walkTexture() });
+      var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk, map: walkTexture(), vertexColors: true });
       this.walkMaterial = walkMat;
       var deckMat = new THREE.MeshLambertMaterial({ color: 0x6a5f52 });
       var railMat = new THREE.MeshLambertMaterial({ color: 0x8a4a3a });
@@ -318,21 +357,23 @@
         collectRoad(road, t2.repeat.y, axis && !edges[i].vertical, kind === 'alley' ? alleyTint : whiteTint);
 
         // Sidewalks + lamps on city streets (not ring, alley or bridge).
+        // Rev 6: sidewalks are raised kerb slabs (top at 0.14 m), not
+        // flat planes — the step reads from street level and the air.
         if (kind === 'grid' || kind === 'diag' || kind === 'coast') {
           for (var s = -1; s <= 1; s += 2) {
-            var walk = new THREE.Mesh(new THREE.PlaneGeometry(cfg.sidewalk, len + wRoad), walkMat);
+            var walk = new THREE.Mesh(slabGeo(cfg.sidewalk, len + wRoad, 0.14, Math.max(1, Math.round((len + wRoad) / 3))), walkMat);
             var wOff = cfg.roadHalf + cfg.sidewalk / 2;
             if (axis) {
               walk.rotation.x = -Math.PI / 2;
               if (!edges[i].vertical) walk.rotation.z = Math.PI / 2;
               walk.position.set(
-                mx + (edges[i].vertical ? s * wOff : 0), 0.04,
+                mx + (edges[i].vertical ? s * wOff : 0), 0,
                 mz + (edges[i].vertical ? 0 : s * wOff));
             } else {
               walk.rotation.order = 'YXZ';
               walk.rotation.y = Math.atan2(-dx, -dz);
               walk.rotation.x = -Math.PI / 2;
-              walk.position.set(mx + px * s * wOff, 0.04, mz + pz * s * wOff);
+              walk.position.set(mx + px * s * wOff, 0, mz + pz * s * wOff);
             }
             walk.receiveShadow = true;
             walk.updateMatrix();
