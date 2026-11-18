@@ -238,7 +238,7 @@
 
     fireOnce: function () {
       var st = SH.State, spec = this.current(), input = SH.Input;
-      var origin, dir = this.fireDirection();
+      var origin, dir = this.fireDirection(), muzzle = null;
       if (st.driving && st.vehicle) {
         origin = { x: st.vehicle.x, y: 1.2, z: st.vehicle.z };
         dir = { x: Math.sin(st.vehicle.heading), y: 0, z: Math.cos(st.vehicle.heading) };
@@ -246,7 +246,18 @@
         var camDir = this.fireDirection();
         if (camDir.x * dir.x + camDir.z * dir.z > 0.1) { dir.x = camDir.x; dir.z = camDir.z; dir.y = 0; }
       } else {
-        origin = { x: st.player.x, y: 1.5, z: st.player.z };
+        // Crosshair-true: trace from the camera through screen centre, so what
+        // the player aims at is what gets hit; the tracer still leaves the gun.
+        var camera = SH.Main.getCamera();
+        if (camera) {
+          var cd = new THREE.Vector3();
+          camera.getWorldDirection(cd);
+          origin = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+          dir = { x: cd.x, y: cd.y, z: cd.z };
+        } else {
+          origin = { x: st.player.x, y: 1.5, z: st.player.z };
+        }
+        muzzle = { x: st.player.x, y: 1.45, z: st.player.z };
         st.player.heading = Math.atan2(dir.x, dir.z);
       }
       var pellets = spec.pellets || 1;
@@ -255,18 +266,21 @@
         var dy = dir.y + (Math.random() - 0.5) * 2 * spec.spread;
         var dz = dir.z + (Math.random() - 0.5) * 2 * spec.spread;
         var dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
-        this.traceShot(origin, dx, dy, dz, spec);
+        this.traceShot(origin, dx, dy, dz, spec, muzzle);
       }
       // Muzzle flash at the gun position + a small kick of shake.
-      var mx = origin.x + dir.x * 0.8, mz = origin.z + dir.z * 0.8;
-      SH.Effects.muzzle(mx, origin.y + 0.1, mz);
+      var mBase = muzzle || origin;
+      var mx = mBase.x + dir.x * 0.8, mz = mBase.z + dir.z * 0.8;
+      SH.Effects.muzzle(mx, mBase.y + 0.1, mz);
       SH.Effects.shake(spec === SH.Config.weapons.shotgun ? 0.22 : 0.07);
       if (SH.Audio) SH.Audio.shot(st.weapon === 'shotgun' ? 'shotgun' : st.weapon === 'smg' ? 'smg' : 'pistol');
-      if (SH.Pedestrians) SH.Pedestrians.scare(origin.x, origin.z, 26);
-      if (SH.Police) SH.Police.witnessCrime('shotFired', origin.x, origin.z);
+      var px = st.driving && st.vehicle ? st.vehicle.x : st.player.x;
+      var pz = st.driving && st.vehicle ? st.vehicle.z : st.player.z;
+      if (SH.Pedestrians) SH.Pedestrians.scare(px, pz, 26);
+      if (SH.Police) SH.Police.witnessCrime('shotFired', px, pz);
     },
 
-    traceShot: function (origin, dx, dy, dz, spec) {
+    traceShot: function (origin, dx, dy, dz, spec, muzzle) {
       var maxT = spec.range;
       var wallT = wallDistance(origin.x, origin.z, dx, dz, maxT);
       // Ground plane.
@@ -316,7 +330,10 @@
       }
 
       var hx = origin.x + dx * bestT, hy = Math.max(0.06, origin.y + dy * bestT), hz = origin.z + dz * bestT;
-      SH.Effects.tracer(origin.x + dx * 0.7, origin.y, origin.z + dz * 0.7, hx, hy, hz, false);
+      var tx0 = muzzle ? muzzle.x : origin.x + dx * 0.7;
+      var ty0 = muzzle ? muzzle.y : origin.y;
+      var tz0 = muzzle ? muzzle.z : origin.z + dz * 0.7;
+      SH.Effects.tracer(tx0, ty0, tz0, hx, hy, hz, false);
 
       if (hitKind === 'enemy') { this.hurtEnemy(hitRef, spec.damage); }
       else if (hitKind === 'officer') {

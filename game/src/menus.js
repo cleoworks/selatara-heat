@@ -99,11 +99,17 @@
       var st = SH.State;
       SH.Save.clear();
       st.cash = 250; st.wanted = 0;
+      if (st.driving) SH.Vehicles.exit();
       st.player.x = SH.Config.world.spawn.x; st.player.z = SH.Config.world.spawn.z;
       st.player.health = 100; st.player.armor = 0;
       st.stats = { missionsDone: 0, carsStolen: 0, distanceKm: 0 };
-      SH.Missions.startIntroObjective();
-      this.startPlaying();
+      if (SH.Combat) { SH.Combat.owned = { fist: true, pistol: true, smg: false, shotgun: false }; SH.Combat.clearEnemies(); }
+      st.weapon = 'pistol'; st.ammo = 12; st.ammoReserve = 36;
+      if (SH.Missions) SH.Missions.currentIndex = 0;
+      this.showPanel(null);
+      this.syncMode();
+      if (SH.Missions && SH.Missions.startIntro) SH.Missions.startIntro();
+      else this.startPlaying();
     },
 
     continueGame: function () {

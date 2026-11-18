@@ -171,7 +171,12 @@
           var impact = Math.abs(v.speed);
           if (px < pz) v.x = c.x + (dx > 0 ? c.hx + radius : -c.hx - radius);
           else v.z = c.z + (dz > 0 ? c.hz + radius : -c.hz - radius);
-          if (impact > 6) { this.damage(v, impact * 1.1); if (v.driver === 'player') SH.Effects.shake(0.25); }
+          // Police units are armoured against scenery (they die to gunfire and
+          // player rams, not to kerbs); traffic takes half building damage.
+          if (impact > 6 && v.driver !== 'police' && v.driver !== 'roadblock') {
+            this.damage(v, impact * (v.driver === 'player' ? 1.1 : 0.5));
+            if (v.driver === 'player') SH.Effects.shake(0.25);
+          }
           v.speed *= -0.25;
         }
       }

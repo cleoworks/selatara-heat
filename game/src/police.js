@@ -323,8 +323,8 @@
       var dist = Math.hypot(dx, dz);
       var targetHeading = Math.atan2(dx, dz);
       var diff = wrapAngle(targetHeading - v.heading);
-      var steer = clamp(diff * 1.7, -0.55, 0.55);
-      var spd = cruise * clamp(1.25 - Math.abs(diff) * 0.6, 0.22, 1);
+      var steer = clamp(diff * 1.7, -0.62, 0.62);
+      var spd = cruise * clamp(1.25 - Math.abs(diff) * 0.6, 0.38, 1);
       if (dist < 3.2) spd = 0;
       var accel = spd > v.speed ? spec.accel * 0.92 : spec.brake;
       v.speed += clamp(spd - v.speed, -accel * dt, accel * dt);
@@ -368,11 +368,14 @@
           d = Math.hypot(this.officers[i].x - f.x, this.officers[i].z - f.z);
           if (d < 90 && !losBlocked(this.officers[i].x, this.officers[i].z, f.x, f.z)) { seen = true; break; }
         }
-        if (!seen && this.heli && st.wanted >= 4) seen = Math.hypot(f.x - this.lastKnown.x, f.z - this.lastKnown.z) < 130;
-        if (!seen && this.units.length === 0 && this.officers.length === 0) {
-          // Nobody has arrived yet: the crime scene itself keeps them informed briefly.
-          seen = this.searchTimer < 2.5;
+        if (!seen && this.heli && st.wanted >= 4) {
+          // The helicopter only holds the player while it is physically close
+          // and its view is not blocked by buildings.
+          var hd = Math.hypot(this.heli.mesh.position.x - f.x, this.heli.mesh.position.z - f.z);
+          if (hd < 115 && !losBlocked(this.heli.mesh.position.x, this.heli.mesh.position.z, f.x, f.z)) seen = true;
         }
+        // With no unit on scene there is no line-of-sight: the search clock
+        // runs while the fleet is still driving in from its spawn ring.
         if (seen) {
           this.searching = false; this.searchTimer = 0;
           this.lastKnown.x = f.x; this.lastKnown.z = f.z;
@@ -402,10 +405,12 @@
 
       // --- keep the fleet at the size the stars demand ---
       this.spawnTimer -= dt;
-      var wantCars = cfgP.carsByStars[st.wanted] || 2;
+      var wantCars = cfgP.carsByStars[st.wanted];
+      if (wantCars === undefined) wantCars = 2;
       if (this.units.length < wantCars && this.spawnTimer <= 0) {
-        this.spawnTimer = 1.4;
+        this.spawnTimer = 0.8;
         this.spawnCar(false);
+        if (this.units.length < wantCars - 1) this.spawnCar(false);
       }
       // Recycle units that fell too far behind.
       for (var u = this.units.length - 1; u >= 0; u--) {
@@ -447,6 +452,12 @@
             var toN = SH.World.nearestNode(this.searching ? this.lastKnown.x : f.x, this.searching ? this.lastKnown.z : f.z);
             unit.path = graphPath(fromN, toN);
             unit.wp = 0;
+            // If the car already sits past its first node (it spawns mid-edge),
+            // start at the next one instead of U-turning back to it.
+            if (unit.path && unit.path.length > 1) {
+              var n0 = SH.World.graph.nodes[unit.path[0]], n1 = SH.World.graph.nodes[unit.path[1]];
+              if (Math.hypot(n1.x - veh.x, n1.z - veh.z) < Math.hypot(n0.x - veh.x, n0.z - veh.z)) unit.wp = 1;
+            }
           }
           var nodes = SH.World.graph.nodes;
           while (unit.path && unit.wp < unit.path.length - 1) {
@@ -484,10 +495,12 @@
         }
         var od = Math.hypot(off.x - f.x, off.z - f.z);
         if (od > 240) { this.removeOfficer(off); continue; }
-        var wantDist = st.wanted >= 3 ? 13 : 8;
+        // At low stars officers close in to make the arrest (inside busted
+        // range); at high stars they keep a shooting distance instead.
+        var wantDist = st.wanted >= 3 ? 13 : (this.bustedTimer > 0.25 ? 3 : 5.5);
         var mvx = 0, mvz = 0, spd2 = 0;
-        if (od > wantDist + 3) { mvx = (f.x - off.x) / od; mvz = (f.z - off.z) / od; spd2 = 4.6; }
-        else if (od < wantDist - 3) { mvx = (off.x - f.x) / od; mvz = (off.z - f.z) / od; spd2 = 2.6; }
+        if (od > wantDist + 0.5) { mvx = (f.x - off.x) / od; mvz = (f.z - off.z) / od; spd2 = 4.6; }
+        else if (od < wantDist - 1.5) { mvx = (off.x - f.x) / od; mvz = (off.z - f.z) / od; spd2 = 2.6; }
         else { // strafe slowly around the player
           mvx = -(f.z - off.z) / od * 0.5; mvz = (f.x - off.x) / od * 0.5; spd2 = 1.1;
         }
@@ -529,12 +542,18 @@
       if (st.wanted >= 4) {
         this.ensureHeli();
         var h = this.heli;
+        if (h.cx === undefined) { h.cx = this.lastKnown.x; h.cz = this.lastKnown.z; }
         h.angle += dt * 0.45;
-        var hx = f.x + Math.cos(h.angle) * 34, hz = f.z + Math.sin(h.angle) * 34;
+        // The orbit centre flies toward the last known position at speed; it
+        // does NOT track the player magically — losing the heli is possible.
+        var hdx = this.lastKnown.x - h.cx, hdz = this.lastKnown.z - h.cz;
+        var hdd = Math.hypot(hdx, hdz);
+        if (hdd > 1) { var hstep = Math.min(hdd, 26 * dt); h.cx += hdx / hdd * hstep; h.cz += hdz / hdd * hstep; }
+        var hx = h.cx + Math.cos(h.angle) * 34, hz = h.cz + Math.sin(h.angle) * 34;
         h.mesh.position.set(hx, 40, hz);
-        h.mesh.lookAt(f.x, 0, f.z);
+        h.mesh.lookAt(h.cx, 0, h.cz);
         h.rotor.rotation.y += dt * 28;
-        h.spot.target.position.set(f.x - hx, -40, f.z - hz);
+        h.spot.target.position.set(h.cx - hx, -40, h.cz - hz);
         h.spot.target.updateMatrixWorld();
       } else this.removeHeli();
 

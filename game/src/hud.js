@@ -89,7 +89,7 @@
     refresh: function () {
       if (!el.hud) return;
       var st = SH.State;
-      var inGame = st.mode === 'playing';
+      var inGame = st.mode === 'playing' || st.mode === 'cutscene';
       el.hud.classList.toggle('hidden', !inGame);
 
       // Notifications decay.

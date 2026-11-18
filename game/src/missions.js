@@ -1,34 +1,484 @@
 // SELATARA HEAT — missions.js
-// The eight story jobs of the Arus Syndicate arc, as data. The mission runner
-// (step state machine, checkpoints, dialogue playback) lands in the mission
-// slice; this module owns the definitions + objective helpers the HUD reads.
-// Public API: SH.Missions { list[], setObjective(title, text, x, z), clearObjective() }.
+// The mission runner: a data-driven step state machine (goTo / enterVehicle /
+// deliver / chasePed / kill / escape / survive / driveTo) with dialogue
+// playback, checkpoints, fail + retry, cash rewards and autosave, plus the
+// opening cinematic. Missions 1-4 of the Arus Syndicate arc are fully built
+// here; 5-8 unlock in the next content slice.
+// Public API: SH.Missions { list[], currentIndex, startIntro(), startMission(i),
+//   update(dt), updateCutscene(dt, camera), setObjective(), clearObjective() }.
 (function (SH) {
   'use strict';
 
+  var SAFEHOUSE = { x: -368, z: 84 };
+
+  // ---- dialogue helper -------------------------------------------------------
+  var Dialog = {
+    queue: [], timer: 0,
+    play: function (lines) {
+      for (var i = 0; i < lines.length; i++) this.queue.push(lines[i]);
+      if (this.timer <= 0) this.next();
+    },
+    next: function () {
+      var line = this.queue.shift();
+      if (!line) { this.timer = 0; return; }
+      if (SH.HUD) SH.HUD.subtitle(line[0], line[1], line[2] || 3.4);
+      this.timer = line[2] || 3.4;
+    },
+    update: function (dt) {
+      if (this.timer > 0) {
+        this.timer -= dt;
+        if (this.timer <= 0) this.next();
+      }
+    },
+    clear: function () { this.queue = []; this.timer = 0; }
+  };
+
+  function buildCourierMesh() {
+    var g = new THREE.Group();
+    var skin = new THREE.MeshLambertMaterial({ color: 0x8a5a34, flatShading: true });
+    var shirt = new THREE.MeshLambertMaterial({ color: 0xffd23f, flatShading: true });
+    var pants = new THREE.MeshLambertMaterial({ color: 0x30364a, flatShading: true });
+    function box(w, h, d, mat, x, y, z) {
+      var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z); m.castShadow = true; g.add(m); return m;
+    }
+    var legL = box(0.2, 0.78, 0.24, pants, -0.15, 0.78, 0); legL.geometry.translate(0, -0.3, 0);
+    var legR = box(0.2, 0.78, 0.24, pants, 0.15, 0.78, 0); legR.geometry.translate(0, -0.3, 0);
+    box(0.56, 0.64, 0.3, shirt, 0, 1.1, 0);
+    box(0.4, 0.44, 0.18, new THREE.MeshLambertMaterial({ color: 0xc94f4f, flatShading: true }), 0, 1.18, -0.26); // parcel backpack
+    var armL = box(0.16, 0.6, 0.2, shirt, -0.38, 1.38, 0); armL.geometry.translate(0, -0.24, 0);
+    var armR = box(0.16, 0.6, 0.2, shirt, 0.38, 1.38, 0); armR.geometry.translate(0, -0.24, 0);
+    box(0.32, 0.36, 0.32, skin, 0, 1.62, 0);
+    return { group: g, legL: legL, legR: legR, armL: armL, armR: armR };
+  }
+
+  // ---- mission definitions -----------------------------------------------------
+  // Each mission: steps[] of typed steps. Optional per-mission hooks:
+  // onStart(run), onStep(run, step), onUpdate(run, dt) for scripted events.
+  function defs() {
+    return [
+      {
+        id: 'first-run', title: 'FIRST RUN', giver: 'Mami Ratna', reward: 400,
+        brief: 'Deliver a package from Ruko Senja to Pantai Kencana.',
+        steps: [
+          { type: 'goTo', x: -318, z: 70, r: 4.5, text: 'Pick up the package behind the night market',
+            say: [['Mami Ratna', 'Raka. You still owe the Syndicate. Start small: a package, behind my market stalls.', 4.2],
+                  ['Raka', 'One package. Then we talk about the rest of the debt.', 3.2]] },
+          { type: 'goTo', x: 60, z: 178, r: 6, text: 'Deliver the package to Butik Kencana',
+            say: [['Mami Ratna', 'Take it to the boutique on the beach road. Drive like you mean it — but no police.', 4]] },
+          { type: 'goTo', x: 60, z: 246, r: 6, text: 'Park on the boardwalk to finish the handover',
+            say: [['Boutique Owner', 'You are late. Mami\u2019s boy, hm? Tell her the shelf is stocked.', 3.6]] }
+        ]
+      },
+      {
+        id: 'night-market', title: 'NIGHT MARKET RUN', giver: 'Mami Ratna', reward: 650,
+        brief: 'Catch the courier running through the Ruko Senja night market.',
+        setHour: 20.4,
+        steps: [
+          { type: 'goTo', x: -330, z: 70, r: 5, text: 'Reach the night market entrance',
+            say: [['Mami Ratna', 'My courier saw Varga\u2019s men and ran. Catch him — alive, Raka. He carries my ledger.', 4.4]] },
+          { type: 'chasePed', text: 'Catch the courier (get close on foot)', timeLimit: 170,
+            say: [['Courier', 'Stay away from me! I know what is in this bag!', 3],
+                  ['Raka', 'Then stop running and hand it over!', 2.8]] },
+          { type: 'goTo', x: SAFEHOUSE.x, z: SAFEHOUSE.z, r: 6, text: 'Return to the safehouse',
+            say: [['Courier', 'Fine! Take the ledger. Tell Mami the port is crawling with Varga\u2019s people.', 4]] }
+        ]
+      },
+      {
+        id: 'port-of-lies', title: 'PORT OF LIES', giver: 'Mami Ratna', reward: 900,
+        brief: 'Steal a container truck from Pelabuhan Karat and lose the police.',
+        steps: [
+          { type: 'goTo', x: 322, z: 78, r: 9, text: 'Reach the container truck at Pelabuhan Karat',
+            say: [['Mami Ratna', 'A Bara truck in the port carries Dario\u2019s cargo — and my name on the manifest. Take it.', 4.4]] },
+          { type: 'enterVehicle', vehicle: 'portTruck', text: 'Steal the container truck (F)',
+            say: [['Raka', 'This is going to be loud.', 2.4]] },
+          { type: 'deliver', x: 472, z: 66, r: 9, text: 'Drive the truck to the east warehouse gate',
+            say: [['Mami Ratna', 'The whole port saw that. Lose the sirens before you park it!', 3.8]] },
+          { type: 'escape', text: 'Lose the police completely',
+            say: [['Raka', 'Quiet streets. Side alleys. Come on…', 3]] }
+        ]
+      },
+      {
+        id: 'escort-mami', title: 'ESCORT MAMI', giver: 'Mami Ratna', reward: 1200,
+        brief: 'Drive Mami Ratna across town while rival crews try to stop her car.',
+        steps: [
+          { type: 'goTo', x: -360, z: 100, r: 6, text: 'Meet Mami at her car by the safehouse',
+            say: [['Mami Ratna', 'Tonight you drive me. Varga wants a meeting; Dario wants me gone. Keep my car in one piece.', 4.6]] },
+          { type: 'enterVehicle', vehicle: 'mamiCar', text: 'Get in Mami\u2019s car (F)',
+            say: [['Mami Ratna', 'Gentle with her. She is older than your debt.', 3]] },
+          { type: 'driveTo', x: 246, z: 42, r: 9, text: 'Drive Mami to Bengkel Arus',
+            say: [['Mami Ratna', 'Eyes on the road. If teal cars follow us, you know what to do.', 3.8]] },
+          { type: 'goTo', x: 246, z: 54, r: 7, text: 'Step out and report to the workshop',
+            say: [['Mami Ratna', 'Still breathing. You drive like the old days, Raka.', 3.6]] }
+        ]
+      },
+      { id: 'hilltop-repo', title: 'HILLTOP REPO', giver: 'Bengkel Arus', reward: 1100, brief: 'Repossess a sport car from a Bukit Mawar villa, through the roadblocks.', locked: true },
+      { id: 'kencana-heist', title: 'THE KENCANA HEIST', giver: 'Mami Ratna', reward: 2000, brief: 'Rob the boardwalk jewellery store and escape by boat.', locked: true },
+      { id: 'double-cross', title: 'DOUBLE CROSS', giver: 'Unknown', reward: 1800, brief: 'Survive Commissioner Varga\u2019s trap in a port warehouse.', locked: true },
+      { id: 'last-ferry', title: 'LAST FERRY OUT', giver: 'Mami Ratna', reward: 3000, brief: 'Chase Dario \u201CKapten\u201D Latu to the last ferry and end this.', locked: true }
+    ];
+  }
+
   var Missions = {
-    list: [
-      { id: 'first-run', title: 'FIRST RUN', giver: 'Mami Ratna', reward: 400, brief: 'Deliver a package from Ruko Senja to Pantai Kencana.' },
-      { id: 'night-market', title: 'NIGHT MARKET RUN', giver: 'Mami Ratna', reward: 650, brief: 'Catch the courier running through the Ruko Senja night market.' },
-      { id: 'port-of-lies', title: 'PORT OF LIES', giver: 'Mami Ratna', reward: 900, brief: 'Steal a container truck from Pelabuhan Karat and lose the police.' },
-      { id: 'escort-mami', title: 'ESCORT MAMI', giver: 'Mami Ratna', reward: 1200, brief: 'Drive Mami Ratna across town while rival crews try to stop her car.' },
-      { id: 'hilltop-repo', title: 'HILLTOP REPO', giver: 'Bengkel Arus', reward: 1100, brief: 'Repossess a sport car from a Bukit Mawar villa, through the roadblocks.' },
-      { id: 'kencana-heist', title: 'THE KENCANA HEIST', giver: 'Mami Ratna', reward: 2000, brief: 'Rob the boardwalk jewellery store and escape by boat.' },
-      { id: 'double-cross', title: 'DOUBLE CROSS', giver: 'Unknown', reward: 1800, brief: 'Survive Commissioner Varga\u2019s trap in a port warehouse.' },
-      { id: 'last-ferry', title: 'LAST FERRY OUT', giver: 'Mami Ratna', reward: 3000, brief: 'Chase Dario \u201CKapten\u201D Latu to the last ferry and end this.' }
-    ],
+    list: defs(),
     currentIndex: 0,
-    active: null,
+    active: null,       // { def, stepIndex, checkpoint, stepData, failed }
+    courier: null,
+    ambushStage: 0,
 
     setObjective: function (title, text, x, z) {
       SH.State.objective = { title: title, text: text, x: x, z: z };
-      if (SH.HUD) SH.HUD.notify(title + ' — ' + text);
     },
-
     clearObjective: function () { SH.State.objective = null; },
 
     startIntroObjective: function () {
-      this.setObjective('FIRST RUN', 'Meet Mami Ratna at the safehouse', -368, 84);
+      this.setObjective('FIRST RUN', 'Meet Mami Ratna at the safehouse', SAFEHOUSE.x, SAFEHOUSE.z);
+      this.phase = 'briefing';
+    },
+
+    // ---- intro cutscene ---------------------------------------------------------
+    startIntro: function () {
+      var st = SH.State;
+      st.mode = 'cutscene';
+      st.cutscene = true;
+      var title = document.getElementById('title-screen');
+      if (title) title.classList.add('hidden');
+      var hud = document.getElementById('hud');
+      if (hud) hud.classList.remove('hidden');
+      this.csTime = 0;
+      this.csShot = 0;
+      var lb = document.getElementById('letterbox-top');
+      var lb2 = document.getElementById('letterbox-bottom');
+      if (lb) lb.classList.remove('hidden');
+      if (lb2) lb2.classList.remove('hidden');
+      this.csLines = [
+        [0.5, 'Narrator', 'Selatara. A strait city of neon, salt and old debts.', 4],
+        [5.0, 'Narrator', 'Raka Pramudya walked out of prison with nothing but a name the Arus Syndicate still owns.', 4.6],
+        [10.0, 'Mami Ratna', 'Eight jobs, Raka. Pay the debt, and the strait is yours again.', 4],
+        [14.6, 'Narrator', 'But Commissioner Varga takes a cut of everything — and Dario Latu wants the whole strait.', 4.6]
+      ];
+      this.csLineIdx = 0;
+      if (SH.HUD) SH.HUD.subtitle('Narrator', 'Selatara. A strait city of neon, salt and old debts.', 4);
+    },
+
+    updateCutscene: function (dt, camera) {
+      var st = SH.State;
+      var input = SH.Input;
+      this.csTime += dt;
+      // Skip on Esc / Space / click.
+      if (input.wasPressed('Escape') || input.wasPressed('Space') || input.mouseDown) { this.endIntro(); return; }
+      while (this.csLineIdx < this.csLines.length && this.csTime >= this.csLines[this.csLineIdx][0]) {
+        var line = this.csLines[this.csLineIdx++];
+        if (SH.HUD) SH.HUD.subtitle(line[1], line[2], line[3]);
+      }
+      // Three slow cinematic shots: harbour dawn, downtown towers, market street.
+      var shots = [
+        { from: [120, 26, 330], to: [40, 14, 250], look: [0, 8, 200], dur: 6.5 },
+        { from: [-190, 34, -300], to: [-120, 20, -210], look: [-120, 26, -160], dur: 6.5 },
+        { from: [-420, 7, 130], to: [-368, 4.5, 92], look: [-360, 2, 84], dur: 6.5 }
+      ];
+      var t = this.csTime, acc = 0, shot = shots[shots.length - 1], local = 1;
+      for (var i = 0; i < shots.length; i++) {
+        if (t < acc + shots[i].dur) { shot = shots[i]; local = (t - acc) / shots[i].dur; break; }
+        acc += shots[i].dur;
+      }
+      var e = local * local * (3 - 2 * local);
+      camera.position.set(
+        shot.from[0] + (shot.to[0] - shot.from[0]) * e,
+        shot.from[1] + (shot.to[1] - shot.from[1]) * e,
+        shot.from[2] + (shot.to[2] - shot.from[2]) * e);
+      camera.lookAt(shot.look[0], shot.look[1], shot.look[2]);
+      camera.fov = 55; camera.updateProjectionMatrix();
+      if (this.csTime >= 19.5) this.endIntro();
+    },
+
+    endIntro: function () {
+      var st = SH.State;
+      st.mode = 'playing';
+      st.cutscene = false;
+      var lb = document.getElementById('letterbox-top');
+      var lb2 = document.getElementById('letterbox-bottom');
+      if (lb) lb.classList.add('hidden');
+      if (lb2) lb2.classList.add('hidden');
+      var camera = SH.Main.getCamera();
+      if (camera) { camera.fov = 60; camera.updateProjectionMatrix(); }
+      this.startIntroObjective();
+      if (SH.Menus) SH.Menus.syncMode();
+      if (SH.HUD) SH.HUD.banner('SELATARA HEAT', 'Meet Mami Ratna at the safehouse in Ruko Senja', 3.2, false);
+    },
+
+    // ---- mission lifecycle ---------------------------------------------------------
+    startMission: function (index) {
+      var def = this.list[index];
+      if (!def) return;
+      if (def.locked) {
+        if (SH.HUD) SH.HUD.notify(def.title + ' unlocks in the next chapter drop');
+        return;
+      }
+      this.currentIndex = index;
+      if (def.setHour !== undefined) SH.Main.setHour(def.setHour);
+      this.active = { def: def, stepIndex: 0, checkpoint: 0, stepData: {}, failed: 0, eventFlags: {} };
+      this.ambushStage = 0;
+      if (SH.HUD) SH.HUD.banner(def.title, def.brief, 3.4, false);
+      this.beginStep();
+    },
+
+    beginStep: function () {
+      var run = this.active;
+      if (!run) return;
+      var step = run.def.steps[run.stepIndex];
+      if (!step) { this.completeMission(); return; }
+      run.stepData = { t: 0 };
+      run.checkpoint = run.stepIndex;
+      if (step.say) Dialog.play(step.say);
+      this.syncObjective(step);
+      if (run.def.id === 'port-of-lies') this.portStepSetup(run, step);
+      if (run.def.id === 'escort-mami') this.escortStepSetup(run, step);
+      if (run.def.id === 'night-market' && step.type === 'chasePed') this.spawnCourier();
+    },
+
+    syncObjective: function (step) {
+      var run = this.active;
+      var x = step.x, z = step.z;
+      if (step.type === 'enterVehicle' && run.stepData.targetVeh) { x = run.stepData.targetVeh.x; z = run.stepData.targetVeh.z; }
+      if (step.type === 'chasePed' && this.courier) { x = this.courier.x; z = this.courier.z; }
+      if (step.type === 'escape') { this.setObjective(run.def.title, step.text, SH.State.player.x, SH.State.player.z); return; }
+      if (x === undefined) { this.clearObjective(); return; }
+      this.setObjective(run.def.title, step.text, x, z);
+    },
+
+    completeMission: function () {
+      var run = this.active;
+      var st = SH.State;
+      this.active = null;
+      this.removeCourier();
+      if (SH.Combat) SH.Combat.clearEnemies();
+      st.stats.missionsDone = Math.max(st.stats.missionsDone, this.currentIndex + 1);
+      SH.Economy.addCash(run.def.reward);
+      if (SH.Audio) SH.Audio.cash();
+      if (SH.HUD) SH.HUD.banner('MISSION COMPLETE', run.def.title + ' — $' + run.def.reward, 3.4, false);
+      this.currentIndex = Math.min(this.currentIndex + 1, this.list.length - 1);
+      if (SH.Save) SH.Save.saveGame();
+      // Chain: the next briefing waits at the safehouse.
+      if (this.currentIndex <= 3) {
+        this.phase = 'briefing';
+        this.setObjective(this.list[this.currentIndex].title, 'Meet Mami Ratna at the safehouse', SAFEHOUSE.x, SAFEHOUSE.z);
+      } else {
+        this.phase = 'free';
+        this.setObjective('FREE ROAM', 'All current jobs done — more chapters coming to Selatara', SAFEHOUSE.x, SAFEHOUSE.z);
+      }
+    },
+
+    failMission: function (reason) {
+      var run = this.active;
+      if (!run || run.failed) return;
+      run.failed = 1;
+      Dialog.clear();
+      if (SH.HUD) SH.HUD.banner('MISSION FAILED', reason + ' — retrying from checkpoint', 3, true);
+      var self = this;
+      setTimeout(function () {
+        if (!self.active) return;
+        self.active.failed = 0;
+        self.active.stepIndex = self.active.checkpoint;
+        // Undo the worst side effects of the failed attempt.
+        if (SH.State.wanted > 0 && SH.Police) SH.Police.clearWanted();
+        if (SH.Combat) SH.Combat.clearEnemies();
+        self.removeCourier();
+        self.beginStep();
+      }, 3100);
+    },
+
+    // ---- mission-specific setups -------------------------------------------------------
+    findVehicleNear: function (x, z, type) {
+      var best = null, bd = Infinity;
+      for (var i = 0; i < SH.Vehicles.list.length; i++) {
+        var v = SH.Vehicles.list[i];
+        if (type && v.type !== type) continue;
+        var d = Math.hypot(v.x - x, v.z - z);
+        if (d < bd) { bd = d; best = v; }
+      }
+      return best;
+    },
+
+    portStepSetup: function (run, step) {
+      if (step.type === 'enterVehicle') {
+        var truck = this.findVehicleNear(330, 66, 'truck');
+        if (truck) {
+          truck.hp = 100; truck.dead = false; truck.mesh.visible = true;
+          run.stepData.targetVeh = truck;
+          this.syncObjective(step);
+        }
+      }
+      if (step.type === 'deliver' && !run.eventFlags.portAlarm) {
+        run.eventFlags.portAlarm = true;
+        if (SH.Police) SH.Police.forceWanted(3);
+      }
+    },
+
+    escortStepSetup: function (run, step) {
+      if (step.type === 'enterVehicle') {
+        var scene = SH.Main.getScene();
+        if (!run.stepData.mamiCar && scene) {
+          var car = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xff4fa3, -358, 100, Math.PI / 2);
+          car.driver = 'parked';
+          run.stepData.targetVeh = car;
+          run.stepData.mamiCar = car;
+          this.syncObjective(step);
+        }
+      }
+      if (step.type === 'goTo' && run.stepData.mamiCar) {
+        // She drives herself home if the player walks off; nothing else to do.
+      }
+    },
+
+    spawnCourier: function () {
+      this.removeCourier();
+      var scene = SH.Main.getScene();
+      var built = buildCourierMesh();
+      scene.add(built.group);
+      var route = [
+        { x: -330, z: 70 }, { x: -300, z: 84 }, { x: -330, z: 108 }, { x: -286, z: 96 },
+        { x: -300, z: 60 }, { x: -352, z: 60 }, { x: -368, z: 96 }, { x: -330, z: 70 }
+      ];
+      this.courier = {
+        mesh: built.group, parts: built, x: -322, z: 76, heading: 0,
+        route: route, wp: 1, cycle: 0, speed: 5.1
+      };
+    },
+
+    removeCourier: function () {
+      if (this.courier && this.courier.mesh.parent) this.courier.mesh.parent.remove(this.courier.mesh);
+      this.courier = null;
+    },
+
+    updateCourier: function (dt) {
+      var c = this.courier;
+      if (!c) return false;
+      var st = SH.State, p = st.player;
+      var target = c.route[c.wp];
+      var dx = target.x - c.x, dz = target.z - c.z;
+      var d = Math.hypot(dx, dz);
+      // The courier speeds up when Raka closes in, tires over time.
+      var distP = Math.hypot(p.x - c.x, p.z - c.z);
+      var spd = c.speed * (distP < 16 ? 1.12 : 0.94);
+      if (d < 2) { c.wp = (c.wp + 1) % c.route.length; return distP < 2.6; }
+      c.heading = Math.atan2(dx / d, dz / d);
+      c.x += Math.sin(c.heading) * spd * dt;
+      c.z += Math.cos(c.heading) * spd * dt;
+      c.cycle += dt * spd * 2.8;
+      var s = Math.sin(c.cycle * 2.2) * 0.6;
+      c.parts.legL.rotation.x = s; c.parts.legR.rotation.x = -s;
+      c.parts.armL.rotation.x = -s * 0.85; c.parts.armR.rotation.x = s * 0.85;
+      c.mesh.position.set(c.x, 0, c.z);
+      c.mesh.rotation.y = c.heading;
+      // Keep the objective marker glued to the courier.
+      if (this.active && this.active.def.steps[this.active.stepIndex].type === 'chasePed') {
+        this.setObjective(this.active.def.title, this.active.def.steps[this.active.stepIndex].text, c.x, c.z);
+      }
+      return distP < 2.6 && !st.driving;
+    },
+
+    // Escort ambushes: teal rival crews at two choke points on the route east.
+    escortEvents: function (run, dt) {
+      var st = SH.State;
+      if (!st.driving || !run.stepData.mamiCar) return;
+      var car = run.stepData.mamiCar;
+      if (car.dead) { this.failMission('Mami\u2019s car was destroyed'); return; }
+      var stage = this.ambushStage;
+      var triggers = [
+        { x: -120, z: 66, n: 3 }, { x: 118, z: 66, n: 4 }
+      ];
+      if (stage < triggers.length) {
+        var tr = triggers[stage];
+        if (Math.hypot(st.vehiclePos.x - tr.x, st.vehiclePos.z - tr.z) < 85) {
+          this.ambushStage++;
+          for (var i = 0; i < tr.n; i++) {
+            SH.Combat.spawnEnemy(tr.x + (i - 1.5) * 6, tr.z - 14 + (i % 2) * 26, { color: 0x1f6f6f, hp: 40, damage: 6 });
+          }
+          Dialog.play([['Mami Ratna', 'Teal cars! Raka — drive, or fight, but do not stop!', 3.4]]);
+          if (SH.HUD) SH.HUD.notify('Ambush! Protect Mami\u2019s car');
+        }
+      }
+    },
+
+    // ---- per-frame update -------------------------------------------------------------
+    update: function (dt) {
+      Dialog.update(dt);
+      var st = SH.State;
+      if (st.mode !== 'playing') return;
+
+      // Briefing phase: reaching Mami at the safehouse starts the next mission.
+      if (!this.active && this.phase === 'briefing') {
+        var p = st.player;
+        if (!st.driving && Math.hypot(p.x - SAFEHOUSE.x, p.z - SAFEHOUSE.z) < 5) {
+          this.startMission(this.currentIndex);
+        }
+        return;
+      }
+      var run = this.active;
+      if (!run || run.failed) return;
+      var step = run.def.steps[run.stepIndex];
+      if (!step) return;
+      run.stepData.t += dt;
+      var f = st.driving ? st.vehiclePos : st.player;
+
+      if (step.timeLimit && run.stepData.t > step.timeLimit) {
+        this.failMission('Out of time');
+        return;
+      }
+
+      if (run.def.id === 'escort-mami') this.escortEvents(run, dt);
+
+      switch (step.type) {
+        case 'goTo': {
+          var needFoot = run.def.id === 'escort-mami' && run.stepIndex === run.def.steps.length - 1;
+          if (Math.hypot(f.x - step.x, f.z - step.z) < step.r && (!needFoot || !st.driving)) this.advance();
+          break;
+        }
+        case 'enterVehicle': {
+          var tv = run.stepData.targetVeh;
+          if (tv) this.setObjective(run.def.title, step.text, tv.x, tv.z);
+          if (st.driving && (!tv || st.vehicle === tv)) this.advance();
+          break;
+        }
+        case 'deliver': {
+          if (!st.driving) { this.failMission('You left the truck'); return; }
+          if (Math.hypot(f.x - step.x, f.z - step.z) < step.r) this.advance();
+          break;
+        }
+        case 'driveTo': {
+          if (Math.hypot(f.x - step.x, f.z - step.z) < step.r) this.advance();
+          break;
+        }
+        case 'chasePed': {
+          if (this.updateCourier(dt)) {
+            Dialog.play([['Courier', 'Enough! I give up — take it!', 2.6]]);
+            this.advance();
+          }
+          break;
+        }
+        case 'escape': {
+          this.setObjective(run.def.title, step.text + ' (' + st.wanted + '★)', f.x, f.z);
+          if (st.wanted <= 0) this.advance();
+          break;
+        }
+        case 'kill': {
+          if (SH.Combat.enemies.length === 0) this.advance();
+          break;
+        }
+        case 'survive': {
+          if (run.stepData.t >= (step.seconds || 30)) this.advance();
+          break;
+        }
+      }
+    },
+
+    advance: function () {
+      var run = this.active;
+      if (!run) return;
+      run.stepIndex++;
+      if (run.stepIndex >= run.def.steps.length) this.completeMission();
+      else this.beginStep();
     }
   };
 
