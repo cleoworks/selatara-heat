@@ -574,14 +574,29 @@
       pond.rotation.x = -Math.PI / 2; pond.position.set(0, 0.03, 60);
       scene.add(pond);
 
-      // ---- Streetlights: instanced poles + night glow points ----
+      // ---- Streetlights: instanced poles + arms + heads (Rev 6) ----
+      // Each pole carries an arm reaching over the carriageway and a
+      // head at its end; the night glow points sit at the heads.
       var lamps = SH.Roads.lampPositions;
-      var poles = [];
-      for (pi = 0; pi < lamps.length; pi++) poles.push({ x: lamps[pi].x, y: 3.4, z: lamps[pi].z, sx: 0.22, sy: 6.8, sz: 0.22 });
-      makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 5), new THREE.MeshLambertMaterial({ color: 0x3a3f4a }), poles, scene, false);
+      var poles = [], lampArms = [], lampHeads = [];
+      var lampMetal = new THREE.MeshLambertMaterial({ color: 0x3a3f4a });
+      for (pi = 0; pi < lamps.length; pi++) {
+        var lp2 = lamps[pi];
+        poles.push({ x: lp2.x, y: 3.4, z: lp2.z, sx: 0.22, sy: 6.8, sz: 0.22 });
+        var ldx = lp2.dirx || 0, ldz = lp2.dirz || 1;
+        var lyaw = Math.atan2(ldx, ldz);
+        lampArms.push({ x: lp2.x + ldx * 0.75, y: 6.55, z: lp2.z + ldz * 0.75, sx: 0.14, sy: 0.14, sz: 1.7, rotY: lyaw });
+        lampHeads.push({ x: lp2.x + ldx * 1.55, y: 6.42, z: lp2.z + ldz * 1.55, sx: 0.34, sy: 0.13, sz: 0.62, rotY: lyaw });
+      }
+      makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 5), lampMetal, poles, scene, false);
+      makeInstanced(box, lampMetal, lampArms, scene, false);
+      makeInstanced(box, lampMetal, lampHeads, scene, false);
       var glowGeo = new THREE.BufferGeometry();
       var pos = new Float32Array(lamps.length * 3);
-      for (pi = 0; pi < lamps.length; pi++) { pos[pi * 3] = lamps[pi].x; pos[pi * 3 + 1] = 6.9; pos[pi * 3 + 2] = lamps[pi].z; }
+      for (pi = 0; pi < lamps.length; pi++) {
+        var lp3 = lamps[pi];
+        pos[pi * 3] = lp3.x + (lp3.dirx || 0) * 1.55; pos[pi * 3 + 1] = 6.35; pos[pi * 3 + 2] = lp3.z + (lp3.dirz || 1) * 1.55;
+      }
       glowGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       // Lamp glows need a radial sprite map — bare Points render as squares.
       var gc = document.createElement('canvas'); gc.width = gc.height = 64;

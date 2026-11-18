@@ -270,6 +270,8 @@
       // identical to the old per-edge materials. Alleys keep their tint
       // as a vertex colour.
       var roadGeos = [], walkGeos = [];
+      var medianGeos = [], medianTopGeos = [];
+      var medTopMat = new THREE.MeshLambertMaterial({ color: 0x4d8a48 });
       var alleyTint = new THREE.Color(0x9a9186), whiteTint = new THREE.Color(0xffffff);
       function bakeRoadUV(geo, rep, horizontal) {
         var uv = geo.attributes.uv;
@@ -356,6 +358,28 @@
         road.receiveShadow = true;
         collectRoad(road, t2.repeat.y, axis && !edges[i].vertical, kind === 'alley' ? alleyTint : whiteTint);
 
+        // Planted median on the diagonal boulevards (Rev 6): a low
+        // concrete kerb + grass top riding the centreline. Traffic
+        // lanes run at +/-2.9 m, so the 1.8 m strip never touches a
+        // car's swept path.
+        if (kind === 'diag') {
+          var med = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.22, len * 0.92), deckMat);
+          var medTop = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, len * 0.92), medTopMat);
+          var meds = [med, medTop];
+          for (var mdi = 0; mdi < 2; mdi++) {
+            var mm = meds[mdi];
+            if (axis) {
+              mm.rotation.x = 0;
+              if (!edges[i].vertical) mm.rotation.y = Math.PI / 2;
+            } else {
+              mm.rotation.y = Math.atan2(dx, dz);
+            }
+            mm.position.set(mx, mdi === 0 ? 0.11 : 0.24, mz);
+            mm.updateMatrix();
+            (mdi === 0 ? medianGeos : medianTopGeos).push(mm.geometry.clone().applyMatrix4(mm.matrix));
+          }
+        }
+
         // Sidewalks + lamps on city streets (not ring, alley or bridge).
         // Rev 6: sidewalks are raised kerb slabs (top at 0.14 m), not
         // flat planes — the step reads from street level and the air.
@@ -379,14 +403,17 @@
             walk.updateMatrix();
             walkGeos.push(walk.geometry.clone().applyMatrix4(walk.matrix));
           }
-          // Lamp spots along BOTH edges of the street.
+          // Lamp spots along BOTH edges of the street, each carrying
+          // the direction toward the carriageway so buildings.js can
+          // hang a lamp arm + head over the road (Rev 6).
           var steps = Math.floor(len / lampEvery);
           for (var k = 1; k <= steps; k++) {
             var t = k / (steps + 1);
             for (var side = -1; side <= 1; side += 2) {
               this.lampPositions.push({
                 x: a.x + dx * t + px * side * (cfg.roadHalf + 1),
-                z: a.z + dz * t + pz * side * (cfg.roadHalf + 1)
+                z: a.z + dz * t + pz * side * (cfg.roadHalf + 1),
+                dirx: -px * side, dirz: -pz * side
               });
             }
           }
@@ -406,6 +433,41 @@
         var walkMesh = new THREE.Mesh(SH.World.mergeGeos(walkGeos), walkMat);
         walkMesh.receiveShadow = true;
         scene.add(walkMesh);
+      }
+      if (medianGeos.length) {
+        var medMesh = new THREE.Mesh(SH.World.mergeGeos(medianGeos), deckMat);
+        medMesh.receiveShadow = true;
+        scene.add(medMesh);
+        var medTopMesh = new THREE.Mesh(SH.World.mergeGeos(medianTopGeos), medTopMat);
+        scene.add(medTopMesh);
+      }
+      // Zebra crossings at the six corner-plaza intersections (Rev 6):
+      // white bars as real geometry, merged into a single mesh. Bars
+      // run parallel to the traffic flow they cross.
+      var zebraGeos = [];
+      var zebraAt = [[0, -60], [-120, -180], [120, -300], [-360, 60], [240, 60], [360, -180]];
+      var zq = new THREE.Quaternion(), zm = new THREE.Matrix4(), zv = new THREE.Vector3(), zs2 = new THREE.Vector3(1, 1, 1);
+      function zebra(x, z, alongZ) {
+        var geo = new THREE.BoxGeometry(alongZ ? 0.9 : 2.6, 0.03, alongZ ? 2.6 : 0.9);
+        zv.set(x, 0.02, z);
+        zm.compose(zv, zq, zs2);
+        geo.applyMatrix4(zm);
+        zebraGeos.push(geo);
+      }
+      for (var zi = 0; zi < zebraAt.length; zi++) {
+        var zx = zebraAt[zi][0], zz = zebraAt[zi][1];
+        for (var zs3 = 0; zs3 < 5; zs3++) {
+          var off = -3.6 + zs3 * 1.8;
+          zebra(zx + off, zz - cfg.roadHalf - 2.4, true);
+          zebra(zx + off, zz + cfg.roadHalf + 2.4, true);
+          zebra(zx - cfg.roadHalf - 2.4, zz + off, false);
+          zebra(zx + cfg.roadHalf + 2.4, zz + off, false);
+        }
+      }
+      if (zebraGeos.length) {
+        var zebraMesh = new THREE.Mesh(SH.World.mergeGeos(zebraGeos), new THREE.MeshLambertMaterial({ color: 0xe8e8e2 }));
+        zebraMesh.receiveShadow = true;
+        scene.add(zebraMesh);
       }
     },
 
