@@ -103,15 +103,23 @@
     },
 
     // Third-person camera: orbit behind the player, smoothed, ground-clamped.
+    // Driving uses the screenshot-grade framing: low (about 1.6 m over the
+    // road), close behind-side with a lateral offset, FOV 65, so the car
+    // fills a good slice of the frame instead of floating in the distance.
     updateCamera: function (dt, camera) {
       var st = SH.State, p = st.player;
       var target = st.driving ? st.vehiclePos : p;
-      var dist = st.aiming ? 3.1 : (st.driving ? 9.5 : 6.4);
-      var height = st.driving ? 3.1 : 1.9;
+      var dist = st.aiming ? 3.1 : (st.driving ? 5.4 : 6.4);
+      var height = st.driving ? 1.55 : 1.9;
       var back = new THREE.Vector3(Math.sin(st.camYaw) * Math.cos(st.camPitch), Math.sin(st.camPitch), Math.cos(st.camYaw) * Math.cos(st.camPitch));
       var cx = target.x + back.x * dist;
       var cy = (target.y || 0) + height + back.y * dist;
       var cz = target.z + back.z * dist;
+      if (st.driving) {
+        // Lateral offset: shift along the camera's right vector.
+        var rx = back.z, rz = -back.x;
+        cx += rx * 1.7; cz += rz * 1.7;
+      }
       cy = Math.max(0.7, cy);
       if (!this._camPos) this._camPos = new THREE.Vector3(cx, cy, cz);
       var k = 1 - Math.pow(0.0001, dt);
@@ -119,9 +127,9 @@
       this._camPos.y += (cy - this._camPos.y) * k;
       this._camPos.z += (cz - this._camPos.z) * k;
       camera.position.copy(this._camPos);
-      var lookY = (target.y || 0) + (st.driving ? 1.6 : 1.55);
+      var lookY = (target.y || 0) + (st.driving ? 1.15 : 1.55);
       camera.lookAt(target.x - back.x * 2, lookY, target.z - back.z * 2);
-      var baseFov = st.driving && st.speedKmh > 80 ? 68 : 60;
+      var baseFov = st.driving ? (st.speedKmh > 80 ? 68 : 65) : 60;
       if (Math.abs(camera.fov - baseFov) > 0.1) { camera.fov += (baseFov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
     }
   };

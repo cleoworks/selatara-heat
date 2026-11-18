@@ -5,12 +5,34 @@
 (function (SH) {
   'use strict';
 
+  // Shared glow texture + materials for headlight cones and lamp glows.
+  var glowTex = null;
+  function getGlowTex() {
+    if (glowTex) return glowTex;
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var g2 = c.getContext('2d');
+    var grad = g2.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.4, 'rgba(255,255,255,0.4)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g2.fillStyle = grad; g2.fillRect(0, 0, 64, 64);
+    glowTex = new THREE.CanvasTexture(c);
+    return glowTex;
+  }
+  var coneMatShared = null, headGlowMatShared = null;
+  function getConeMat() {
+    if (!coneMatShared) coneMatShared = new THREE.MeshBasicMaterial({ color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    return coneMatShared;
+  }
+  function getHeadGlowMat() {
+    if (!headGlowMatShared) headGlowMatShared = new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    return headGlowMatShared;
+  }
+
   function buildMesh(type, colorHex) {
     var spec = SH.Config.vehicleTypes[type];
     var g = new THREE.Group();
-    var paint = new THREE.MeshLambertMaterial({ color: colorHex, flatShading: true });
-    var dark = new THREE.MeshLambertMaterial({ color: 0x1c1e24, flatShading: true });
-    var glass = new THREE.MeshLambertMaterial({ color: 0x9fd4e8, flatShading: true });
+    var paint = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 68, specular: 0x888888, flatShading: true });
+    var dark = new THREE.MeshLambertMaterial({ color: 0x14151a, flatShading: true });
+    var glass = new THREE.MeshPhongMaterial({ color: 0x2a4a5e, shininess: 90, specular: 0xaaddff, flatShading: true });
     var L = spec.length, W = spec.width, H = spec.height;
     var wheels = [];
 
@@ -20,10 +42,16 @@
       g.add(m); return m;
     }
     function wheel(x, z, r) {
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.28, 10), dark);
+      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.3, 12), dark);
       w.rotation.z = Math.PI / 2;
       w.position.set(x, r, z);
+      w.castShadow = true;
       g.add(w); wheels.push(w);
+      // Pale hubcap disc so the wheel reads as a wheel, not a blob.
+      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.45, r * 0.45, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0xb9c0c9, flatShading: true }));
+      hub.rotation.z = Math.PI / 2;
+      hub.position.set(x, r, z);
+      g.add(hub); wheels.push(hub);
       return w;
     }
 
@@ -49,7 +77,18 @@
       box(W * 0.84, H * 0.42, L * 0.48, glass, 0, H * 0.82, -L * 0.04); // cabin
       if (type === 'sport') box(W * 0.9, 0.09, 0.5, dark, 0, H * 0.78, -L * 0.46); // spoiler
       if (type === 'police') {
-        box(W * 0.7, 0.16, 0.4, new THREE.MeshBasicMaterial({ color: 0xff2a4a }), 0, H * 1.08, 0);
+        // Two-tone lightbar: red left, blue right, each with its own glow
+        // sprite; materials are per-car so the flash phase can alternate.
+        var barBase = box(W * 0.72, 0.1, 0.42, dark, 0, H * 1.04, 0);
+        var redMat = new THREE.MeshBasicMaterial({ color: 0xff2a4a });
+        var blueMat = new THREE.MeshBasicMaterial({ color: 0x2a6aff });
+        var rb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), redMat); rb.position.set(-W * 0.18, H * 1.13, 0); g.add(rb);
+        var bb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.34, 0.15, 0.4), blueMat); bb.position.set(W * 0.18, H * 1.13, 0); g.add(bb);
+        var rg = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xff3a5a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+        rg.scale.set(3.4, 2.2, 1); rg.position.set(-W * 0.18, H * 1.16, 0); g.add(rg);
+        var bg = new THREE.Sprite(rg.material.clone()); bg.material.color = new THREE.Color(0x3a7aff);
+        bg.scale.set(3.4, 2.2, 1); bg.position.set(W * 0.18, H * 1.16, 0); g.add(bg);
+        g.userData.lightbar = { redMat: redMat, blueMat: blueMat, redGlow: rg, blueGlow: bg };
       }
       var r = type === 'sport' ? 0.36 : 0.4;
       wheel(-W / 2, L * 0.31, r); wheel(W / 2, L * 0.31, r);
@@ -61,6 +100,17 @@
     var h2 = h1.clone(); h2.position.x = hw; g.add(h2);
     var t1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat); t1.position.set(-hw, H * 0.52, -L / 2 - 0.02); g.add(t1);
     var t2 = t1.clone(); t2.position.x = hw; g.add(t2);
+    // Headlight glow sprites + a fake light cone (opacity driven globally by
+    // the time of day via Vehicles.setLightLevel).
+    if (type !== 'boat') {
+      var hg1 = new THREE.Sprite(getHeadGlowMat()); hg1.scale.set(1.05, 0.75, 1); hg1.position.set(-hw, H * 0.5, L / 2 + 0.25); g.add(hg1);
+      var hg2 = new THREE.Sprite(getHeadGlowMat()); hg2.scale.set(1.05, 0.75, 1); hg2.position.set(hw, H * 0.5, L / 2 + 0.25); g.add(hg2);
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(1.35, 6.5, 12, 1, true), getConeMat());
+      cone.rotation.x = Math.PI / 2 + 0.06;
+      cone.position.set(0, H * 0.42, L / 2 + 3.2);
+      g.add(cone);
+      g.userData.cone = cone;
+    }
 
     return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat };
   }
@@ -78,7 +128,23 @@
       { type: 'sedan', x: -128, z: 186, heading: 0 },
       { type: 'motor', x: 52, z: 234, heading: Math.PI / 2 },
       { type: 'sedan', x: -248, z: -308, heading: 0 },
-      { type: 'sport', x: 420, z: -128, heading: Math.PI }
+      { type: 'sport', x: 420, z: -128, heading: Math.PI },
+      // Kerbside parking along the main avenues (visual density + stealable).
+      { type: 'sedan', x: -114.5, z: -160, heading: 0 },
+      { type: 'sedan', x: -125.5, z: -96, heading: Math.PI },
+      { type: 'sport', x: -114.5, z: -20, heading: 0 },
+      { type: 'sedan', x: 5.5, z: -140, heading: Math.PI },
+      { type: 'motor', x: -5.5, z: -80, heading: 0 },
+      { type: 'sedan', x: 114.5, z: 20, heading: 0 },
+      { type: 'sedan', x: -234.5, z: -240, heading: 0 },
+      { type: 'sport', x: 245.5, z: -200, heading: Math.PI },
+      { type: 'sedan', x: -365.5, z: -20, heading: Math.PI },
+      { type: 'sedan', x: 354.5, z: 120, heading: 0 },
+      { type: 'motor', x: -475.5, z: 120, heading: 0 },
+      { type: 'sedan', x: -60, z: -54.5, heading: Math.PI / 2 },
+      { type: 'sedan', x: 40, z: 65.5, heading: -Math.PI / 2 },
+      { type: 'sport', x: -200, z: 174.5, heading: Math.PI / 2 },
+      { type: 'sedan', x: 180, z: -174.5, heading: -Math.PI / 2 }
     ],
 
     spawnVehicle: function (scene, type, colorHex, x, z, heading) {
@@ -215,6 +281,10 @@
       else if (throttle < 0) v.speed -= (v.speed > 0.5 ? spec.brake : spec.accel * 0.6) * dt;
       else v.speed -= v.speed * 0.35 * dt; // engine braking / drag
       if (handbrake) v.speed -= v.speed * 2.2 * dt;
+      // Screenshot staging (?shot=): hold a cruise speed with no input.
+      if (st._shotCruise && throttle === 0 && !handbrake) {
+        v.speed += Math.max(-10 * dt, Math.min(10 * dt, st._shotCruise.speed - v.speed));
+      }
       v.speed = Math.max(-spec.maxSpeed * 0.32, Math.min(spec.maxSpeed, v.speed));
 
       v.steer += (steerIn * 0.55 - v.steer) * Math.min(1, dt * 8);
@@ -236,7 +306,11 @@
 
       st.vehiclePos.x = v.x; st.vehiclePos.z = v.z; st.vehiclePos.y = 0;
       st.speedKmh = Math.round(Math.abs(v.speed) * 3.6);
-      st.camYaw = v.heading + Math.PI + (st.camYaw - (v.heading + Math.PI)) * Math.pow(0.4, dt); // camera eases behind the car
+      // Camera eases behind the car (angle difference wrapped, or it swings
+      // the long way around through a full turn).
+      var targetYaw = v.heading + Math.PI;
+      var dyaw = ((st.camYaw - targetYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      st.camYaw = targetYaw + dyaw * Math.pow(0.4, dt);
       if (input.locked) { /* mouse still free-looks via main step */ }
       var rpm = Math.min(1, Math.abs(v.speed) / spec.maxSpeed * 0.8 + (throttle > 0 ? 0.25 : 0.08));
       SH.Audio.engine(rpm, true);
@@ -261,6 +335,44 @@
     setBrakeLights: function (v, on) {
       v.braking = on;
       v.tailMat.color.setHex(on ? 0xff7070 : 0xff2a2a);
+    },
+
+    // Global dusk/night light level (0 day .. 1 night): drives headlight
+    // cones + glows on every car at once through the shared materials.
+    setLightLevel: function (level) {
+      this._lightLevel = level;
+      if (coneMatShared) coneMatShared.opacity = level * level * 0.09;
+      if (this.playerConeMat) this.playerConeMat.opacity = level * level * 0.05;
+      if (headGlowMatShared) headGlowMatShared.opacity = level * 0.5;
+      if (this.headlight) this.headlight.intensity = level * 1.6;
+    },
+
+    // Police lightbar flash: alternate red/blue twice a second.
+    updateVisuals: function () {
+      var level = this._lightLevel || 0;
+      var phase = (SH.State.time * 2.2) % 1;
+      var redOn = phase < 0.5;
+      if (!this.playerConeMat) {
+        this.playerConeMat = getConeMat().clone();
+        this.playerConeMat.opacity = 0;
+      }
+      for (var i = 0; i < this.list.length; i++) {
+        var v = this.list[i];
+        // The player's own headlight cone gets a much fainter material: from
+        // the chase camera a full-strength cone reads as a solid wedge.
+        var cone = v.mesh.userData.cone;
+        if (cone) {
+          var wantMat = v.driver === 'player' ? this.playerConeMat : coneMatShared;
+          if (cone.material !== wantMat) cone.material = wantMat;
+        }
+        var lb = v.mesh.userData.lightbar;
+        if (!lb) continue;
+        var active = v.driver === 'police' || v.driver === 'roadblock' || v.driver === 'player';
+        lb.redMat.color.setHex(redOn ? 0xff2a4a : 0x57101e);
+        lb.blueMat.color.setHex(redOn ? 0x12275e : 0x2a6aff);
+        lb.redGlow.material.opacity = active && redOn ? 0.55 + level * 0.3 : 0;
+        lb.blueGlow.material.opacity = active && !redOn ? 0.55 + level * 0.3 : 0;
+      }
     },
 
     // Traffic cars reuse this: integrate a vehicle along an explicit velocity.

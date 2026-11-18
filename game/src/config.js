@@ -19,19 +19,19 @@
     // ---- Palette: one controlled set, day and night variants ----
     palette: {
       day: {
-        skyTop: 0x4aa8dd, skyMid: 0x9fd0e8, skyLow: 0xffc98a, fog: 0xf7b98a,
-        sun: 0xffd9a8, sunIntensity: 1.25, hemiSky: 0xffe3c0, hemiGround: 0x5a4a44,
-        hemiIntensity: 0.75, ambient: 0.35, water: 0x2e8fb5, sand: 0xe8cf9f,
-        asphalt: 0x4a4442, sidewalk: 0x9a8f85, grass: 0x5da85e
+        skyTop: 0x1f8fe0, skyMid: 0x6ec3f2, skyLow: 0xd9f2ff, fog: 0xcfe9f7,
+        sun: 0xfff0d0, sunIntensity: 1.35, hemiSky: 0xbfe3ff, hemiGround: 0x6a5a4a,
+        hemiIntensity: 0.8, ambient: 0.35, water: 0x1f9ec4, sand: 0xf2dca6,
+        asphalt: 0x4a4442, sidewalk: 0xb0a496, grass: 0x4db356
       },
       dusk: {
-        skyTop: 0x3a4a8c, skyMid: 0xff8c5a, skyLow: 0xff6b4a, fog: 0xe08a5f,
-        sun: 0xff8a4a, sunIntensity: 1.05, hemiSky: 0xd98a5f, hemiGround: 0x4a3a44,
-        hemiIntensity: 0.68, ambient: 0.3, water: 0x2a6a94, sand: 0xc9a87a,
-        asphalt: 0x3a3236, sidewalk: 0x6a5a58, grass: 0x3a6a3e
+        skyTop: 0x7ec8e3, skyMid: 0xff8c5a, skyLow: 0xffb37a, fog: 0xffa06a,
+        sun: 0xff7a33, sunIntensity: 1.35, hemiSky: 0xffc98a, hemiGround: 0x4a3049,
+        hemiIntensity: 0.88, ambient: 0.3, water: 0x2a7ab0, sand: 0xe8b57e,
+        asphalt: 0x3d333a, sidewalk: 0x8a6a62, grass: 0x3f7a3a
       },
       night: {
-        skyTop: 0x0b1030, skyMid: 0x2a1b4a, skyLow: 0x1a1440, fog: 0x1c1838,
+        skyTop: 0x0b1030, skyMid: 0x2a1b4a, skyLow: 0x241a4a, fog: 0x1c1838,
         sun: 0x8aa8ff, sunIntensity: 0.12, hemiSky: 0x33406e, hemiGround: 0x14101e,
         hemiIntensity: 0.35, ambient: 0.18, water: 0x14384f, sand: 0x6a5f4d,
         asphalt: 0x23202b, sidewalk: 0x3d3a4a, grass: 0x1e4028

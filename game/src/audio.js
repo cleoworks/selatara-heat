@@ -122,9 +122,23 @@
 
     // ---- Radio: two fictional stations, tiny synth loops ----
     stations: [
-      { name: 'RADIO SELATARA FM', root: 110, mode: [0, 3, 5, 7, 10] },
-      { name: 'GELOMBANG MALAM 98.2', root: 98, mode: [0, 2, 3, 7, 9] }
+      { name: 'RADIO SELATARA FM', root: 110, mode: [0, 3, 5, 7, 10], tracks: [
+        { title: 'Senja di Selat', artist: 'Arus Band' },
+        { title: 'Neon Pelabuhan', artist: 'Sinta Laras' },
+        { title: 'Jalan Lingkar', artist: 'The Selats' },
+        { title: 'Kopi Pahit Manis', artist: 'Duo Kencana' }
+      ] },
+      { name: 'GELOMBANG MALAM 98.2', root: 98, mode: [0, 2, 3, 7, 9], tracks: [
+        { title: 'Ombak Tengah Malam', artist: 'Laras Malam' },
+        { title: 'Lampu Dermaga', artist: 'Kapten Sunyi' },
+        { title: 'Dansa di Atap Ruko', artist: 'Melati Sintetis' }
+      ] }
     ],
+    trackInfo: function () {
+      var st = this.stations[this.stationIndex];
+      var idx = Math.floor((SH.State ? SH.State.time : 0) / 26) % st.tracks.length;
+      return { station: st.name, title: st.tracks[idx].title, artist: st.tracks[idx].artist };
+    },
     stationIndex: 0, radioTimer: null, radioStep: 0,
     radio: function (on) {
       var self = this;

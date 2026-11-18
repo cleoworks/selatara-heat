@@ -22,7 +22,7 @@
   };
   SH.State = State;
 
-  var renderer, scene, camera, sun, hemi, skyMesh;
+  var renderer, scene, camera, sun, hemi, skyMesh, ambLight;
   var accumulator = 0, lastTs = 0;
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
@@ -45,9 +45,10 @@
     var P = SH.Config.palette;
     if (hour < 5.5) return lerpPalette(P.night, P.night, 0, currentPal);
     if (hour < 7) return lerpPalette(P.night, P.day, (hour - 5.5) / 1.5, currentPal);
-    if (hour < 16.5) return lerpPalette(P.day, P.day, 0, currentPal);
-    if (hour < 18.5) return lerpPalette(P.day, P.dusk, (hour - 16.5) / 2, currentPal);
-    if (hour < 20) return lerpPalette(P.dusk, P.night, (hour - 18.5) / 1.5, currentPal);
+    if (hour < 15.5) return lerpPalette(P.day, P.day, 0, currentPal);
+    if (hour < 17.4) return lerpPalette(P.day, P.dusk, (hour - 15.5) / 1.9, currentPal);
+    if (hour < 18.6) return lerpPalette(P.dusk, P.dusk, 0, currentPal);
+    if (hour < 20) return lerpPalette(P.dusk, P.night, (hour - 18.6) / 1.4, currentPal);
     return lerpPalette(P.night, P.night, 0, currentPal);
   }
 
@@ -55,6 +56,14 @@
     if (hour >= 19.5 || hour < 5) return 1;
     if (hour > 18) return (hour - 18) / 1.5;
     if (hour >= 5 && hour < 6.5) return 1 - (hour - 5) / 1.5;
+    return 0;
+  }
+
+  // Streetlights and glow effects come on from golden hour, not just at night.
+  function lampAmount(hour) {
+    if (hour >= 18.4 || hour < 5.2) return 1;
+    if (hour > 16.6) return (hour - 16.6) / 1.8;
+    if (hour >= 5.2 && hour < 6.8) return 1 - (hour - 5.2) / 1.6;
     return 0;
   }
 
@@ -71,18 +80,58 @@
     hemi.intensity = pal.hemiIntensity;
     hemi.color.setHex(pal.hemiSky);
     hemi.groundColor.setHex(pal.hemiGround);
+    if (ambLight) { ambLight.intensity = pal.ambient; ambLight.color.setHex(pal.hemiSky); }
     scene.fog.color.setHex(pal.fog);
     if (skyMesh) {
       drawSky(pal);
       skyMesh.position.set(focus.x, 0, focus.z);
     }
     SH.Roads.applyPalette(pal);
-    SH.Buildings.setNightGlow(nightAmount(State.hour));
+    var lamp = lampAmount(State.hour);
+    SH.Buildings.setNightGlow(Math.max(lamp, nightAmount(State.hour) * 0.9));
+    if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
+    updateSunSprite(pal, elev, sunAngle);
+  }
+
+  // Big soft sun glow on the horizon (fake bloom): a radial-gradient sprite
+  // that sits in the sun's direction, strongest at golden hour.
+  var sunSprite = null, sunCore = null;
+  function makeGlowSprite(inner, outer) {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var g = c.getContext('2d');
+    var grad = g.createRadialGradient(64, 64, 2, 64, 64, 64);
+    grad.addColorStop(0, inner); grad.addColorStop(0.35, outer); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    var tex = new THREE.CanvasTexture(c);
+    var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    return sp;
+  }
+  function updateSunSprite(pal, elev, sunAngle) {
+    if (!sunSprite) {
+      sunSprite = makeGlowSprite('rgba(255,230,180,0.95)', 'rgba(255,130,50,0.55)');
+      sunSprite.scale.set(620, 620, 1);
+      scene.add(sunSprite);
+      sunCore = makeGlowSprite('rgba(255,255,240,1)', 'rgba(255,180,90,0.6)');
+      sunCore.scale.set(150, 150, 1);
+      scene.add(sunCore);
+    }
+    var focus = State.driving ? State.vehiclePos : State.player;
+    var dirx = Math.cos(sunAngle), dirz = 0.42;
+    var dist = 1150;
+    var y = Math.max(30, elev * 620);
+    sunSprite.position.set(focus.x + dirx * dist, y, focus.z + dirz * dist);
+    sunCore.position.copy(sunSprite.position);
+    var dayness = 1 - nightAmount(State.hour);
+    var glow = dayness * (0.35 + 0.65 * Math.max(0, 1 - Math.abs(elev) * 2.4));
+    sunSprite.material.opacity = glow * 0.85;
+    sunCore.material.opacity = glow;
+    sunSprite.visible = sunCore.visible = glow > 0.02;
   }
 
   var skyCanvas = document.createElement('canvas');
   skyCanvas.width = 4; skyCanvas.height = 256;
   var skyTexture = new THREE.CanvasTexture(skyCanvas);
+  if (THREE.sRGBEncoding) skyTexture.encoding = THREE.sRGBEncoding;
   var skyTick = 0;
   function drawSky(pal) {
     // Redrawing the gradient every frame is wasteful; refresh a few times a second.
@@ -98,7 +147,7 @@
 
   function buildWorld() {
     scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xf7b98a, 180, 900);
+    scene.fog = new THREE.Fog(0xf7b98a, 150, 1050);
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.3, 1600);
 
     skyMesh = new THREE.Mesh(
@@ -109,11 +158,13 @@
 
     hemi = new THREE.HemisphereLight(0xffe3c0, 0x5a4a44, 0.75);
     scene.add(hemi);
+    ambLight = new THREE.AmbientLight(0xffe3c0, 0.35);
+    scene.add(ambLight);
     sun = new THREE.DirectionalLight(0xffd9a8, 1.25);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
-    sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
+    sun.shadow.camera.left = -115; sun.shadow.camera.right = 115;
+    sun.shadow.camera.top = 115; sun.shadow.camera.bottom = -115;
     sun.shadow.camera.far = 500;
     sun.shadow.bias = -0.0006;
     scene.add(sun); scene.add(sun.target);
@@ -149,6 +200,7 @@
     else if (SH.Player.mesh) SH.Player.mesh.visible = !State.driving;
     if (SH.Traffic) SH.Traffic.update(dt);
     if (SH.Pedestrians) SH.Pedestrians.update(dt);
+    if (SH.Vehicles && SH.Vehicles.updateVisuals) SH.Vehicles.updateVisuals();
     if (SH.Police) SH.Police.update(dt);
     if (SH.Combat) SH.Combat.update(dt);
     if (SH.Missions) SH.Missions.update(dt);
@@ -217,6 +269,11 @@
   function boot() {
     var canvas = document.getElementById('game');
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+    // Saturated filmic grade: sRGB output + ACES curve lifts the flat
+    // Lambert colours toward the saturated reference look.
+    if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;

@@ -15,7 +15,9 @@
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 3;
-    background: radial-gradient(ellipse at center, transparent 58%, rgba(5, 4, 16, .42) 100%); }
+    background: radial-gradient(ellipse at center, transparent 52%, rgba(5, 4, 16, .52) 100%); }
+  #grade { position: fixed; inset: 0; pointer-events: none; z-index: 3;
+    background: linear-gradient(180deg, rgba(255, 138, 60, .07) 0%, transparent 34%, transparent 72%, rgba(30, 8, 54, .14) 100%); }
   #damage-flash { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
     background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 20, 30, .5) 100%); }
   .hidden { display: none !important; }
@@ -58,16 +60,33 @@
   #veh-damage { background: var(--green); }
   #speed-bar { background: var(--cyan); width: 0%; }
   #hud-radio { font-size: 11px; letter-spacing: .14em; color: var(--cyan); margin-top: 5px; }
-  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 300px; }
-  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 13px; }
+  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 320px; min-width: 250px; }
+  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; }
+  #obj-timer { color: var(--cyan); font-variant-numeric: tabular-nums; }
   #obj-text { font-size: 13.5px; margin-top: 2px; }
   #obj-dist { font-size: 12px; opacity: .85; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  #obj-progress { height: 6px; background: rgba(255,255,255,.14); border-radius: 3px; margin-top: 7px; overflow: hidden; display: flex; gap: 2px; }
+  #obj-progress i { display: block; height: 100%; background: rgba(255,255,255,.18); flex: 1; }
+  #obj-progress i.done { background: var(--yellow); }
+  #hud-police { position: absolute; left: var(--safe); top: 128px; width: 250px; font-size: 12px; }
+  #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .1em; color: #9db8ff; margin-bottom: 5px; }
+  #hud-police .pol-row { display: flex; justify-content: space-between; gap: 8px; padding: 2.5px 0; border-top: 1px solid rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
+  .pol-tag { font-weight: 800; font-size: 10px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
+  .pol-tag.hot { background: #8c1f2f; color: #ffb3ba; }
+  .pol-tag.cool { background: #1f4d6b; color: #a8dcff; }
   #hud-notes { position: absolute; left: var(--safe); top: 118px; display: flex; flex-direction: column; gap: 6px; }
   .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 6px 12px; font-size: 13px; animation: noteIn .25s; }
   @keyframes noteIn { from { transform: translateX(-8px); opacity: 0; } }
-  #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 640px; width: max-content;
-    background: rgba(5, 6, 12, .68); border-radius: 6px; padding: 9px 18px; text-align: center; font-size: clamp(14px, 2vmin, 17px); }
+  #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 680px; width: max-content;
+    background: rgba(5, 6, 12, .72); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
+    font-size: clamp(14px, 2vmin, 17px); text-align: left; }
+  #sub-portrait { width: 54px; height: 54px; border-radius: 6px; border: 2px solid var(--pink); flex: none; background: #2a1b4a; }
   #sub-name { color: var(--cyan); font-weight: 800; margin-right: 8px; }
+  #sub-role { color: var(--yellow); font-size: 10.5px; font-weight: 800; letter-spacing: .14em; }
+  #radio-card { margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--pink);
+    border-radius: 6px; padding: 7px 11px; text-align: left; min-width: 190px; }
+  #radio-station { color: var(--pink); font-weight: 800; font-size: 12px; letter-spacing: .1em; }
+  #radio-track { font-size: 12px; opacity: .92; margin-top: 1px; white-space: nowrap; }
   #hud-prompt { position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%); background: var(--panel);
     border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; }
   #hud-marker { position: fixed; left: 0; top: 0; z-index: 5; color: var(--yellow); font-weight: 800; font-size: 13px;
@@ -115,15 +134,18 @@
 <body>
 <canvas id="game" aria-label="Selatara Heat: open-world crime game"></canvas>
 <div id="vignette"></div>
+<div id="grade"></div>
 <div id="damage-flash"></div>
 
 <!-- ================= HUD ================= -->
 <div id="hud" class="hidden">
   <div id="hud-objective" class="panel hidden">
-    <div id="obj-title">FIRST RUN</div>
+    <div id="obj-title"><span id="obj-title-text">FIRST RUN</span><span id="obj-timer"></span></div>
     <div id="obj-text">Meet Mami Ratna</div>
     <div id="obj-dist">0 m</div>
+    <div id="obj-progress"></div>
   </div>
+  <div id="hud-police" class="panel hidden"></div>
   <div id="hud-notes"></div>
   <div id="hud-district" class="hidden">SELATARA</div>
   <div id="hud-left">
@@ -147,10 +169,13 @@
       <div><span id="speed-num">0</span> <span class="unit">KM/H</span></div>
       <div class="gauge"><i id="speed-bar"></i></div>
       <div class="gauge"><i id="veh-damage"></i></div>
-      <div id="hud-radio">RADIO SELATARA FM</div>
+      <div id="radio-card">
+        <div id="radio-station">♪ RADIO SELATARA FM</div>
+        <div id="radio-track">Senja di Selat — Arus Band</div>
+      </div>
     </div>
   </div>
-  <div id="hud-subtitle" class="hidden"><span id="sub-name"></span><span id="sub-text"></span></div>
+  <div id="hud-subtitle" class="hidden"><canvas id="sub-portrait" width="108" height="108"></canvas><div><div><span id="sub-name"></span><span id="sub-role"></span></div><div id="sub-text"></div></div></div>
   <div id="hud-prompt" class="hidden"></div>
 </div>
 <div id="hud-marker" class="hidden"></div>

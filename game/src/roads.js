@@ -22,6 +22,41 @@
     return t;
   }
 
+  function groundTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 256;
+    var g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 256);
+    var rng = SH.World.makeRng(31);
+    for (var i = 0; i < 2600; i++) {
+      var v = rng();
+      g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.16)' : (v > 0.3 ? 'rgba(120,100,50,0.10)' : 'rgba(255,255,220,0.05)');
+      g.fillRect(rng() * 256, rng() * 256, 3 + rng() * 9, 3 + rng() * 9);
+    }
+    var t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(46, 40);
+    t.anisotropy = 4;
+    return t;
+  }
+
+  function walkTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var g = c.getContext('2d');
+    g.fillStyle = '#cfc4b4'; g.fillRect(0, 0, 128, 128);
+    var rng = SH.World.makeRng(97);
+    for (var i = 0; i < 500; i++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+      g.fillRect(rng() * 128, rng() * 128, 2, 2);
+    }
+    g.strokeStyle = 'rgba(60,50,40,0.5)'; g.lineWidth = 2;
+    g.strokeRect(1, 1, 126, 126);
+    g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.stroke();
+    var t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  }
+
   var Roads = {
     lampPositions: [],
     waveMeshes: [],
@@ -30,10 +65,11 @@
       var cfg = SH.Config.world;
       var pal = SH.Config.palette.day;
 
-      // Base ground (grass/earth under everything).
+      // Base ground (grass/earth under everything) with a mottled texture so
+      // open ground never reads as one flat colour.
       var ground = new THREE.Mesh(
         new THREE.PlaneGeometry(cfg.halfX * 2 + 400, cfg.halfZ * 2 + 400),
-        new THREE.MeshLambertMaterial({ color: pal.grass })
+        new THREE.MeshLambertMaterial({ color: pal.grass, map: groundTexture() })
       );
       ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08;
       ground.receiveShadow = true;
@@ -75,11 +111,11 @@
       // Roads: one plane per graph edge, textured asphalt with dashes.
       var tex = asphaltTexture();
       var edges = SH.World.graph.edges, nodes = SH.World.graph.nodes;
-      var roadMat = new THREE.MeshLambertMaterial({ map: tex, color: 0xffffff });
+      var roadMat = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, shininess: 26, specular: 0x8a6a4a });
       this.roadMaterial = roadMat;
-      var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk });
+      var walkMat = new THREE.MeshLambertMaterial({ color: pal.sidewalk, map: walkTexture() });
       this.walkMaterial = walkMat;
-      var lampEvery = 42;
+      var lampEvery = 26;
 
       for (var i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].a], b = nodes[edges[i].b];
@@ -89,7 +125,7 @@
         var t2 = tex.clone(); t2.needsUpdate = true;
         t2.repeat.set(1, Math.max(1, Math.round(len / 16)));
         if (!edges[i].vertical) t2.rotation = Math.PI / 2, t2.center.set(0.5, 0.5);
-        var mat = new THREE.MeshLambertMaterial({ map: t2 });
+        var mat = new THREE.MeshPhongMaterial({ map: t2, shininess: 26, specular: 0x8a6a4a });
         var road = new THREE.Mesh(new THREE.PlaneGeometry(wRoad, len + wRoad), mat);
         road.rotation.x = -Math.PI / 2;
         if (!edges[i].vertical) road.rotation.z = Math.PI / 2;
@@ -111,14 +147,16 @@
             walk.receiveShadow = true;
             scene.add(walk);
           }
-          // Lamp spots along the edge.
+          // Lamp spots along BOTH edges of the street.
           var steps = Math.floor(len / lampEvery);
           for (var k = 1; k <= steps; k++) {
             var t = k / (steps + 1);
-            this.lampPositions.push({
-              x: mx + (b.x - a.x) * (t - 0.5) + (edges[i].vertical ? cfg.roadHalf + 1 : 0),
-              z: mz + (b.z - a.z) * (t - 0.5) + (edges[i].vertical ? 0 : cfg.roadHalf + 1)
-            });
+            for (var side = -1; side <= 1; side += 2) {
+              this.lampPositions.push({
+                x: mx + (b.x - a.x) * (t - 0.5) + (edges[i].vertical ? side * (cfg.roadHalf + 1) : 0),
+                z: mz + (b.z - a.z) * (t - 0.5) + (edges[i].vertical ? 0 : side * (cfg.roadHalf + 1))
+              });
+            }
           }
         }
       }
