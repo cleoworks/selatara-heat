@@ -660,21 +660,43 @@
         scene.add(bsp);
       }
 
-      // ---- Boardwalk + pier at Pantai Kencana ----
-      // The boardwalk is laid in 30 m segments that follow the bending
-      // beach road (roadZ + 17), so it hugs the curved shore.
+      // ---- Boardwalk + pier at Pantai Kencana (Rev 6: real planks) ----
+      // The promenade is ~700 individual planks laid across the curve
+      // (instanced, one draw call) on posts, with a sea-side rail —
+      // not the old 30 m floating slabs. The pier gets the same
+      // treatment: planks across, posts down into the water.
       var woodMat = new THREE.MeshLambertMaterial({ color: 0xa87c50 });
-      for (var bwx = -480; bwx < 480; bwx += 30) {
-        var bwz1 = SH.World.beachRoadZ(bwx) + 17, bwz2 = SH.World.beachRoadZ(bwx + 30) + 17;
-        var seg = new THREE.Mesh(new THREE.BoxGeometry(31, 0.5, 10), woodMat);
-        seg.position.set(bwx + 15, 0.25, (bwz1 + bwz2) / 2);
-        seg.rotation.y = -Math.atan2(bwz2 - bwz1, 30);
-        seg.receiveShadow = true;
-        scene.add(seg);
+      var woodDark = new THREE.MeshLambertMaterial({ color: 0x7d5a38 });
+      var planks = [], bwPosts = [], railPosts = [], railBars = [];
+      for (var bwx = -480; bwx < 480; bwx += 1.35) {
+        var bwzA = SH.World.beachRoadZ(bwx) + 17, bwzB = SH.World.beachRoadZ(bwx + 1.35) + 17;
+        var bwz = (bwzA + bwzB) / 2;
+        var bwRot = -Math.atan2(bwzB - bwzA, 1.35);
+        planks.push({ x: bwx + 0.675, y: 0.42, z: bwz, sx: 1.24, sy: 0.12, sz: 5.2, rotY: bwRot });
+        if ((Math.round(bwx / 1.35) % 5) === 0) {
+          bwPosts.push({ x: bwx, y: 0.02, z: bwz - 2.4, sx: 0.24, sy: 1.0, sz: 0.24 });
+          bwPosts.push({ x: bwx, y: 0.02, z: bwz + 2.4, sx: 0.24, sy: 1.0, sz: 0.24 });
+          railPosts.push({ x: bwx, y: 0.45, z: bwz + 2.55, sx: 0.16, sy: 1.5, sz: 0.16 });
+        }
       }
-      var pier = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 110), woodMat);
-      pier.position.set(60, 0.25, 340);
-      scene.add(pier);
+      for (var rsx = -480; rsx < 480; rsx += 6.75) {
+        var rz1 = SH.World.beachRoadZ(rsx) + 17 + 2.55, rz2 = SH.World.beachRoadZ(rsx + 6.75) + 17 + 2.55;
+        railBars.push({ x: rsx + 3.375, y: 1.18, z: (rz1 + rz2) / 2, sx: 6.9, sy: 0.09, sz: 0.09, rotY: -Math.atan2(rz2 - rz1, 6.75) });
+      }
+      makeInstanced(box, woodMat, planks, scene, false);
+      makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), woodDark, bwPosts, scene, false);
+      makeInstanced(box, woodDark, railPosts, scene, false);
+      makeInstanced(box, woodMat, railBars, scene, false);
+      var pierPlanks = [], pierPosts = [];
+      for (var pz2 = 285.5; pz2 < 395; pz2 += 1.35) {
+        pierPlanks.push({ x: 60, y: 0.43, z: pz2 + 0.675, sx: 9.8, sy: 0.14, sz: 1.24 });
+      }
+      for (var ppz = 290; ppz < 394; ppz += 6.75) {
+        pierPosts.push({ x: 55.4, y: -0.5, z: ppz, sx: 0.28, sy: 2.0, sz: 0.28 });
+        pierPosts.push({ x: 64.6, y: -0.5, z: ppz, sx: 0.28, sy: 2.0, sz: 0.28 });
+      }
+      makeInstanced(box, woodMat, pierPlanks, scene, false);
+      makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), woodDark, pierPosts, scene, false);
       this.pierEnd = { x: 60, z: 392 };
       var umbrellas = [];
       for (pi = 0; pi < 30; pi++) {

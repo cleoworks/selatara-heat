@@ -116,15 +116,21 @@
       // Shore ribbons (Art Pass 3): sand, shallow water and foam all follow
       // the organic coastZ(x) curve — bays and headlands instead of the old
       // straight ruler line at z=waterZ.
-      function coastRibbon(offNear, offFar, y, mat) {
-        var xs2 = [], step = 24;
+      // Offsets may be functions of x (Rev 6): the sand width breathes
+      // along the shore, and the foam edges are scalloped by sine sums
+      // instead of running as ruler-straight strips.
+      function coastRibbon(offNear, offFar, y, mat, step) {
+        var xs2 = [];
+        step = step || 24;
         for (var rx = -860; rx <= 860; rx += step) xs2.push(rx);
         var posArr = new Float32Array(xs2.length * 2 * 3);
         var uvArr = new Float32Array(xs2.length * 2 * 2);
         var idx = [];
         for (var vi = 0; vi < xs2.length; vi++) {
           var vx = xs2[vi], cz = SH.World.coastZ(vx);
-          posArr.set([vx, y, cz + offNear, vx, y, offFar === null ? 820 : cz + offFar], vi * 6);
+          var on2 = typeof offNear === 'function' ? offNear(vx) : offNear;
+          var of2 = offFar === null ? 820 : cz + (typeof offFar === 'function' ? offFar(vx) : offFar);
+          posArr.set([vx, y, cz + on2, vx, y, of2], vi * 6);
           uvArr.set([vx / 46, 0, vx / 46, 1], vi * 4);
           if (vi > 0) {
             var b0 = (vi - 1) * 2;
@@ -141,26 +147,56 @@
         scene.add(mesh);
         return mesh;
       }
-      var sand = coastRibbon(-64, 8, -0.025, new THREE.MeshLambertMaterial({ color: pal.sand }));
+      // Sand ribbon with a breathing width (Rev 6): 47-73 m of beach
+      // depending on the bay, not one uniform strip.
+      var sand = coastRibbon(function (x) { return -(54 + 12 * Math.sin(x * 0.009 + 1.7) + 7 * Math.sin(x * 0.023 + 0.4)); }, 8, -0.025, new THREE.MeshLambertMaterial({ color: pal.sand }));
       this.sandMesh = sand;
+      // Wet-sand band at the waterline: darker, with a specular sheen.
+      var wetMat = new THREE.MeshPhongMaterial({ color: 0x8a6f4d, shininess: 70, specular: 0x776644 });
+      coastRibbon(0.5, 9.5, -0.018, wetMat);
 
-      // Sea: one shared water material — the big deep plane plus a shore
-      // ribbon that starts at the curved waterline and runs south, so the
-      // bays actually fill with water instead of showing bare ground.
+      // Sea: the big deep plane plus a shore ribbon whose vertex
+      // colours grade from pale shallow (with alpha fade at the very
+      // edge) to the palette's deep water (Rev 6), so the shallows
+      // read as shallows instead of one flat blue.
       var waterMat = new THREE.MeshPhongMaterial({ color: pal.water, shininess: 90, specular: 0x99ddff, transparent: true, opacity: 0.94 });
       var water = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), waterMat);
       water.rotation.x = -Math.PI / 2;
       water.position.set(0, -0.55, cfg.waterZ + 1750);
       scene.add(water);
       this.waterMesh = water;
-      coastRibbon(-6, null, -0.045, waterMat);
+      var shoreMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90, specular: 0x99ddff, transparent: true, vertexColors: true });
+      var shoreMesh = coastRibbon(-6, 380, -0.045, shoreMat);
+      this._paintShore = function (pal2) {
+        var geo = shoreMesh.geometry;
+        var uv = geo.attributes.uv, n = uv.count;
+        var arr = new Float32Array(n * 4);
+        var deep = new THREE.Color(pal2.water);
+        var shal = deep.clone().lerp(new THREE.Color(0xbfeef5), 0.55);
+        var cTmp = new THREE.Color();
+        for (var vi2 = 0; vi2 < n; vi2++) {
+          var v = uv.getY(vi2);
+          cTmp.copy(shal).lerp(deep, Math.min(1, v * 1.6));
+          arr[vi2 * 4] = cTmp.r; arr[vi2 * 4 + 1] = cTmp.g; arr[vi2 * 4 + 2] = cTmp.b;
+          arr[vi2 * 4 + 3] = 0.55 + 0.45 * Math.min(1, v * 3);
+        }
+        geo.setAttribute('color', new THREE.BufferAttribute(arr, 4));
+      };
+      this._paintShore(pal);
 
-      // Foam lines creeping on the curved shore.
+      // Foam lines creeping on the curved shore — scalloped geometry
+      // now (Rev 6): each ribbon's edges wobble with two sine waves at
+      // an 8 m sampling step, so the waterline looks eaten by waves.
       var foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
       for (var w = 0; w < 3; w++) {
-        var foam = coastRibbon(1.5 + w * 7, 3.7 + w * 7, 0.02, foamMat);
-        foam.receiveShadow = false;
-        this.waveMeshes.push(foam);
+        (function (w2) {
+          function foamOff(base) {
+            return function (x) { return base + w2 * 6.5 + 1.3 * Math.sin(x * 0.13 + w2 * 2.1) + 0.7 * Math.sin(x * 0.031 + w2); };
+          }
+          var foam = coastRibbon(foamOff(1.2), foamOff(3.6), 0.02, foamMat, 8);
+          foam.receiveShadow = false;
+          this.waveMeshes.push(foam);
+        }).call(this, w);
       }
 
       // Taman Arus canal: a straight water cut from the park pond to the
@@ -348,6 +384,7 @@
       if (this.sandMesh) this.sandMesh.material.color.setHex(pal.sand);
       if (this.waterMesh) this.waterMesh.material.color.setHex(pal.water);
       if (this.walkMaterial) this.walkMaterial.color.setHex(pal.sidewalk);
+      if (this._paintShore) this._paintShore(pal);
     }
   };
 
