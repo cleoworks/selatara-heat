@@ -83,29 +83,93 @@
       subtitleTimer = seconds || 3.4;
     },
 
-    // Procedural low-poly portrait: a simple canvas face whose colours and
-    // hair are hashed from the speaker's name, so every character differs.
+    // Procedural portrait (smoothness pass): a real little face drawn
+    // with ellipses, arcs and soft gradients on a 216 px canvas (shown
+    // at 54 px), colours and hair hashed from the speaker's name so
+    // every character differs — no more flat blocks.
     drawPortrait: function (name) {
       if (!el.subPortrait) return;
-      var g = el.subPortrait.getContext('2d');
+      var cv = el.subPortrait;
+      if (cv.width !== 216) { cv.width = 216; cv.height = 216; }
+      var g = cv.getContext('2d');
       var h = 0;
       for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
       var skins = ['#c98a5e', '#a8763e', '#8a5a34', '#e0aa72'];
       var hairs = ['#14100c', '#3a2415', '#5e3a1e', '#c9c9c9', '#7a1f3d'];
       var bgs = ['#ff4fa3', '#37e0ff', '#ffd23f', '#9a6ac9', '#37b24d'];
+      var shirts = ['#c94f4f', '#2a6ac9', '#37b24d', '#e8862a', '#7a4fa3', '#2a8a8a'];
       var skin = skins[h % skins.length], hair = hairs[(h >> 3) % hairs.length], bg = bgs[(h >> 5) % bgs.length];
-      g.fillStyle = bg; g.fillRect(0, 0, 108, 108);
-      g.fillStyle = 'rgba(255,255,255,0.16)';
-      g.beginPath(); g.moveTo(0, 108); g.lineTo(108, 30); g.lineTo(108, 108); g.closePath(); g.fill();
-      g.fillStyle = '#22242c'; g.fillRect(30, 84, 48, 24); // shoulders
-      g.fillStyle = skin; g.fillRect(34, 30, 40, 44);      // face block
-      g.fillStyle = hair; g.fillRect(30, 18, 48, 18);      // hair block
-      if (h % 3 === 0) { g.fillRect(24, 30, 8, 30); g.fillRect(76, 30, 8, 30); } // long hair sides
-      g.fillStyle = '#14100c';
-      g.fillRect(42, 50, 7, 5); g.fillRect(59, 50, 7, 5); // eyes
-      g.fillRect(47, 66, 14, 3);                            // mouth
-      if (name === 'Mami Ratna') { g.fillStyle = '#ffd23f'; g.fillRect(30, 14, 48, 7); } // her gold band
-      if (name === 'Raka') { g.fillStyle = '#14100c'; g.fillRect(38, 44, 32, 7); }        // his shades
+      var shirt = shirts[(h >> 7) % shirts.length];
+      function ell(x, y, rx, ry, fill) {
+        g.fillStyle = fill; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
+      }
+      // Backdrop: flat colour with a soft pool of light and a sheen.
+      g.fillStyle = bg; g.fillRect(0, 0, 216, 216);
+      var bgGlow = g.createRadialGradient(86, 74, 12, 108, 108, 165);
+      bgGlow.addColorStop(0, 'rgba(255,255,255,0.20)'); bgGlow.addColorStop(1, 'rgba(0,0,0,0.14)');
+      g.fillStyle = bgGlow; g.fillRect(0, 0, 216, 216);
+      // Shoulders + collar (rounded mass, not a slab).
+      g.fillStyle = shirt;
+      g.beginPath(); g.moveTo(38, 216); g.quadraticCurveTo(40, 168, 76, 158);
+      g.lineTo(140, 158); g.quadraticCurveTo(176, 168, 178, 216); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.16)';
+      g.beginPath(); g.moveTo(88, 160); g.lineTo(128, 160); g.lineTo(108, 182); g.closePath(); g.fill();
+      ell(108, 152, 15, 14, skin); // neck
+      g.fillStyle = 'rgba(0,0,0,0.13)'; g.fillRect(94, 138, 28, 10); // neck shadow
+      // Head: an ellipse lit from the upper left, edges feathered by
+      // the radial falloff instead of a hard outline.
+      var headGrad = g.createRadialGradient(88, 66, 18, 108, 96, 86);
+      headGrad.addColorStop(0, skin); headGrad.addColorStop(0.78, skin); headGrad.addColorStop(1, 'rgba(40,16,4,0.28)');
+      ell(72, 96, 7, 11, skin); ell(144, 96, 7, 11, skin); // ears
+      g.fillStyle = headGrad;
+      g.beginPath(); g.ellipse(108, 94, 37, 45, 0, 0, Math.PI * 2); g.fill();
+      // Hair: a swept cap over the crown; styles vary by hash.
+      g.fillStyle = hair;
+      g.beginPath(); g.ellipse(108, 66, 38.5, 30, 0, Math.PI * 0.98, Math.PI * 2.02); g.fill();
+      g.beginPath(); g.moveTo(70, 74); g.quadraticCurveTo(104, 44, 147, 70); g.quadraticCurveTo(120, 58, 96, 64); g.quadraticCurveTo(78, 68, 70, 74); g.closePath(); g.fill();
+      if (h % 3 === 0 || name === 'Mami Ratna') { // long sides
+        g.fillRect(66, 66, 11, 52); g.fillRect(139, 66, 11, 52);
+      }
+      if (h % 5 === 4) ell(108, 34, 10, 8, hair); // top bun
+      // Face: brows, eyes with glints, a soft nose, a real mouth.
+      g.strokeStyle = 'rgba(30,18,10,0.85)'; g.lineCap = 'round'; g.lineWidth = 5;
+      g.beginPath(); g.moveTo(84, 88); g.quadraticCurveTo(93, 84, 101, 87); g.stroke();
+      g.beginPath(); g.moveTo(115, 87); g.quadraticCurveTo(123, 84, 132, 88); g.stroke();
+      [93, 123].forEach(function (ex) {
+        ell(ex, 100, 6.4, 7.6, '#f3ead9');
+        ell(ex, 101, 3.6, 5.2, '#241208');
+        ell(ex + 1.6, 97.5, 1.4, 1.4, 'rgba(255,255,255,0.95)');
+      });
+      g.strokeStyle = 'rgba(70,35,15,0.4)'; g.lineWidth = 3.4;
+      g.beginPath(); g.moveTo(109, 104); g.lineTo(106, 116); g.stroke();
+      var cheek = g.createRadialGradient(84, 116, 1, 84, 116, 13);
+      cheek.addColorStop(0, 'rgba(255,110,80,0.16)'); cheek.addColorStop(1, 'rgba(255,110,80,0)');
+      g.fillStyle = cheek; g.beginPath(); g.arc(84, 116, 13, 0, Math.PI * 2); g.fill();
+      g.fillStyle = cheek; g.beginPath(); g.arc(132, 116, 13, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#6e3524'; g.lineWidth = 4.4;
+      if (h % 3 === 1) { g.beginPath(); g.moveTo(99, 130); g.lineTo(117, 130); g.stroke(); }        // flat
+      else if (h % 3 === 2) {                                                                        // grin
+        g.fillStyle = '#5e2a1c'; g.beginPath(); g.ellipse(108, 129, 9.5, 6.8, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#f5ede2'; g.fillRect(100, 124.5, 16, 4.6);
+      } else { g.beginPath(); g.arc(108, 124, 9, Math.PI * 0.2, Math.PI * 0.8); g.stroke(); }       // smile
+      // Signature pieces for the named cast.
+      if (name === 'Mami Ratna') { // her gold band across the hairline
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 7;
+        g.beginPath(); g.ellipse(108, 62, 37, 27, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+      }
+      if (name === 'Raka') { // his shades
+        g.fillStyle = 'rgba(16,14,18,0.92)';
+        g.beginPath(); g.moveTo(80, 94); g.lineTo(104, 94); g.lineTo(102, 108); g.lineTo(83, 108); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(112, 94); g.lineTo(136, 94); g.lineTo(133, 108); g.lineTo(114, 108); g.closePath(); g.fill();
+        g.fillRect(102, 96, 12, 3.4);
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(84, 96.5, 9, 3);
+      }
+      if (name === 'Commissioner Varga') { // peaked police cap
+        g.fillStyle = '#2a3f8f';
+        g.beginPath(); g.ellipse(108, 58, 39, 17, 0, Math.PI, Math.PI * 2); g.fill();
+        g.fillStyle = '#1c2030'; g.beginPath(); g.ellipse(108, 60, 42, 7, 0, 0, Math.PI * 2); g.fill();
+        ell(108, 47, 4.4, 4.4, '#ffd23f');
+      }
     },
 
     flashCash: function (n) {

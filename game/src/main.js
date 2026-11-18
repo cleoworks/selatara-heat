@@ -23,7 +23,7 @@
   };
   SH.State = State;
 
-  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight;
+  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight, rimLight;
   var accumulator = 0, lastTs = 0;
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
@@ -119,6 +119,15 @@
           focus.z + Math.cos(State.camYaw) * 3.5
         );
       }
+    }
+    if (rimLight) {
+      // Scale with the key: full cool rim by day, a quarter-strength
+      // moon/city rim after dark (v4 band 1.2-2.0 against a 2.5-3 key
+      // maps to ~1.15 against this scene's tuned 1.35 day key).
+      rimLight.intensity = 1.15 * Math.min(1, Math.max(0.22, pal.sunIntensity / 1.35));
+      rimLight.position.set(focus.x - Math.sin(State.camYaw) * 55, 34, focus.z - Math.cos(State.camYaw) * 55);
+      rimLight.target.position.set(focus.x, 1.2, focus.z);
+      rimLight.target.updateMatrixWorld();
     }
     if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
     updateSunSprite(pal, elev, sunAngle);
@@ -321,6 +330,14 @@
     fillLight = new THREE.PointLight(0xffd9b0, 0, 26, 1.8);
     scene.add(fillLight);
 
+    // Cool rim light (Character Smoothness Pass, ART-BIBLE v4): one
+    // shadowless directional parked behind the camera focus, so
+    // figures and car shoulders keep a cold edge against the warm
+    // key instead of melting into the background. Intensity and
+    // position are driven by applyLighting.
+    rimLight = new THREE.DirectionalLight(0x9fc0ff, 0);
+    scene.add(rimLight); scene.add(rimLight.target);
+
     SH.Roads.build(scene);
     SH.Buildings.build(scene);
     SH.Player.build(scene);
@@ -453,6 +470,12 @@
     if (State.mode === 'loading') State.mode = (SH.Shots && SH.Shots.active) || !SH.Menus ? 'playing' : 'title';
     if (!SH.Menus) { var lo = document.getElementById('loading'); if (lo) lo.classList.add('hidden'); }
     if (SH.Menus) SH.Menus.syncMode();
+    // Pre-compile every shader program NOW, inside boot: the physical
+    // character materials (sheen/clearcoat/wrap variants) take seconds
+    // to compile on software GL, and if that cost lands on the first
+    // live frame it stalls the main thread long enough to swallow the
+    // title screen's first click. Inside boot it is just load time.
+    try { renderer.compile(scene, camera); } catch (e) { /* non-fatal */ }
     requestAnimationFrame(frame);
   }
 
