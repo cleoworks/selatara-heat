@@ -345,19 +345,26 @@
     },
 
     // End-of-story credits overlay (DOM, dismissed with a click / Esc).
+    // The auto-hide runs on GAME time (checked in update), not a wall
+    // setTimeout: on slow machines the wall clock outruns the game
+    // clock and the credits vanished before they could be read.
     showCredits: function () {
       var el = document.getElementById('credits');
       if (!el) return;
       el.classList.remove('hidden');
       if (SH.HUD) SH.HUD.banner('STORY COMPLETE', 'LAST FERRY OUT — the debt is paid', 4, false);
+      var self = this;
       var hide = function () {
         el.classList.add('hidden');
         window.removeEventListener('keydown', onKey);
+        self.creditsUntil = 0;
+        self._hideCredits = null;
       };
       var onKey = function (e) { if (e.code === 'Escape' || e.code === 'Space') hide(); };
       el.addEventListener('click', hide);
       window.addEventListener('keydown', onKey);
-      setTimeout(hide, 14000);
+      this._hideCredits = hide;
+      this.creditsUntil = SH.State.time + 14;
     },
 
     failMission: function (reason) {
@@ -632,6 +639,8 @@
     update: function (dt) {
       Dialog.update(dt);
       var st = SH.State;
+      // Credits auto-hide on game time (see showCredits).
+      if (this.creditsUntil && st.time > this.creditsUntil && this._hideCredits) this._hideCredits();
       if (st.mode !== 'playing') return;
 
       // Briefing phase: reaching Mami at the safehouse starts the next mission.
