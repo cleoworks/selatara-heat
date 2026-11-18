@@ -198,7 +198,7 @@
                 var shS = (d.minH + rng() * (d.maxH - d.minH)) * hScale * 1.15;
                 shops.push({ x: cx, y: shS / 2, z: rz, sx: bw * 0.72, sy: shS, sz: rd, base: 0, h: shS, bucket: (bucketSeq.shop++) % 8 });
                 SH.World.colliders.push({ x: cx, z: rz, hx: bw * 0.36, hz: rd / 2 });
-                awnings.push({ x: cx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 1.6), sx: bw * 0.7, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+                awnings.push({ x: cx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 2.1), sx: bw * 0.7, sy: 0.28, sz: 4.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
                 continue;
               }
               var rx = xs[i] + 13;
@@ -212,7 +212,7 @@
                 var sh = (d.minH + rng() * (d.maxH - d.minH)) * hScale * (rrow === 1 ? 0.85 : 1);
                 shops.push({ x: shx, y: sh / 2, z: rz, sx: sw, sy: sh, sz: rd, base: 0, h: sh, bucket: (bucketSeq.shop++) % 8 });
                 SH.World.colliders.push({ x: shx, z: rz, hx: sw / 2, hz: rd / 2 });
-                awnings.push({ x: shx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 1.6), sx: sw - 0.6, sy: 0.28, sz: 3.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
+                awnings.push({ x: shx, y: 3.1, z: rz + (rrow === 0 ? -1 : 1) * (rd / 2 + 2.1), sx: sw - 0.6, sy: 0.28, sz: 4.4, color: palettes.ruko[(rng() * palettes.ruko.length) | 0] });
                 rx += sw + 1.5;
               }
             }
@@ -294,7 +294,7 @@
       // Massing pass: stepped setbacks on towers, parapet caps, pitched
       // roofs on villas / shops / some warehouses, rooftop clutter (AC
       // units, water tanks) and balcony slabs — no more single slabs.
-      var roofProps = [], tanks = [], hipRoofs = [];
+      var roofProps = [], tanks = [], hipRoofs = [], wallAC = [];
       var roofColors = [0xb5563c, 0x9a4a34, 0x7a5a48, 0xc96f4a];
       function bucketize(list, mats, opts) {
         var buckets = mats.map(function () { return []; });
@@ -326,24 +326,41 @@
             var nProps = 1 + ((rng() * 3) | 0);
             for (var rp = 0; rp < nProps; rp++) {
               var px2 = b.x + (rng() - 0.5) * b.sx * 0.55, pz2 = b.z + (rng() - 0.5) * b.sz * 0.55;
-              if (rng() < 0.3) tanks.push({ x: px2, y: topY + 0.85, z: pz2, sx: 1.5, sy: 1.7, sz: 1.5, color: rng() < 0.5 ? 0xb9c0c9 : 0xa8763e });
+              var propRoll = rng();
+              if (propRoll < 0.3) tanks.push({ x: px2, y: topY + 0.85, z: pz2, sx: 1.5, sy: 1.7, sz: 1.5, color: rng() < 0.5 ? 0xb9c0c9 : 0xa8763e });
+              else if (propRoll < 0.48) {
+                // Antenna: thin mast + crossbar (Rev 6 roof clutter).
+                roofProps.push({ x: px2, y: topY + 1.1, z: pz2, sx: 0.09, sy: 2.2, sz: 0.09, color: 0x555b63 });
+                roofProps.push({ x: px2, y: topY + 1.85, z: pz2, sx: 0.85, sy: 0.07, sz: 0.07, color: 0x555b63 });
+              }
               else roofProps.push({ x: px2, y: topY + 0.4, z: pz2, sx: 1.9, sy: 0.8, sz: 1.3, color: 0x9aa0a8 });
             }
           }
-          if (opts.balconies && rng() < 0.55) {
+          if (opts.balconies && rng() < (opts.balconyChance || 0.55)) {
             var nBal = 2 + ((rng() * 2) | 0);
             for (var bb = 0; bb < nBal; bb++) {
               roofProps.push({
                 x: b.x + (rng() - 0.5) * b.sx * 0.45, y: (b.base || 0) + b.h * (0.35 + bb * 0.22),
-                z: b.z + b.sz / 2 + 0.5, sx: 3.4, sy: 0.22, sz: 1.0, color: 0xe8e0d0
+                z: b.z + b.sz / 2 + 0.65, sx: 4.2, sy: 0.22, sz: 1.3, color: 0xe8e0d0
+              });
+            }
+          }
+          // Rev 6: wall-mounted AC units — small grey boxes riding the
+          // facade, so walls carry real relief, not just window paint.
+          if (opts.wallAC && rng() < 0.55) {
+            var nAC = 1 + ((rng() * 2) | 0);
+            for (var ac = 0; ac < nAC; ac++) {
+              wallAC.push({
+                x: b.x + (rng() - 0.5) * b.sx * 0.55, y: (b.base || 0) + 1.9 + rng() * Math.max(0.5, b.h - 2.8),
+                z: b.z + b.sz / 2 + 0.2, sx: 0.78, sy: 0.56, sz: 0.38, color: 0xb9c0c9
               });
             }
           }
         }
         for (var mi = 0; mi < mats.length; mi++) makeInstanced(box, mats[mi], buckets[mi], scene, true);
       }
-      bucketize(towers, towerMats, { tiers: true, roofProps: true, balconies: true });
-      bucketize(shops, shopMats, { hipRoof: 0.55, roofProps: true });
+      bucketize(towers, towerMats, { tiers: true, roofProps: true, balconies: true, balconyChance: 0.8, wallAC: true });
+      bucketize(shops, shopMats, { hipRoof: 0.55, roofProps: true, balconies: true, balconyChance: 0.4, wallAC: true });
       bucketize(warehouses, wareMats, { hipRoof: 0.4, roofProps: true });
       bucketize(villas, villaMats, { hipRoof: 0.9, balconies: true });
       bucketize(podiums, shopMats, {});
@@ -363,6 +380,7 @@
       makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), parkingPads, scene, false);
       makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), parkingLines, scene, false);
       makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), roofProps, scene, false);
+      makeInstanced(box, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), wallAC, scene, false);
       makeInstanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), tanks, scene, false);
       makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), hipRoofs, scene, false);
       this.windowMaterials = towerMats.concat(shopMats, villaMats, hotelMats);
