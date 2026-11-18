@@ -230,7 +230,9 @@
               if (rng() > 0.25) {
                 var aTurn = rng() < 0.3;
                 var aW = aTurn ? bd * 0.2 : bw * 0.3, aD = aTurn ? bw * 0.3 : bd * 0.2;
-                warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: aW, sy: 6, sz: aD, bucket: (bucketSeq.warehouse++) % 4 });
+                // h is required: bucketize derives roof/prop heights
+                // from base + h (a missing h made those instances NaN).
+                warehouses.push({ x: cx + bw * 0.3, y: 3, z: cz + bd * 0.38, sx: aW, sy: 6, sz: aD, base: 0, h: 6, bucket: (bucketSeq.warehouse++) % 4 });
                 SH.World.colliders.push({ x: cx + bw * 0.3, z: cz + bd * 0.38, hx: aW / 2, hz: aD / 2 });
               }
             }
@@ -477,7 +479,9 @@
         var cols = [];
         var cBase = new THREE.Color(0x86cc52), cTip = new THREE.Color(0x2e7d3a), cTmp = new THREE.Color();
         for (var qi = 0; qi < fp2.count; qi++) {
-          var fu = fp2.getX(qi) / len;
+          // Clamp: the base vertex can carry a tiny negative float
+          // residue, and Math.pow(negative, fraction) is NaN.
+          var fu = Math.max(0, fp2.getX(qi) / len);
           var row = Math.round(fu * 6);
           var wHalf = (0.03 + 0.66 * Math.sin(Math.PI * Math.pow(fu, 0.7)) * (1 - 0.25 * fu)) / 2;
           var zn = fp2.getZ(qi) * 2; // -1 / 0 / +1 across the 3 columns
