@@ -265,7 +265,7 @@
       [-0.500, 0.440, 0.37, 0.62, 0.407, 0.92, 0.10], [-0.466, 0.473, 0.27, 0.66, 0.440, 0.97, 0.10],
       [-0.305, 0.486, 0.26, 0.70, 0.456, 1.00, 0.09], [-0.136, 0.489, 0.26, 0.72, 0.462, 1.03, 0.09],
       [0.068, 0.486, 0.26, 0.72, 0.456, 1.02, 0.09], [0.305, 0.473, 0.26, 0.68, 0.429, 0.95, 0.10],
-      [0.443, 0.429, 0.27, 0.62, 0.374, 0.86, 0.11], [0.500, 0.385, 0.30, 0.58, 0.330, 0.80, 0.12]
+      [0.443, 0.429, 0.32, 0.62, 0.374, 0.86, 0.11], [0.500, 0.385, 0.36, 0.58, 0.330, 0.80, 0.12]
     ];
     var SEDAN_GLASS = [
       [-0.364, 0.319, 0.96, 1.04, 0.275, 1.14, 0.05], [-0.273, 0.360, 0.98, 1.20, 0.316, 1.365, 0.07],
@@ -276,12 +276,21 @@
       [-0.500, 0.436, 0.35, 0.56, 0.404, 0.80, 0.09], [-0.453, 0.471, 0.25, 0.60, 0.441, 0.86, 0.09],
       [-0.305, 0.487, 0.24, 0.64, 0.457, 0.885, 0.08], [-0.116, 0.479, 0.24, 0.65, 0.452, 0.90, 0.08],
       [0.093, 0.471, 0.24, 0.64, 0.441, 0.885, 0.08], [0.305, 0.460, 0.24, 0.60, 0.420, 0.83, 0.09],
-      [0.442, 0.415, 0.25, 0.54, 0.362, 0.74, 0.10], [0.500, 0.372, 0.28, 0.50, 0.319, 0.68, 0.11]
+      // Rev 9.2 (parent verdict on the cover): the deck now holds
+      // its height to the last ring, then the tail cap drops steeply
+      // (0.76 -> 0.60) — a crisp decklid break over a SHORT vertical
+      // rear panel, not one melted wedge slope.
+      [0.442, 0.415, 0.33, 0.54, 0.362, 0.76, 0.10], [0.500, 0.358, 0.38, 0.50, 0.319, 0.60, 0.11]
     ];
     var SPORT_GLASS = [
       [-0.337, 0.319, 0.84, 0.92, 0.277, 0.99, 0.05], [-0.244, 0.362, 0.86, 1.02, 0.319, 1.125, 0.065],
       [-0.070, 0.372, 0.87, 1.05, 0.327, 1.15, 0.07], [0.105, 0.367, 0.87, 1.04, 0.322, 1.135, 0.065],
-      [0.209, 0.346, 0.86, 0.99, 0.287, 1.06, 0.055], [0.302, 0.303, 0.84, 0.92, 0.239, 0.94, 0.05]
+      [0.209, 0.346, 0.86, 0.99, 0.287, 1.06, 0.055], [0.302, 0.303, 0.84, 0.92, 0.239, 0.94, 0.05],
+      // Rev 9.1: the glass band runs on down the fastback to the
+      // decklid seam — the cabin stops melting into the tail wedge
+      // (parent note on the cover shot) and the deck reads as its
+      // own panel below the glass.
+      [0.395, 0.283, 0.72, 0.79, 0.215, 0.80, 0.05]
     ];
 
     if (type === 'motor') {
@@ -449,12 +458,16 @@
         box(0.02, 0.035, 0.15, seamMat, sd * sideX, 0.88, L * 0.05, 'dark');   // door handles
         box(0.02, 0.035, 0.15, seamMat, sd * sideX, 0.88, -L * 0.21, 'dark');
         for (var wz = -1; wz <= 1; wz += 2) {
-          var arch = new THREE.Mesh(new THREE.CircleGeometry(wr * 1.24, 8), archMat);
-          arch.position.set(sd * sideX, wr * 0.96, wz * L * 0.305);
+          // Rev 9.2: the arch disc shrinks to just behind the tyre
+          // (1.24r -> 1.10r) and tucks 20 mm inboard, so the WHEEL —
+          // tyre, star, bright lip ring — owns the opening instead of
+          // a black disc swallowing it (parent verdict on the cover).
+          var arch = new THREE.Mesh(new THREE.CircleGeometry(wr * 1.10, 10), archMat);
+          arch.position.set(sd * (sideX - 0.02), wr * 0.96, wz * L * 0.305);
           arch.rotation.y = sd * Math.PI / 2;
           arch.userData.mergeKey = 'dark';
           g.add(arch);
-          var flare = new THREE.Mesh(new THREE.TorusGeometry(wr * 1.17, 0.048, 5, 7, Math.PI), paint);
+          var flare = new THREE.Mesh(new THREE.TorusGeometry(wr * 1.12, 0.06, 5, 9, Math.PI), paint);
           flare.position.set(sd * (W * 0.489 + 0.005), wr * 0.96, wz * L * 0.305);
           flare.rotation.y = Math.PI / 2;
           flare.castShadow = true;
@@ -463,19 +476,28 @@
         }
       }
       var plateMat = new THREE.MeshLambertMaterial({ color: 0xe8e6da, flatShading: true });
-      box(0.36, 0.11, 0.015, plateMat, 0, 0.52, -L / 2 - 0.03);               // rear plate (on the lofted tail face)
+      box(0.36, 0.11, 0.015, plateMat, 0, isSport ? 0.44 : 0.52, -L / 2 - 0.03); // rear plate (on the tail panel)
       // Rev 9: DUAL exhausts, one per side, tucked under the rear bumper.
       for (var ex = -1; ex <= 1; ex += 2) {
         var exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.038, 0.16, 8), chromeMat);
         exhaust.rotation.x = Math.PI / 2;
-        exhaust.position.set(ex * W * 0.27, 0.21, -L / 2 - 0.06);
+        // Tips must clear the bumper's rear face (-L/2-0.19); at the
+        // old z they were buried inside the bumper box entirely.
+        exhaust.position.set(ex * W * 0.27, 0.24, -L / 2 - 0.15);
         exhaust.userData.mergeKey = 'chrome';
         g.add(exhaust);
       }
-      box(W * 0.66, 0.018, 0.02, seamMat, 0, isSport ? 0.78 : 0.90, -L * 0.345, 'dark'); // trunk seam line
+      // Decklid seam: on the sport it sits AT the decklid break (the
+      // ring where the deck drops to the tail panel), not mid-slope.
+      if (isSport) box(W * 0.72, 0.028, 0.024, seamMat, 0, 0.745, -L * 0.445, 'dark');
+      else box(W * 0.66, 0.018, 0.02, seamMat, 0, 0.90, -L * 0.345, 'dark');
       var roofY = isSport ? 1.17 : 1.44;   // glass crown + roof skin (Rev 9)
       box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, L / 2 + 0.05, 'dark');       // front bumper
-      box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05, 'dark');      // rear bumper
+      // Rev 9.2: the sport gets a DEEP dark valance (0.08-0.42 m) so
+      // the pink tail panel ends decisively and the road takes over;
+      // the sedan keeps its slimmer bumper (it already reads).
+      if (isSport) box(W * 1.01, 0.34, 0.28, dark, 0, 0.25, -L / 2 - 0.05, 'dark');
+      else box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05, 'dark'); // rear bumper
       // Rev 9: dark side skirts / lower cladding on EVERY car (the
       // two-tone break at the rocker line) + mirrors on thin stalks.
       box(0.07, 0.15, L * 0.52, dark, -(W * 0.489 - 0.015), 0.235, 0, 'dark');
@@ -485,9 +507,15 @@
       box(0.035, 0.075, 0.17, dark, -(W * 0.489 + 0.105), 1.05, L * 0.16, 'dark'); // mirror heads
       box(0.035, 0.075, 0.17, dark, W * 0.489 + 0.105, 1.05, L * 0.16, 'dark');
       if (isSport) {
-        box(0.09, 0.22, 0.09, dark, -W * 0.3, 0.92, -L * 0.47, 'dark');    // spoiler struts
-        box(0.09, 0.22, 0.09, dark, W * 0.3, 0.92, -L * 0.47, 'dark');
-        box(W * 0.96, 0.08, 0.42, dark, 0, 1.05, -L * 0.47, 'dark');       // rear wing
+        // Rev 9.2 (parent verdict): struts in BODY colour so they
+        // read as structure against the black blade and the glass —
+        // dark struts vanished into the deck and the wing still
+        // looked floaty. They plant on the deck (y ~0.69 at the
+        // tail) and the blade rests directly on their tops.
+        box(0.10, 0.26, 0.12, paint, -W * 0.32, 0.80, -L * 0.47, 'paint');    // spoiler struts
+        box(0.10, 0.26, 0.12, paint, W * 0.32, 0.80, -L * 0.47, 'paint');
+        var wing = box(W * 0.88, 0.07, 0.38, dark, 0, 0.96, -L * 0.47, 'dark'); // rear wing
+        wing.rotation.x = 0.08;
       }
       if (type === 'taxi') {
         box(0.62, 0.16, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd23f }), 0, roofY + 0.11, -L * 0.03); // roof sign
@@ -513,8 +541,9 @@
       // Wheels sit at the bible wheelbase (+/-0.305 L ≈ 2.68 m on the
       // sedan), tucked so the tyre face is flush with the bevelled flank.
       var wx = W * 0.489 - 0.125;   // Rev 9: wider track, tyre face tucked under the flare
+      var wxR = isSport ? wx + 0.035 : wx; // Rev 9.2: sport rear track steps out so the rim face clears the flank
       wheel(-wx, L * 0.305, wr, 0.30); wheel(wx, L * 0.305, wr, 0.30);
-      wheel(-wx, -L * 0.305, wr, 0.30); wheel(wx, -L * 0.305, wr, 0.30);
+      wheel(-wxR, -L * 0.305, wr, 0.30); wheel(wxR, -L * 0.305, wr, 0.30);
     }
     // Contact blob shadow under every land vehicle (not the boat).
     if (type !== 'boat') {
@@ -551,7 +580,7 @@
       var drl1 = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.032, 0.03), headMat); drl1.position.set(-hw, H * 0.44, L / 2 + 0.045); drl1.rotation.y = 0.38; drl1.userData.mergeKey = 'head'; g.add(drl1);
       var drl2 = drl1.clone(); drl2.position.x = hw; drl2.rotation.y = -0.38; g.add(drl2);
       var band = new THREE.Mesh(new THREE.BoxGeometry(W * 0.76, 0.085, 0.045), tailMat);
-      band.position.set(0, type === 'sport' ? 0.64 : 0.74, -L / 2 - 0.025);
+      band.position.set(0, type === 'sport' ? 0.52 : 0.74, -L / 2 - 0.025);
       band.userData.mergeKey = 'tail'; g.add(band);
     }
     // Headlight glow sprites + a fake light cone (opacity driven globally by

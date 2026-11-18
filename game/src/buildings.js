@@ -765,7 +765,12 @@
         var n = Math.max(3, Math.round(Math.hypot(x2 - x1, z2 - z1) / 1.9));
         for (var bi = 0; bi <= n; bi++) {
           var bt = bi / n;
-          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.3 - Math.sin(bt * Math.PI) * 0.55, z: z1 + (z2 - z1) * bt });
+          // Sag floor 3.35 m: at the old 2.75 m a festoon bulb hung
+          // 2 m in front of the combat staging camera at head height
+          // and read as a floating beige pill in the sky (raycast-
+          // verified). Still inside the tent-cone gaps, now clearly
+          // an overhead lantern line.
+          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.75 - Math.sin(bt * Math.PI) * 0.4, z: z1 + (z2 - z1) * bt });
         }
       }
       for (var brow = 0; brow < 2; brow++) {
@@ -944,12 +949,19 @@
     },
 
     setNightGlow: function (amount) {
-      if (this.glowMaterial) this.glowMaterial.opacity = amount * 0.85;
+      // Additive glows STACK along any straight sightline: down the
+      // market corridor dozens of bulb sprites pile onto the same
+      // pixels at the vanishing point and burned the 18:22 combat
+      // staging white (bisected live: hiding the bulb sprites cleaned
+      // the frame; clouds and the sun sprites were innocent). Per-
+      // sprite opacity stays low so stacks stay readable — the warm
+      // read comes from the bulb points + tent emissive, not the halo.
+      if (this.glowMaterial) this.glowMaterial.opacity = amount * 0.5;
       // Market after dark: tent canvas glows from inside, string bulbs
       // warm up and their glow sprites fade in.
       if (this.tentMaterial) this.tentMaterial.emissiveIntensity = amount * 0.5;
       if (this.bulbMaterial) this.bulbMaterial.color.copy(this.bulbOffColor).lerp(this.bulbOnColor, amount);
-      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.85;
+      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.3;
     },
 
     // Step 5: Main hands over the procedural environment texture so

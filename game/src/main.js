@@ -82,7 +82,18 @@
     hemi.color.setHex(pal.hemiSky);
     hemi.groundColor.setHex(pal.hemiGround);
     if (ambLight) { ambLight.intensity = pal.ambient; ambLight.color.setHex(pal.hemiSky); }
-    scene.fog.color.setHex(pal.fog);
+    if (scene.fog) {
+      scene.fog.color.setHex(pal.fog);
+      // Aerial legibility (Rev 11): the ground-tuned fog range
+      // (150/1050 m) swallows the whole city from any high camera —
+      // the pale "haze" in aerial shots. (It also survived fog=null
+      // attempts because this line crashed on the null every frame.)
+      // The range now lifts smoothly with camera altitude; at
+      // gameplay heights (<= ~10 m) it is exactly as tuned.
+      var altLift = Math.min(1, Math.max(0, (camera.position.y - 10) / 290));
+      scene.fog.near = 150 + altLift * 550;
+      scene.fog.far = 1050 + altLift * 1950;
+    }
     if (skyMesh) {
       drawSky(pal);
       skyMesh.position.set(focus.x, 0, focus.z);
@@ -199,9 +210,18 @@
     // Below the horizon the disc is GONE — only a fading afterglow may
     // remain. Without this the sprites burned a white column into the
     // 19:15 combat staging (elev there is -0.31) long after sunset.
-    glow *= Math.max(0, Math.min(1, elev * 3 + 0.4));
-    sunSprite.material.opacity = glow * 0.5;
-    sunCore.material.opacity = glow * 0.8;
+    glow *= Math.max(0, Math.min(1, elev * 2.6 + 0.35));
+    // Low-sun discipline (parent note on the 18:22 combat staging):
+    // between 18:00 and 18:45 the sun sits just over the horizon and
+    // the full-size disc + halo stack still blew the corridor end
+    // white. As elevation drops toward the horizon the halo shrinks
+    // (340 -> 190 m), the core tightens (80 -> 52 m) and both caps
+    // fade, leaving a readable warm disc; midday is untouched.
+    var lowSun = Math.max(0, Math.min(1, 1 - Math.max(0, elev) / 0.35));
+    sunSprite.scale.set(340 - 150 * lowSun, 340 - 150 * lowSun, 1);
+    sunCore.scale.set(80 - 28 * lowSun, 80 - 28 * lowSun, 1);
+    sunSprite.material.opacity = glow * (0.5 - 0.28 * lowSun);
+    sunCore.material.opacity = glow * (0.8 - 0.3 * lowSun);
     sunSprite.visible = sunCore.visible = glow > 0.02;
   }
 
@@ -258,7 +278,11 @@
     var focus = State.driving ? State.vehiclePos : State.player;
     cloudGroup.position.set(focus.x, 0, focus.z);
     cloudMat.color.setHex(pal.skyLow);
-    cloudMat.opacity = 0.28 + 0.5 * (1 - nightAmount(State.hour));
+    // Clouds are a ground-up sky feature: from a high camera they sit
+    // BETWEEN the lens and the city as white veils (they ignore scene
+    // fog), so their opacity fades out with camera altitude (Rev 11).
+    var cloudAlt = 1 - Math.min(1, Math.max(0, (camera.position.y - 120) / 180));
+    cloudMat.opacity = (0.28 + 0.5 * (1 - nightAmount(State.hour))) * cloudAlt;
     for (var i = 0; i < cloudGroup.children.length; i++) {
       var sp = cloudGroup.children[i];
       sp.position.x += sp.userData.drift * dt;
