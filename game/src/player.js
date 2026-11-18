@@ -72,8 +72,14 @@
 
     update: function (dt) {
       var st = SH.State, p = st.player, input = SH.Input;
-      if (!this.onFoot) { this.mesh.visible = false; return; }
+      if (!this.onFoot) {
+        // While driving, Vehicles.updatePlayerVehicle owns the mesh (it
+        // hides Raka inside cars and poses him on the motorbike).
+        this.mesh.visible = false;
+        return;
+      }
       this.mesh.visible = true;
+      this.mesh.rotation.x = 0;
 
       var fwd = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
       var strafe = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);

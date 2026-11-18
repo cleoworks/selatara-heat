@@ -22,6 +22,20 @@
     if (!coneMatShared) coneMatShared = new THREE.MeshBasicMaterial({ color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     return coneMatShared;
   }
+  // Contact shadow: one shared radial-gradient blob texture + material,
+  // stamped under every land vehicle so it sits ON the road instead of
+  // floating over it (the real shadow map alone is too soft at noon).
+  var blobMatShared = null;
+  function getBlobMat() {
+    if (blobMatShared) return blobMatShared;
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var g2 = c.getContext('2d');
+    var grad = g2.createRadialGradient(32, 32, 4, 32, 32, 31);
+    grad.addColorStop(0, 'rgba(0,0,0,0.85)'); grad.addColorStop(0.7, 'rgba(0,0,0,0.45)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g2.fillStyle = grad; g2.fillRect(0, 0, 64, 64);
+    blobMatShared = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0.4, depthWrite: false });
+    return blobMatShared;
+  }
   function getHeadGlowMat() {
     if (!headGlowMatShared) headGlowMatShared = new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     return headGlowMatShared;
@@ -41,14 +55,15 @@
       m.position.set(x, y, z); m.castShadow = true;
       g.add(m); return m;
     }
-    function wheel(x, z, r) {
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.3, 12), dark);
+    function wheel(x, z, r, width) {
+      var wWidth = width || 0.3;
+      var w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, wWidth, 12), dark);
       w.rotation.z = Math.PI / 2;
       w.position.set(x, r, z);
       w.castShadow = true;
       g.add(w); wheels.push(w);
       // Bright hub disc so the wheel reads as a rim, not a blob.
-      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.52, r * 0.52, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0xd7dde6, flatShading: true }));
+      var hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.52, r * 0.52, wWidth + 0.02, 8), new THREE.MeshLambertMaterial({ color: 0xd7dde6, flatShading: true }));
       hub.rotation.z = Math.PI / 2;
       hub.position.set(x, r, z);
       g.add(hub); wheels.push(hub);
@@ -76,7 +91,9 @@
         if (i === 0) shape.moveTo(px, py); else shape.lineTo(px, py);
       }
       shape.lineTo(pts[0][0] * lenScale, pts[0][1]);
-      var geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+      // Art Pass 3: a small bevel rounds every silhouette edge, so bodies
+      // catch a highlight line instead of ending in a hard 90° cut.
+      var geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 1 });
       geo.rotateY(-Math.PI / 2); // shape X (forward) -> world +Z, extrusion -> width
       geo.translate(width / 2, 0, 0);
       var m = new THREE.Mesh(geo, mat);
@@ -86,12 +103,38 @@
     }
 
     if (type === 'motor') {
-      box(0.34, 0.4, 1.7, paint, 0, 0.62, 0);
-      var tank = box(0.3, 0.22, 0.62, paint, 0, 0.88, 0.18); tank.rotation.x = 0.28; // sloped fuel tank
-      box(0.3, 0.34, 0.5, dark, 0, 0.86, -0.3);
-      var fork = box(0.07, 0.75, 0.07, dark, 0, 0.5, 0.78); fork.rotation.x = 0.42; // front fork
-      box(0.36, 0.06, 0.3, glass, 0, 1.06, 0.52);                 // tiny windscreen
-      wheel(0, 0.82, 0.34); wheel(0, -0.82, 0.34);
+      // Art Pass 3 rebuild: a slim extruded spine, a rounded tank, twin
+      // fork legs, bars and a visible rider (posed seated by the figure
+      // builder) who only appears while the bike is actually ridden.
+      var MOTOR_BELT = [[-0.50, 0.30], [-0.50, 0.52], [-0.30, 0.60], [-0.05, 0.66], [0.18, 0.60], [0.38, 0.50], [0.50, 0.42], [0.50, 0.30]];
+      profileMesh(MOTOR_BELT, 0.20, paint, L);
+      var tankM = new THREE.Mesh(new THREE.SphereGeometry(0.145, 10, 8), paint);
+      tankM.scale.set(0.85, 0.55, 1.6); tankM.position.set(0, 0.68, 0.10); tankM.castShadow = true; g.add(tankM);
+      box(0.30, 0.28, 0.52, dark, 0, 0.38, 0.02);                       // engine block
+      box(0.26, 0.07, 0.62, dark, 0, 0.67, -0.34);                      // seat
+      box(0.20, 0.08, 0.30, paint, 0, 0.63, -0.82);                     // tail cowl
+      var forkL = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.88, 6), dark);
+      forkL.position.set(-0.055, 0.56, 0.84); forkL.rotation.x = 0.38; forkL.castShadow = true; g.add(forkL);
+      var forkR = forkL.clone(); forkR.position.x = 0.055; g.add(forkR);
+      var bars = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.52, 6), dark);
+      bars.rotation.z = Math.PI / 2; bars.position.set(0, 0.99, 0.58); g.add(bars);
+      var screen = box(0.34, 0.22, 0.03, glass, 0, 1.02, 0.64); screen.rotation.x = -0.35; // windscreen
+      var exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.046, 0.72, 8), new THREE.MeshLambertMaterial({ color: 0xb9c1cc, flatShading: true }));
+      exhaust.rotation.x = Math.PI / 2; exhaust.position.set(0.15, 0.30, -0.32); g.add(exhaust);
+      wheel(0, 0.80, 0.34, 0.12); wheel(0, -0.80, 0.34, 0.12);
+      // Rider: a full figure from the shared builder, posed on the bike
+      // (thighs forward, arms reaching the bars, slight forward lean).
+      var rider = SH.Pedestrians.buildFigure({
+        skin: 0xa8763e, shirt: 0x2c3444, pants: 0x22242c,
+        hairStyle: 'hat', hatColor: 0xd8402e, sleeves: 'long', face: 1
+      });
+      rider.legL.rotation.x = -0.85; rider.legR.rotation.x = -0.85;
+      rider.armL.rotation.x = -1.0; rider.armR.rotation.x = -1.0;
+      rider.group.position.set(0, -0.22, -0.05);
+      rider.group.rotation.x = 0.15;
+      rider.group.visible = false;
+      g.add(rider.group);
+      g.userData.rider = rider.group;
     } else if (type === 'truck') {
       var cab = profileMesh(TRUCK_CAB, W * 0.92, paint, 2.0);   // sloped-windshield cab
       cab.position.z = L * 0.5 - 1.0;
@@ -114,6 +157,23 @@
       var isSport = type === 'sport';
       profileMesh(isSport ? SPORT_BELT : SEDAN_BELT, W * 0.94, paint, L);
       profileMesh(isSport ? SPORT_GLASS : SEDAN_GLASS, W * 0.8, glass, L);
+      // Panel details (Art Pass 3): a dark grille, thin door seams and
+      // wheel-arch shadow discs — the small cues that make the extruded
+      // silhouette read as a car rather than a coloured wedge.
+      box(W * 0.52, 0.17, 0.06, dark, 0, 0.56, L / 2 + 0.03);
+      var seamMat = new THREE.MeshLambertMaterial({ color: 0x0d0e12, flatShading: true });
+      var archMat = new THREE.MeshLambertMaterial({ color: 0x0a0b0f, side: THREE.DoubleSide });
+      var wr = isSport ? 0.36 : 0.4;
+      for (var sd = -1; sd <= 1; sd += 2) {
+        box(0.02, 0.42, 0.03, seamMat, sd * (W * 0.478 + 0.03), 0.64, L * 0.10);
+        box(0.02, 0.42, 0.03, seamMat, sd * (W * 0.478 + 0.03), 0.64, -L * 0.17);
+        for (var wz = -1; wz <= 1; wz += 2) {
+          var arch = new THREE.Mesh(new THREE.CircleGeometry(wr * 1.24, 14), archMat);
+          arch.position.set(sd * (W * 0.472 + 0.032), wr * 0.96, wz * L * 0.31);
+          arch.rotation.y = sd * Math.PI / 2;
+          g.add(arch);
+        }
+      }
       var roofY = isSport ? 1.15 : 1.4;
       box(W * 0.74, 0.07, L * 0.32, paint, 0, roofY, -L * 0.03);   // roof panel
       box(W * 0.83, 0.36, 0.07, paint, 0, roofY - 0.2, L * 0.045); // B-pillar band
@@ -153,15 +213,32 @@
       wheel(-W / 2, L * 0.31, r); wheel(W / 2, L * 0.31, r);
       wheel(-W / 2, -L * 0.31, r); wheel(W / 2, -L * 0.31, r);
     }
-    // Lights: front = +z face of the model.
-    var hw = Math.max(0.3, W * 0.32);
-    var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat); h1.position.set(-hw, H * 0.5, L / 2 + 0.02); g.add(h1);
-    var h2 = h1.clone(); h2.position.x = hw; g.add(h2);
-    var t1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat); t1.position.set(-hw, H * 0.52, -L / 2 - 0.02); g.add(t1);
-    var t2 = t1.clone(); t2.position.x = hw; g.add(t2);
-    // Headlight glow sprites + a fake light cone (opacity driven globally by
-    // the time of day via Vehicles.setLightLevel).
+    // Contact blob shadow under every land vehicle (not the boat).
     if (type !== 'boat') {
+      var blob = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.3 + 0.35, L * 1.05), getBlobMat());
+      blob.rotation.x = -Math.PI / 2;
+      blob.position.y = 0.02;
+      blob.renderOrder = 1;
+      g.add(blob);
+    }
+    // Lights: front = +z face of the model. The motor gets a single round
+    // headlight + a slim tail light instead of the car pair.
+    var hw = Math.max(0.3, W * 0.32);
+    if (type === 'motor') {
+      var mh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 10), headMat);
+      mh.rotation.x = Math.PI / 2; mh.position.set(0, 0.74, L / 2 - 0.06); g.add(mh);
+      var mt = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.05), tailMat);
+      mt.position.set(0, 0.66, -L / 2 + 0.02); g.add(mt);
+      var mhg = new THREE.Sprite(getHeadGlowMat()); mhg.scale.set(0.7, 0.55, 1); mhg.position.set(0, 0.74, L / 2 + 0.12); g.add(mhg);
+    } else {
+      var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat); h1.position.set(-hw, H * 0.5, L / 2 + 0.02); g.add(h1);
+      var h2 = h1.clone(); h2.position.x = hw; g.add(h2);
+      var t1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat); t1.position.set(-hw, H * 0.52, -L / 2 - 0.02); g.add(t1);
+      var t2 = t1.clone(); t2.position.x = hw; g.add(t2);
+    }
+    // Headlight glow sprites + a fake light cone (opacity driven globally by
+    // the time of day via Vehicles.setLightLevel). No cone on the motor.
+    if (type !== 'boat' && type !== 'motor') {
       var hg1 = new THREE.Sprite(getHeadGlowMat()); hg1.scale.set(1.05, 0.75, 1); hg1.position.set(-hw, H * 0.5, L / 2 + 0.25); g.add(hg1);
       var hg2 = new THREE.Sprite(getHeadGlowMat()); hg2.scale.set(1.05, 0.75, 1); hg2.position.set(hw, H * 0.5, L / 2 + 0.25); g.add(hg2);
       var cone = new THREE.Mesh(new THREE.ConeGeometry(1.1, 5.5, 12, 1, true), getConeMat());
@@ -209,6 +286,7 @@
     spawnVehicle: function (scene, type, colorHex, x, z, heading) {
       var built = buildMesh(type, colorHex);
       built.group.position.set(x, 0, z);
+      built.group.rotation.order = 'YXZ'; // heading first, then local roll/pitch
       built.group.rotation.y = heading;
       scene.add(built.group);
       var veh = {
@@ -397,6 +475,27 @@
       v.mesh.rotation.z = -v.steer * Math.min(1, Math.abs(v.speed) / 20) * (v.type === 'boat' ? 0.16 : 0.06) + (v.type === 'boat' ? Math.sin(SH.State.time * 1.3) * 0.02 : 0);
       v.mesh.rotation.x = (throttle > 0 ? -0.012 : throttle < 0 ? 0.014 : 0) * Math.min(1, Math.abs(v.speed) / 12);
       for (var i = 0; i < v.wheels.length; i++) v.wheels[i].rotation.x += v.speed * dt / 0.4;
+      // Rider visibility (Art Pass 3): inside a car the player mesh hides
+      // in the cabin, but on a MOTOR he is the rider — keep his mesh
+      // visible, seated (thighs forward, hands to the bars, slight lean),
+      // tracking the bike exactly. Player.update never runs while driving,
+      // so the pose lives here.
+      if (SH.Player && SH.Player.mesh) {
+        if (v.type === 'motor' && SH.Player.parts) {
+          var pm = SH.Player.mesh;
+          pm.visible = true;
+          pm.rotation.order = 'YXZ';
+          pm.position.set(v.x - Math.sin(v.heading) * 0.05, -0.22, v.z - Math.cos(v.heading) * 0.05);
+          pm.rotation.y = v.heading;
+          pm.rotation.x = 0.15;
+          SH.Player.parts.legL.rotation.x = -0.85;
+          SH.Player.parts.legR.rotation.x = -0.85;
+          SH.Player.parts.armL.rotation.x = -1.0;
+          SH.Player.parts.armR.rotation.x = -1.0;
+        } else {
+          SH.Player.mesh.visible = false;
+        }
+      }
       this.setBrakeLights(v, throttle < 0 || handbrake);
 
       st.vehiclePos.x = v.x; st.vehiclePos.z = v.z; st.vehiclePos.y = 0;
@@ -473,7 +572,19 @@
     // Traffic cars reuse this: integrate a vehicle along an explicit velocity.
     syncMesh: function (v) {
       v.mesh.position.set(v.x, 0, v.z);
+      // Body roll (Art Pass 3): traffic steers by setting the heading
+      // directly, so the roll is derived from the yaw rate since the last
+      // sync and eased, the way the player car's steer-based roll feels.
+      if (v._syncHeading == null) v._syncHeading = v.heading;
+      var dyaw = ((v.heading - v._syncHeading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      v._syncHeading = v.heading;
+      var targetRoll = Math.max(-0.085, Math.min(0.085, -dyaw * Math.abs(v.speed) * 0.45));
+      v._roll = (v._roll || 0) + (targetRoll - (v._roll || 0)) * 0.25;
       v.mesh.rotation.y = v.heading;
+      if (v.type !== 'boat') v.mesh.rotation.z = v._roll;
+      // A traffic motor shows its rider; a parked one does not.
+      var rider = v.mesh.userData.rider;
+      if (rider) rider.visible = !!v.driver && v.driver !== 'parked';
       for (var i = 0; i < v.wheels.length; i++) v.wheels[i].rotation.x += v.speed * 0.016 / 0.4;
     }
   };
