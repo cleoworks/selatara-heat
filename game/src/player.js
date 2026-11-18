@@ -12,46 +12,23 @@
     onFoot: true,
 
     build: function (scene) {
+      // Raka is built by the shared figure builder (Art Pass 3): sphere
+      // head with a real face, trapezoid torso, cylinder limbs — in his
+      // signature outfit colours and dark cap from State.outfit.
       var outfit = SH.State.outfit;
-      var g = new THREE.Group();
-      var skin = new THREE.MeshLambertMaterial({ color: 0xc98a5e, flatShading: true });
-      var shirt = new THREE.MeshLambertMaterial({ color: outfit.shirt, flatShading: true });
-      var pants = new THREE.MeshLambertMaterial({ color: outfit.pants, flatShading: true });
-      var dark = new THREE.MeshLambertMaterial({ color: 0x22242c, flatShading: true });
-
-      function box(w, h, d, mat, x, y, z) {
-        var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-        m.position.set(x, y, z); m.castShadow = true;
-        g.add(m); return m;
-      }
-      // Proportions (Art Pass 2): long slim legs, a tapered shoulder yoke
-      // so shoulders slope instead of ending in a T, two-segment arms, and
-      // a head that is under 1/7.5 of the total height (~1.92 m).
-      var legL = box(0.18, 0.86, 0.22, pants, -0.12, 0.88, 0);
-      var legR = box(0.18, 0.86, 0.22, pants, 0.12, 0.88, 0);
-      legL.geometry.translate(0, -0.38, 0);
-      legR.geometry.translate(0, -0.38, 0);
-      box(0.52, 0.62, 0.29, shirt, 0, 1.2, 0);
-      var yoke = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.25, 0.15, 4), shirt);
-      yoke.rotation.y = Math.PI / 4; yoke.position.set(0, 1.53, 0); yoke.castShadow = true; g.add(yoke);
-      var armL = box(0.13, 0.4, 0.16, shirt, -0.33, 1.47, 0);
-      var armR = box(0.13, 0.4, 0.16, shirt, 0.33, 1.47, 0);
-      armL.geometry.translate(0, -0.16, 0);
-      armR.geometry.translate(0, -0.16, 0);
-      armL.rotation.z = -0.07; armR.rotation.z = 0.07;
-      var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.32, 0.14), skin);
-      foreL.position.set(0, -0.42, 0); foreL.castShadow = true; armL.add(foreL);
-      var foreR = foreL.clone(); armR.add(foreR);
-      box(0.13, 0.09, 0.13, skin, 0, 1.58, 0);     // neck
-      box(0.24, 0.25, 0.24, skin, 0, 1.73, 0);     // head
-      box(0.27, 0.08, 0.27, dark, 0, 1.88, 0);     // cap
-      box(0.27, 0.04, 0.15, dark, 0, 1.84, 0.19);  // cap brim
-
-      this.parts = { legL: legL, legR: legR, armL: armL, armR: armR };
-      this.mesh = g;
-      scene.add(g);
+      var built = SH.Pedestrians.buildFigure({
+        skin: 0xc98a5e,
+        shirt: outfit.shirt,
+        pants: outfit.pants,
+        hairStyle: 'hat',
+        hatColor: 0x22242c,
+        face: 0
+      });
+      this.parts = built;
+      this.mesh = built.group;
+      scene.add(built.group);
       var p = SH.State.player;
-      g.position.set(p.x, 0, p.z);
+      built.group.position.set(p.x, 0, p.z);
     },
 
     collide: function (p, radius) {

@@ -42,30 +42,17 @@
     return best;
   }
 
+  // Fighters use the shared figure builder (Art Pass 3): same anatomy and
+  // part interface as everyone else, Syndicate colours, serious face.
   function buildFighterMesh(shirtColor, pantsColor) {
-    var g = new THREE.Group();
-    var skin = new THREE.MeshLambertMaterial({ color: 0xa8763e, flatShading: true });
-    var shirt = new THREE.MeshLambertMaterial({ color: shirtColor, flatShading: true });
-    var pants = new THREE.MeshLambertMaterial({ color: pantsColor, flatShading: true });
-    function box(w, h, d, mat, x, y, z) {
-      var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true; g.add(m); return m;
-    }
-    var legL = box(0.18, 0.86, 0.22, pants, -0.12, 0.88, 0); legL.geometry.translate(0, -0.38, 0);
-    var legR = box(0.18, 0.86, 0.22, pants, 0.12, 0.88, 0); legR.geometry.translate(0, -0.38, 0);
-    var torso = box(0.52, 0.62, 0.29, shirt, 0, 1.2, 0);
-    var yoke = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.25, 0.15, 4), shirt);
-    yoke.rotation.y = Math.PI / 4; yoke.position.set(0, 1.53, 0); yoke.castShadow = true; g.add(yoke);
-    var armL = box(0.13, 0.4, 0.16, shirt, -0.33, 1.47, 0); armL.geometry.translate(0, -0.16, 0);
-    var armR = box(0.13, 0.4, 0.16, shirt, 0.33, 1.47, 0); armR.geometry.translate(0, -0.16, 0);
-    armL.rotation.z = -0.07; armR.rotation.z = 0.07;
-    var foreL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.32, 0.14), skin);
-    foreL.position.set(0, -0.42, 0); foreL.castShadow = true; armL.add(foreL);
-    var foreR = foreL.clone(); armR.add(foreR);
-    box(0.13, 0.09, 0.13, skin, 0, 1.58, 0);
-    box(0.24, 0.25, 0.24, skin, 0, 1.73, 0);
-    box(0.26, 0.08, 0.26, new THREE.MeshLambertMaterial({ color: 0x14100c, flatShading: true }), 0, 1.88, 0);
-    return { group: g, legL: legL, legR: legR, armL: armL, armR: armR, torso: torso, shirtMat: shirt };
+    return SH.Pedestrians.buildFigure({
+      skin: 0xa8763e,
+      shirt: shirtColor,
+      pants: pantsColor,
+      hairColor: 0x14100c,
+      hairStyle: 'cap',
+      face: 1
+    });
   }
 
   var Combat = {
