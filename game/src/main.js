@@ -178,11 +178,14 @@
   }
   function updateSunSprite(pal, elev, sunAngle) {
     if (!sunSprite) {
+      // Natural-sky revision: the sun is a DISC + a thin halo, not an
+      // 820 m wash — the old sprites blew the whole frame white at
+      // golden hour (the market-corridor blow-out in the combat shot).
       sunSprite = makeGlowSprite('rgba(255,230,180,0.95)', 'rgba(255,130,50,0.55)');
-      sunSprite.scale.set(820, 820, 1);
+      sunSprite.scale.set(340, 340, 1);
       scene.add(sunSprite);
       sunCore = makeGlowSprite('rgba(255,255,240,1)', 'rgba(255,180,90,0.6)');
-      sunCore.scale.set(210, 210, 1);
+      sunCore.scale.set(80, 80, 1);
       scene.add(sunCore);
     }
     var focus = State.driving ? State.vehiclePos : State.player;
@@ -193,8 +196,12 @@
     sunCore.position.copy(sunSprite.position);
     var dayness = 1 - nightAmount(State.hour);
     var glow = dayness * (0.35 + 0.65 * Math.max(0, 1 - Math.abs(elev) * 2.4));
-    sunSprite.material.opacity = glow * 0.85;
-    sunCore.material.opacity = glow;
+    // Below the horizon the disc is GONE — only a fading afterglow may
+    // remain. Without this the sprites burned a white column into the
+    // 19:15 combat staging (elev there is -0.31) long after sunset.
+    glow *= Math.max(0, Math.min(1, elev * 3 + 0.4));
+    sunSprite.material.opacity = glow * 0.5;
+    sunCore.material.opacity = glow * 0.8;
     sunSprite.visible = sunCore.visible = glow > 0.02;
   }
 

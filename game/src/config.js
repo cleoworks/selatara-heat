@@ -25,22 +25,25 @@
         asphalt: 0x4a4442, sidewalk: 0xb0a496, grass: 0x4db356
       },
       dusk: {
-        // Four-stop sunset: violet crown, a pink-magenta band, then the
-        // orange melt at the horizon (the top-1 look).
-        skyTop: 0x35235e, skyBand: 0xd84f8e, skyMid: 0xff8c5a, skyLow: 0xffc37a, fog: 0xf78e63,
-        sun: 0xff7a33, sunIntensity: 1.35, hemiSky: 0xffc98a, hemiGround: 0x4a3049,
-        hemiIntensity: 0.88, ambient: 0.3, water: 0x2a7ab0, sand: 0xe8b57e,
-        asphalt: 0x3d333a, sidewalk: 0x8a6a62, grass: 0x3f7a3a
+        // Natural-sky revision (user, 2026-11-19): a real sunset keeps
+        // a BLUE dome — deep blue zenith, steel-blue band, and the gold
+        // only low at the horizon where the sun sprite adds its local
+        // glow. No magenta wash; neon lives in the city, not the sky.
+        skyTop: 0x2c4a73, skyBand: 0x6f87b3, skyMid: 0xcf9a5e, skyLow: 0xffc98a, fog: 0xd8b490,
+        sun: 0xffa040, sunIntensity: 1.15, hemiSky: 0xa9bde0, hemiGround: 0x59463a,
+        hemiIntensity: 0.85, ambient: 0.3, water: 0x2a6a9e, sand: 0xe0af7c,
+        asphalt: 0x3a3638, sidewalk: 0x8a7264, grass: 0x3f7a3a
       },
       night: {
-        skyTop: 0x070a24, skyBand: 0x1c1440, skyMid: 0x2a1b4a, skyLow: 0x2c2058, fog: 0x241d42,
+        skyTop: 0x040814, skyBand: 0x0c1730, skyMid: 0x152540, skyLow: 0x1e324e, fog: 0x111e30,
         // Art Pass 3 (night readability): the night floor is raised on
-        // purpose — purple-blue hemisphere + a real ambient floor, so
-        // faces, clothes and car paint stay readable and nothing falls
-        // to a pure-black silhouette.
-        sun: 0x8aa8ff, sunIntensity: 0.3, hemiSky: 0x4a5f9e, hemiGround: 0x2c2340,
-        hemiIntensity: 0.8, ambient: 0.42, water: 0x14384f, sand: 0x6a5f4d,
-        asphalt: 0x23202b, sidewalk: 0x3d3a4a, grass: 0x1e4028
+        // purpose — blue hemisphere + a real ambient floor, so faces,
+        // clothes and car paint stay readable and nothing falls to a
+        // pure-black silhouette. (Purple cast removed in the natural-
+        // sky revision: night is blue, not violet.)
+        sun: 0x8aa8ff, sunIntensity: 0.3, hemiSky: 0x3d5a8a, hemiGround: 0x1e2632,
+        hemiIntensity: 0.8, ambient: 0.42, water: 0x10344c, sand: 0x655a49,
+        asphalt: 0x201f26, sidewalk: 0x3a3844, grass: 0x1c3d27
       }
     },
 
