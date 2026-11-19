@@ -73,10 +73,45 @@
     if (kind === 'stripes') { for (i = 0; i < 128; i += 16) c.fillRect(i, 0, 6, 128); }
     else if (kind === 'checks') { for (i = 0; i < 128; i += 32) for (j = 0; j < 128; j += 32) if ((i + j) / 32 % 2) c.fillRect(i, j, 32, 32); }
     else if (kind === 'hawaii') {
-      for (i = 0; i < 26; i++) {
-        var x = (i * 47) % 128, y = (i * 31) % 128;
-        c.beginPath(); c.arc(x, y, 4 + (i % 3), 0, 7); c.fill();
-        c.fillRect(x - 1, y - 9, 2, 6);
+      // Stage C fix: the old painter dropped 26 random red discs +
+      // stems on cream — at game distance they read as BLOOD STAINS
+      // (parent finding, Iterasi 2). A fabric print is REGULAR:
+      // hibiscus flowers (5 petals + stamen) and leaf pairs laid on
+      // a fixed lattice, petal colour = c2 (coral/pink/orange from
+      // the archetype), leaves in two controlled greens, centres
+      // yellow. Shapes first, colour second — never splatter.
+      var leaf = function (x, y, ang, s, col) {
+        c.save(); c.translate(x, y); c.rotate(ang); c.fillStyle = col;
+        c.beginPath(); c.ellipse(0, 0, 7 * s, 2.8 * s, 0, 0, 7); c.fill(); c.restore();
+      };
+      var flower = function (x, y, s, col) {
+        c.fillStyle = col;
+        for (var pk = 0; pk < 5; pk++) {
+          var a = pk / 5 * Math.PI * 2 + 0.5;
+          c.save(); c.translate(x + Math.cos(a) * 4.6 * s, y + Math.sin(a) * 4.6 * s); c.rotate(a);
+          c.beginPath(); c.ellipse(0, 0, 5.2 * s, 2.9 * s, 0, 0, 7); c.fill(); c.restore();
+        }
+        c.fillStyle = '#f7c948';
+        c.beginPath(); c.arc(x, y, 2.0 * s, 0, 7); c.fill();
+        c.strokeStyle = '#f7c948'; c.lineWidth = 1.1;
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x + 3.4 * s, y - 3.0 * s); c.stroke();
+        c.fillStyle = '#e86a4a'; c.beginPath(); c.arc(x + 3.8 * s, y - 3.4 * s, 1.1 * s, 0, 7); c.fill();
+      };
+      var lx, ly, fx, fy, dx2, dy2;
+      for (ly = 0; ly < 2; ly++) for (lx = 0; lx < 2; lx++) {
+        leaf(lx * 64 + 32, ly * 64 + 14, 0.7, 1, 'rgba(62,125,58,0.85)');
+        leaf(lx * 64 + 14, ly * 64 + 46, -0.6, 0.85, 'rgba(87,160,71,0.8)');
+        leaf(lx * 64 + 52, ly * 64 + 58, 2.6, 0.9, 'rgba(62,125,58,0.7)');
+      }
+      for (fy = 0; fy < 2; fy++) for (fx = 0; fx < 2; fx++) {
+        flower(fx * 64 + 18, fy * 64 + 26, 1.0, css(c2));
+        flower(fx * 64 + 48, fy * 64 + 56, 0.72, css(c2));
+      }
+      // tiny white plumeria dots in the lattice gaps
+      c.fillStyle = 'rgba(255,252,244,0.9)';
+      for (dy2 = 0; dy2 < 2; dy2++) for (dx2 = 0; dx2 < 2; dx2++) {
+        c.beginPath(); c.arc(dx2 * 64 + 34, dy2 * 64 + 38, 1.7, 0, 7); c.fill();
+        c.beginPath(); c.arc(dx2 * 64 + 6, dy2 * 64 + 62, 1.4, 0, 7); c.fill();
       }
     } else if (kind === 'batik') {
       for (i = 0; i < 128; i += 32) for (j = 0; j < 128; j += 32) {
@@ -519,41 +554,85 @@
     } else if (wear.hat === 'ojekhelmet') {
       attach(b.head, new THREE.SphereGeometry(headR * 1.12, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), mat(0xcc3322, 0.3), 0, headCY + headR * 0.10, 0);
     }
+    // Stage C fix (parent review of c-story2 / c-story3): the
+    // Iterasi 2 lenses were still flat BOXES — on Mami they read
+    // as two dark censor bars over the eyes, on Varga as two big
+    // black rectangles. Eyewear is now built as eyewear: domed
+    // OVAL lenses centred on the MEASURED eye position (eyes are
+    // drawn at canvas x = 64+-12 in 256-space; the sphere's face
+    // centre is u=0.25, so the eyes sit at phi = pi/2 +- 0.294
+    // rad -> bone-local x = +-0.231 headR, surface z ~ 0.86
+    // headR, centre y = headCY + 0.083 headR), a thin rim ring
+    // around each lens, a bridge, and temple arms angled back
+    // to the ears. Regular glasses get a PALE translucent lens
+    // (opacity 0.45) so the drawn eyes stay clearly visible
+    // through them; sunglasses keep a dark lens, but in the
+    // same oval lens shape — never a bar or a box.
+    function eyewear(lensMaterial, rimMaterial, lw, lh) {
+      var lensGeo = new THREE.SphereGeometry(1, 14, 10);
+      lensGeo.scale(headR * lw, headR * lh, headR * 0.05);
+      var rimGeo = new THREE.TorusGeometry(1, 0.085, 6, 22);
+      rimGeo.scale(headR * lw * 1.03, headR * lh * 1.03, headR * lw);
+      var ey = headCY + headR * 0.083;
+      [-1, 1].forEach(function (s) {
+        attach(b.head, lensGeo, lensMaterial, s * headR * 0.231, ey, headR * 0.868);
+        attach(b.head, rimGeo, rimMaterial, s * headR * 0.231, ey, headR * 0.878);
+        // temple arm: one straight thin bar from the frame's
+        // outer edge (x 0.40, z 0.86) back to the ear (x 0.80,
+        // z 0.02); its middle rides inside the head's elliptical
+        // bulge (rx ~0.80 headR at eye height) the way real arms
+        // disappear into hair — the visible front stub and the
+        // ear tip carry the read.
+        attach(b.head, new THREE.BoxGeometry(headR * 0.026, headR * 0.030, headR * 0.93),
+          rimMaterial, s * headR * 0.60, headCY + headR * 0.10, headR * 0.44, 0, s * 2.697, 0);
+      });
+      attach(b.head, new THREE.BoxGeometry(headR * 0.15, headR * 0.032, headR * 0.028),
+        rimMaterial, 0, headCY + headR * 0.118, headR * 0.878);
+    }
     if (has('glasses')) {
-      // Iterasi 2: the old lenses were two opaque dark slabs
-      // (0.34 x 0.30 headR) floating 13 mm off the face — they
-      // read as censor bars in every close-up. Simplified per
-      // the spec's own rule: smaller, closer, semi-transparent
-      // lenses in a warm frame tone, eyes visible through them.
-      // Lens placement MEASURED from the face pipeline, not
-      // eyeballed: eyes are drawn at canvas x = 64+-12 (256-space);
-      // the sphere's face centre is u=0.25, so the eyes sit at
-      // phi = pi/2 +- 0.294 rad -> bone-local x = +-0.231 headR,
-      // surface z ~ 0.86 headR, centre y = headCY + 0.083 headR.
-      var gm = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.35, transparent: true, opacity: 0.55 });
-      attach(b.head, new THREE.BoxGeometry(headR * 0.32, headR * 0.24, headR * 0.03), gm, -headR * 0.23, headCY + headR * 0.08, headR * 0.87);
-      attach(b.head, new THREE.BoxGeometry(headR * 0.32, headR * 0.24, headR * 0.03), gm, headR * 0.23, headCY + headR * 0.08, headR * 0.87);
-      attach(b.head, new THREE.BoxGeometry(headR * 0.20, headR * 0.05, headR * 0.03), gm, 0, headCY + headR * 0.12, headR * 0.87);
+      eyewear(new THREE.MeshStandardMaterial({ color: 0xcfe0e8, roughness: 0.12, transparent: true, opacity: 0.45 }),
+        mat(0x3a2a1a, 0.4), 0.165, 0.125);
     }
     if (has('sunglasses')) {
-      // Iterasi 2: was ONE wide black bar (1.24 headR) across the
-      // eyes. Now two proper dark lenses + bridge, closer in.
-      attach(b.head, new THREE.BoxGeometry(headR * 0.36, headR * 0.22, headR * 0.04), darkMat, -headR * 0.23, headCY + headR * 0.08, headR * 0.87);
-      attach(b.head, new THREE.BoxGeometry(headR * 0.36, headR * 0.22, headR * 0.04), darkMat, headR * 0.23, headCY + headR * 0.08, headR * 0.87);
-      attach(b.head, new THREE.BoxGeometry(headR * 0.20, headR * 0.05, headR * 0.04), darkMat, 0, headCY + headR * 0.12, headR * 0.87);
+      eyewear(mat(0x0c0e11, 0.22), mat(0x14161a, 0.35), 0.185, 0.145);
+    }
+    // Stage C fix: chest-front accessories used z = 0.068-0.075 m
+    // constants, but the torso loft's front surface at spine2
+    // height sits at rz ~0.13 m — badge, POLISI patch, radio and
+    // camera were built INSIDE the chest (proven invisible in the
+    // c-patrol-chest / c-varga-chest close-ups). Their z is now
+    // computed from the same station radii Rig.bodyStations uses,
+    // plus the cloth offset of the worn top.
+    var sH = H / 1.75;
+    var chestRxC = 0.108 * H * (0.55 + 0.45 * p.shoulder) * (0.7 + 0.3 * p.waist);
+    var fY = Math.min(1, 0.045 / (0.045 * H));
+    var chestRzC = (0.073 * H * (0.8 + 0.2 * p.waist)) * (1 - fY) + (0.069 * H) * fY;
+    var clothOffC = wear.top && (wear.top.type === 'jacket' || wear.top.type === 'blazer') ? 0.020 : 0.008;
+    function chestZ(x) { // front surface z of the clothed chest at lateral offset x
+      var k = Math.max(0.25, 1 - (x / chestRxC) * (x / chestRxC));
+      return chestRzC * Math.sqrt(k) + clothOffC;
     }
     if (has('badge')) {
-      attach(b.spine2, new THREE.BoxGeometry(0.020, 0.026, 0.006), mat(0xd8b84a, 0.35), -0.055 * H / 1.75, 0.035, 0.068 * H / 1.75);
+      // sits left of and below the POLISI patch — at x -0.055 the
+      // flat patch plane (z from the chest CENTRE) overlapped the
+      // badge on the curved chest (c-varga-chest, first fix round)
+      // rotated to the chest surface normal at that offset — flat
+      // against the world z axis it read as an edge-on gold sliver
+      attach(b.spine2, new THREE.BoxGeometry(0.020, 0.026, 0.006), mat(0xd8b84a, 0.35), -0.075 * sH, 0.010, chestZ(-0.075 * sH) + 0.002, 0, 0.30, 0);
     }
     if (has('policePatch')) {
       var patch = textPatch('POLISI', '#f2f4f8', '#1d2f52');
-      patch.position.set(0, 0.045, 0.070 * H / 1.75); b.spine2.add(patch);
+      patch.position.set(0, 0.045, chestZ(0) + 0.004); b.spine2.add(patch);
       var patch2 = textPatch('POLISI', '#f2f4f8', '#1d2f52');
-      patch2.position.set(0, 0.045, -0.070 * H / 1.75); patch2.rotation.y = Math.PI; b.spine2.add(patch2);
+      patch2.position.set(0, 0.045, -(chestZ(0) + 0.004)); patch2.rotation.y = Math.PI; b.spine2.add(patch2);
     }
     if (has('radio')) {
-      attach(b.spine2, new THREE.BoxGeometry(0.022, 0.052, 0.016), darkMat, -0.105 * H / 1.75, 0.085, 0.028);
-      attach(b.spine2, new THREE.CylinderGeometry(0.0022, 0.0022, 0.07, 5), darkMat, -0.105 * H / 1.75, 0.14, 0.028);
+      // chest-strap shoulder mic on the upper-left chest (the old
+      // over-shoulder spot drowned in the trapezius slope; only its
+      // antenna ever showed)
+      var radioZ = chestZ(-0.098 * sH) * 0.97 + 0.006;
+      attach(b.spine2, new THREE.BoxGeometry(0.022, 0.052, 0.016), darkMat, -0.098 * sH, 0.062, radioZ);
+      attach(b.spine2, new THREE.CylinderGeometry(0.0022, 0.0022, 0.07, 5), darkMat, -0.098 * sH, 0.117, radioZ);
     }
     if (has('bag')) {
       attach(b.pelvis, new THREE.BoxGeometry(0.085, 0.105, 0.045), clothMat({ color: pick(r, [0xb8563a, 0x3a6ab8, 0x58a84a, 0xd8b13c]) }), 0.105 * H / 1.75, -0.01, -0.02, 0, 0, 0.12);
@@ -562,7 +641,9 @@
       attach(b.spine2, new THREE.BoxGeometry(0.115, 0.15, 0.06), clothMat({ color: pick(r, [0xd84a3a, 0x3a7ad8, 0xf2b13c, 0x4ab86a]) }), 0, 0.01, -0.085 * H / 1.75);
     }
     if (has('camera')) {
-      attach(b.spine2, new THREE.BoxGeometry(0.052, 0.036, 0.026), darkMat, 0, -0.01, 0.075 * H / 1.75);
+      // same buried-z bug as the patch: hang the camera on the
+      // chest surface (station-5 depth + cloth), not inside it
+      attach(b.spine2, new THREE.BoxGeometry(0.052, 0.036, 0.026), darkMat, 0, -0.01, 0.073 * H * (0.8 + 0.2 * p.waist) + clothOffC + 0.010);
     }
     if (has('cane')) {
       attach(b.handR, new THREE.CylinderGeometry(0.006, 0.006, 0.78, 6), mat(0x6e4a26, 0.7), 0.01, -0.42, 0.02);
@@ -590,6 +671,50 @@
     }
     if (has('mask')) {
       attach(b.head, new THREE.SphereGeometry(headR * 1.04, 12, 10), mat(0x181818, 0.85), 0, headCY, -headR * 0.03);
+    }
+    // ---- Stage C accessories --------------------------------------
+    if (has('tie')) {
+      // detective: knot + blade lying on the shirt front (z measured
+      // to the chest surface at that height, cloth included)
+      attach(b.spine2, new THREE.BoxGeometry(0.030, 0.034, 0.012), mat(0x6e1f2a, 0.7), 0, 0.028, 0.127 * H / 1.75);
+      attach(b.spine2, new THREE.BoxGeometry(0.034, 0.17, 0.010), mat(0x6e1f2a, 0.7), 0, -0.055, 0.128 * H / 1.75, 0.06, 0, 0);
+    }
+    if (has('beltBadge')) {
+      // detective's badge rides the BELT line, not the chest
+      attach(b.pelvis, new THREE.BoxGeometry(0.026, 0.032, 0.008), mat(0xd8b84a, 0.35), 0.078 * H / 1.75, -0.005, 0.140 * H / 1.75);
+    }
+    if (has('visor')) {
+      // SWAT: one dark curved band across the eyes (cylinder segment
+      // centred on +Z, theta 0 = front in three.js cylinder space)
+      var visorGeo = new THREE.CylinderGeometry(headR * 1.07, headR * 1.07, headR * 0.36, 12, 1, true, -0.62, 1.24);
+      attach(b.head, visorGeo, mat(0x0b0d10, 0.22), 0, headCY + headR * 0.10, 0);
+    }
+    if (has('neckTattoo')) {
+      // Dario — Stage C fix (parent review of c-story4): the old
+      // ink was two thin vertical BOXES (0.020H wide) pinned to
+      // the neck sides; they read as straps, not a tattoo. Now
+      // ONE wide blue-black patch that HUGS the neck: an open
+      // cylinder segment (r 0.030H — the neck surface runs
+      // 0.027-0.032H across this band) wrapping the character's
+      // left side from front to back (cylinder theta: x = r sin,
+      // z = r cos, so theta 0.45..2.65 covers front-left through
+      // the side to back-left), sitting just above the blazer
+      // collar line.
+      var inkGeo = new THREE.CylinderGeometry(0.030 * H, 0.030 * H, 0.025 * H, 12, 1, true, 0.45, 2.2);
+      attach(b.neck, inkGeo, mat(0x18303e, 0.75), 0, 0.014 * H, 0);
+    }
+    if (has('armTattoo')) {
+      // syndicate / preman: an ink band around the right FOREARM
+      // (the upper arm hides under sleeves; the forearm never does)
+      attach(b.fArmR, new THREE.CylinderGeometry(0.028 * H, 0.028 * H, 0.05 * H, 10, 1, true), mat(0x1d2b33, 0.7), 0, -0.045 * H, 0);
+    }
+    if (has('guitar')) {
+      // street musician: round body + neck, slung across the torso
+      var gBody = new THREE.CylinderGeometry(0.102, 0.102, 0.046, 14); gBody.rotateX(Math.PI / 2);
+      var gNeck = new THREE.BoxGeometry(0.026, 0.30, 0.016); gNeck.translate(0.10, 0.16, 0);
+      var gtr = attach(b.spine2, Rig.mergePlain([Rig.prim(gBody, 0, 0, 0, 1, 1, 1, 0), Rig.prim(gNeck, 0, 0, 0, 1, 1, 1, 0)]),
+        mat(0x8a5a2c, 0.6), 0.09 * H / 1.75, -0.05, 0.135 * H / 1.75);
+      gtr.rotation.set(0.15, 0.1, -0.55);
     }
     if (has('jewelry')) {
       attach(b.neck, new THREE.TorusGeometry(0.058 * H / 1.75, 0.0045, 6, 18), mat(0xe8c85a, 0.3), 0, 0.012, 0.012, 1.25, 0, 0); // round 10: ring widened for the thicker neck
@@ -655,7 +780,11 @@
     // the face texture take the hair colour (round 2)
     var hairStyle = (arch.hair && arch.hair.style) || 'short';
     if (arch.hair && arch.hair.styles) hairStyle = pick(r, arch.hair.styles);
-    var hairColor = (arch.hair && arch.hair.color) || pick(r, HAIR_COLORS);
+    // Stage C fix: an archetype may pin a hair COLOUR SET
+    // (hair.colors) — fixed-role types (police) use it to stay
+    // black / dark brown and never roll the greys in HAIR_COLORS.
+    var hairColor = (arch.hair && arch.hair.color) ||
+      ((arch.hair && arch.hair.colors) ? pick(r, arch.hair.colors) : pick(r, HAIR_COLORS));
     var faceSpec = Object.assign({ eyes: 'round', mouth: 'smile' }, arch.face || {});
     if (faceSpec.randomEyes) faceSpec.eyes = pick(r, ['round', 'narrow', 'sleepy']);
     faceSpec.browColor = hairColor;
@@ -668,7 +797,7 @@
     var char = { group: group, bones: sk.bones, skeleton: sk.skeleton, params: p, archetype: arch, seed: seed, wear: wear, inUse: true, lod: 0, key: key };
     var hairGeo = Rig.hairGeometry(hairStyle, p);
     if (hairGeo) {
-      var hairMesh = new THREE.Mesh(hairGeo, hairStyle === 'hijab' ? clothMat({ color: (arch.hair && arch.hair.clothColor) || 0x7a4a8a }) : hairMat(hairColor));
+      var hairMesh = new THREE.Mesh(hairGeo, hairStyle === 'hijab' ? clothMat({ color: (arch.hair && arch.hair.clothColors) ? pick(r, arch.hair.clothColors) : (arch.hair && arch.hair.clothColor) || 0x7a4a8a }) : hairMat(hairColor));
       hairMesh.frustumCulled = false; sk.bones.head.add(hairMesh); char.hairMesh = hairMesh;
     }
     // HEAD PASS: swinging hair parts (ponytail / long back strips)

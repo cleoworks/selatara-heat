@@ -30,6 +30,7 @@
 <script src="./vendor/three.min.js"></script>
 <script src="./src/characters/rig.js"></script>
 <script src="./src/characters/factory.js"></script>
+<script src="./src/characters/archetypes.js"></script>
 <script src="./src/characters/animation.js"></script>
 <script>
 (function () {
@@ -39,34 +40,11 @@
     var p = kv.split('='); if (p[0]) qs[p[0]] = decodeURIComponent(p[1] || '');
   });
 
-  // ---- Iterasi 2: archetype presets (min 10) ------------------------------
-  // Same wear/body/face/hair schema the factory has always taken; the
-  // real data-driven archetype table is Stage C — these presets make
-  // the lab fully usable now and double as its first draft.
-  var ARCH = [
-    { id: 'raka', label: 'Raka (protagonis)', body: { shoulder: 1.05 }, face: {}, hair: { style: 'short', color: 0x17130f },
-      wear: { top: { type: 'jacket', sleeve: 'long', color: 0x6e1423 }, bottom: { type: 'long', color: 0x23242c }, shoes: 0x1c1c20 } },
-    { id: 'mami', label: 'Mami Ratna', body: { H: 1.62, hips: 1.12, waist: 0.92 }, face: { wrinkles: true }, hair: { style: 'bun', color: 0xb8b0a4 },
-      wear: { top: { type: 'blouse', color: 0xb83a4a }, bottom: { type: 'skirt', color: 0x4a2440 }, shoes: 0x3a2c22, accessories: ['glasses', 'jewelry'] } },
-    { id: 'varga', label: 'Komisaris Varga', body: { H: 1.82, shoulder: 1.16, waist: 1.05, belly: 0.5 }, face: { mustache: true, mouth: 'stern' }, hair: { style: 'short', color: 0x2b2b2e },
-      wear: { top: { type: 'jacket', sleeve: 'long', color: 0x24303e }, bottom: { type: 'long', color: 0x1f2733 }, shoes: 0x14161a, hat: 'officer', accessories: ['sunglasses', 'badge', 'policePatch'] } },
-    { id: 'patrol', label: 'Polisi patrol', body: {}, face: {}, hair: { style: 'short' },
-      wear: { top: { type: 'tee', color: 0x24406e }, bottom: { type: 'long', color: 0x1d2f52 }, shoes: 0x14161c, hat: 'officer', accessories: ['policePatch', 'radio', 'pistol'] } },
-    { id: 'tactical', label: 'Polisi taktis', body: { H: 1.80, shoulder: 1.14 }, face: {}, hair: { style: 'short' },
-      wear: { top: { type: 'vest', color: 0x22262e }, bottom: { type: 'long', color: 0x22262e }, shoes: 0x101114, hat: 'helmet', hatColor: 0x22262e, accessories: ['rifle', 'sunglasses'] } },
-    { id: 'turis', label: 'Turis', body: {}, face: { blush: true }, hair: { style: 'long', color: 0x8a6a3c },
-      wear: { top: { type: 'tee', pattern: 'hawaii', color: 0xf2e3c6, color2: 0xd84a3a }, bottom: { type: 'shorts', color: 0x8a6a3c }, shoes: 0x54443a, hat: 'sunhat', accessories: ['camera', 'sunglasses'] } },
-    { id: 'sekolah', label: 'Anak sekolah', body: { H: 1.42 }, face: {}, hair: { style: 'short' },
-      wear: { top: { type: 'tee', color: 0xf5f2ea }, bottom: { type: 'shorts', color: 0xb8302c }, shoes: 0x22242a, accessories: ['backpack'] } },
-    { id: 'kantoran', label: 'Pekerja kantoran', body: {}, face: {}, hair: { style: 'quiff' },
-      wear: { top: { type: 'blazer', sleeve: 'long', color: 0x3a4152 }, bottom: { type: 'long', color: 0x2c2f36 }, shoes: 0x201a14, accessories: ['bag'] } },
-    { id: 'pedagang', label: 'Pedagang', body: { waist: 1.04 }, face: {}, hair: { style: 'peci' },
-      wear: { top: { type: 'tee', pattern: 'batik', color: 0x8a5a2c, color2: 0x4a2f1a }, bottom: { type: 'long', color: 0x4a3a2c }, shoes: 0x6e4a26 } },
-    { id: 'nelayan', label: 'Nelayan', body: {}, face: {}, hair: { style: 'cap', color: 0x24406e },
-      wear: { top: { type: 'tee', color: 0x5a86a8 }, bottom: { type: 'shorts', color: 0x3c4652 }, shoes: 0x54443a } },
-    { id: 'ojek', label: 'Pengemudi ojek', body: {}, face: {}, hair: { style: 'short' },
-      wear: { top: { type: 'jacket', sleeve: 'long', color: 0x2e7d32 }, bottom: { type: 'long', color: 0x2a2d33 }, shoes: 0x1c1e24, hat: 'ojekhelmet', accessories: ['phone'] } }
-  ];
+  // ---- Stage C: the archetype table is DATA now ---------------------------
+  // game/src/characters/archetypes.js is the single source (story cast,
+  // police, enemies, >=14 pedestrians). The lab only reads it — the
+  // Iterasi 2 hard-coded presets that used to live here are gone.
+  var ARCH = SH.ArchetypeList;
   // Animation dropdown: spec names -> clip names in CharAnim.
   var ANIMS = [
     { id: 'idle', clip: 'idle' }, { id: 'walk', clip: 'walk' }, { id: 'run', clip: 'run' },
@@ -175,32 +153,45 @@
 
   if (mode === 'sheet') {
     var view = qs.view || 'front';
-    var tot = 0;
-    ARCH.forEach(function (a, i) {
+    var sheetList = ARCH;
+    if (qs.only) { // Stage C: subset sheets (e.g. the 4 police types)
+      var want = qs.only.split(',');
+      sheetList = ARCH.filter(function (a) { return want.indexOf(a.id) >= 0; });
+    }
+    var tot = 0, spacing = 0.62;
+    sheetList.forEach(function (a, i) {
       var c = SH.CharFactory.create(a, 7 + i * 3);
-      place(c, (i - (ARCH.length - 1) / 2) * 0.68, 0, view === 'side' ? Math.PI / 2 : 0);
-      var ctl = addCtl(c, 'idle');
+      place(c, (i - (sheetList.length - 1) / 2) * spacing, 0, view === 'side' ? Math.PI / 2 : 0);
+      var ctl = addCtl(c, a.idle || 'idle');
       var act = ctl.action(); if (act) act.time = (i * 0.53) % 3.6;
       tot += lod0Report(c).total;
     });
-    camera.position.set(0, 1.02, 8.6); camera.lookAt(0, 0.92, 0);
-    infoLines.push('CONTACT SHEET (' + view + ') — ' + ARCH.length + ' archetypes');
+    // camera distance adapts to the row width (28 archetypes now);
+    // the floor keeps a 4-archetype subset sheet full-body framed
+    var halfW = (sheetList.length - 1) / 2 * spacing;
+    camera.position.set(0, 1.02, Math.max(halfW / 0.612 + 1.2, 4.6)); camera.lookAt(0, 0.92, 0);
+    infoLines.push('CONTACT SHEET (' + view + ') — ' + sheetList.length + ' archetypes');
     infoLines.push('scene tris LOD0=' + tot);
   } else if (mode === 'crowd') {
     var starts = ['idle', 'idle_phone', 'idle', 'idle_lean', 'talk', 'idle_smoke', 'wave', 'idle'];
+    var crowdN = parseInt(qs.n || '30', 10);
+    // Stage C: the crowd cycles the NON-STORY archetypes (police,
+    // enemies, pedestrians) — story cast are unique people and must
+    // never appear twice; everyone else varies by seed.
+    var pool = ARCH.filter(function (a) { return a.kind !== 'story'; });
     var totC = 0;
-    for (var ci = 0; ci < 30; ci++) {
-      var a2 = ARCH[ci % ARCH.length];
+    for (var ci = 0; ci < crowdN; ci++) {
+      var a2 = pool[ci % pool.length];
       var cc = SH.CharFactory.create(a2, 100 + ci * 7);
       var col = ci % 6, row = Math.floor(ci / 6);
       var jx = Math.sin(ci * 37.7) * 0.22, jr = Math.sin(ci * 13.3) * 0.55;
       place(cc, (col - 2.5) * 1.45 + jx, -1.4 - row * 1.45, jr);
-      var ctl2 = addCtl(cc, starts[ci % starts.length]);
+      var ctl2 = addCtl(cc, a2.idle || starts[ci % starts.length]);
       var act2 = ctl2.action(); if (act2) act2.time = (ci * 0.41) % 3.0;
       totC += lod0Report(cc).total;
     }
     camera.position.set(0, 1.8, 4.8); camera.lookAt(0, 0.95, -2.2);
-    infoLines.push('CROWD 30 — game distance');
+    infoLines.push('CROWD ' + crowdN + ' — game distance');
     infoLines.push('scene tris LOD0=' + totC);
   } else {
     var arch = qs.arch ? archById(qs.arch) : (qs.test != null ? ARCH[parseInt(qs.test, 10) % ARCH.length] : ARCH[0]);
