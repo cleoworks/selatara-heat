@@ -19,7 +19,11 @@
       this.fig = built;
       this.char = built;
       this.parts = built; // legacy alias
-      this.ctl = SH.CharAnim.create(built, { start: 'idle', idle: 'idle' });
+      // Same controller options every NPC gets (pedestrians/police/
+      // combat/missions all pass the archetype's idle/gait/posture) —
+      // the player must not run a special, posture-less path.
+      var arch = SH.Archetypes.raka;
+      this.ctl = SH.CharAnim.create(built, { start: 'idle', idle: arch.idle, gait: arch.gait, posture: arch.posture });
       this.mesh = built.group;
       scene.add(built.group);
       var p = SH.State.player;
@@ -157,11 +161,21 @@
     // Driving uses the screenshot-grade framing: low (about 1.6 m over the
     // road), close behind-side with a lateral offset, FOV 65, so the car
     // fills a good slice of the frame instead of floating in the distance.
+    // ON-FOOT DEFAULT (FX reset, user spec): back distance 6.1 m
+    // (horizontal ~6.0 m at the default pitch), base height 1.40 m
+    // (shoulder line) and look height 1.40 m — with the default
+    // camPitch of 0.19 rad the lens sits at ~2.55 m and the view
+    // axis pitches ~11 deg down through the chest, so the whole
+    // body, head to shoes, is in frame with margin (measured on
+    // the FX staging: head NDC ~0.0, feet NDC ~-0.4 at FOV 60).
+    // No shot / close-up / cutscene value feeds this branch:
+    // _shotCamDist is driving-only and _shotAimDist aiming-only
+    // by construction.
     updateCamera: function (dt, camera) {
       var st = SH.State, p = st.player;
       var target = st.driving ? st.vehiclePos : p;
-      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || 5.4) : 6.4);
-      var height = st.driving ? 1.55 : 1.9;
+      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || 5.4) : 6.1);
+      var height = st.driving ? 1.55 : 1.40;
       var back = new THREE.Vector3(Math.sin(st.camYaw) * Math.cos(st.camPitch), Math.sin(st.camPitch), Math.cos(st.camYaw) * Math.cos(st.camPitch));
       var cx = target.x + back.x * dist;
       var cy = (target.y || 0) + height + back.y * dist;
@@ -178,8 +192,13 @@
       this._camPos.y += (cy - this._camPos.y) * k;
       this._camPos.z += (cz - this._camPos.z) * k;
       camera.position.copy(this._camPos);
-      var lookY = (target.y || 0) + (st.driving ? 1.15 : 1.55);
-      camera.lookAt(target.x - back.x * 2, lookY, target.z - back.z * 2);
+      var lookY = (target.y || 0) + (st.driving ? 1.15 : 1.40);
+      // FX camera reset: on foot the view axis goes through the
+      // chest point itself (no forward lead) — with the 2 m lead
+      // the axis flattened to ~8 deg; through the chest it is the
+      // spec ~11 deg. Driving keeps its 2 m lead.
+      var lookAhead = st.driving ? 2 : 0;
+      camera.lookAt(target.x - back.x * lookAhead, lookY, target.z - back.z * lookAhead);
       var baseFov = st.driving ? (st.speedKmh > 80 ? 68 : 65) : 60;
       if (Math.abs(camera.fov - baseFov) > 0.1) { camera.fov += (baseFov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
     }

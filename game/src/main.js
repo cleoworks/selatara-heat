@@ -7,7 +7,7 @@
   var State = {
     mode: 'loading', // loading | title | playing | paused | map
     time: 0, hour: SH.Config.day.startHour, weather: 'clear',
-    camYaw: Math.PI, camPitch: 0.16,
+    camYaw: Math.PI, camPitch: 0.19, // 0.19 rad ~ 10.9 deg: the on-foot default pitch (FX camera reset, spec 10-12 deg)
     player: { x: SH.Config.world.spawn.x, z: SH.Config.world.spawn.z, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, health: 100, armor: 0 },
     driving: false, vehicle: null, vehiclePos: { x: 0, y: 0, z: 0 },
     aiming: false, speedKmh: 0,
@@ -23,7 +23,7 @@
   };
   SH.State = State;
 
-  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight, rimLight, charRim;
+  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight, rimLight, charRim, charKey;
   var accumulator = 0, lastTs = 0;
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
@@ -111,7 +111,12 @@
     if (renderer) renderer.toneMappingExposure = 1.15 + nightAmount(State.hour) * 0.22;
     if (fillLight) {
       var fAmt = nightAmount(State.hour);
-      fillLight.intensity = fAmt * 1.5;
+      // FX fix: three r155+ physical light units make a PointLight's
+      // intensity DIVIDE by distance^decay — the old 1.5 reached the
+      // focus (~3.5 m away, decay 1.8) as ~0.15, i.e. effectively no
+      // fill at all, and night clothes fell to black. 16 lands as
+      // ~1.7 at the subject: a real soft frontal fill after dark.
+      fillLight.intensity = fAmt * 16;
       if (fAmt > 0.01) {
         fillLight.position.set(
           focus.x + Math.sin(State.camYaw) * 3.5,
@@ -136,7 +141,7 @@
       // dark (ap2: leads must separate from dark ground at night),
       // so its floor RISES with the night amount instead of falling.
       var nAmt = nightAmount(State.hour);
-      charRim.intensity = 0.55 + nAmt * 0.75;
+      charRim.intensity = 0.85 + nAmt * 0.65;
       charRim.position.set(
         focus.x - Math.sin(State.camYaw) * 30,
         9,
@@ -144,6 +149,43 @@
       );
       charRim.target.position.set(focus.x, 1.1, focus.z);
       charRim.target.updateMatrixWorld();
+    }
+    if (SH.CharFactory && SH.CharFactory.setRimLevel) {
+      // RONDE 3B: the leads' rim SHELL is a NIGHT separator (ap2) —
+      // it has no job in daylight, but at its constant full strength
+      // its additive fresnel climbed the loft's ring steps and read
+      // as a dotted bright line around the silhouette at the default
+      // camera (parent zoom proof, fx3-game-day). Shell strength now
+      // rides the same night curve as the rim light: the full
+      // approved 1.25 after dark. Shells are LOD0-only, so no
+      // distance fade is needed — the defective distance IS the
+      // default camera distance.
+      // RONDE 3C: the 3B day floor of 0.05 still leaked a residue —
+      // isolation renders (rim shells hidden = level 0 exactly)
+      // proved the shell alone contributes 346 warm-shifted pixels
+      // (delta lum > 6) on the silhouette chains of the day staging,
+      // 235 of them on the legs: the scattered warm dots the user
+      // still saw at 5x zoom. envMapIntensity was A/B'd and cleared
+      // (broad whole-body wash, no dot pattern; 0 would also flatten
+      // the FX2 gradation), and the dark outline hull cannot emit
+      // bright dots. Day floor is now a true 0.0; the night end of
+      // the curve is unchanged (0 + 1.0 * 1.25 = the approved 1.25)
+      // and dusk still ramps smoothly with nightAmount.
+      SH.CharFactory.setRimLevel(nightAmount(State.hour) * 1.25);
+    }
+    if (charKey) {
+      // FX2 character key: ~1.5 at the subject by day (the lab key
+      // is 1.6), ~0.95 after dark, always front-top-side of the
+      // camera, so the toon ramp shows its steps across the body
+      // instead of one flat fill. The 18 m throw keeps the pool
+      // local — the wider world grade is untouched.
+      var kAmt = nightAmount(State.hour);
+      charKey.intensity = 26 - kAmt * 10;
+      charKey.position.set(
+        focus.x + Math.sin(State.camYaw) * 3.2 + Math.cos(State.camYaw) * 2.6,
+        3.6,
+        focus.z + Math.cos(State.camYaw) * 3.2 - Math.sin(State.camYaw) * 2.6
+      );
     }
     if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
     updateSunSprite(pal, elev, sunAngle);
@@ -337,6 +379,15 @@
     sun.shadow.camera.top = 115; sun.shadow.camera.bottom = -115;
     sun.shadow.camera.far = 500;
     sun.shadow.bias = -0.0006;
+    // FX3 artifact pass: normalBias offsets the shadow sample along
+    // the surface normal (2 cm) — the standard guard against
+    // self-shadowing acne on curved cloth/skin at grazing sun
+    // angles. A/B at the character close-up stagings (bias -0.001 /
+    // normalBias 0.02, toggled at runtime) moved <=0.005% of pixels:
+    // no acne was present to remove and no contact shadow lifted
+    // (no peter-panning), so the shipped bias stays at its proven
+    // -0.0006 and normalBias is installed as hygiene per spec.
+    sun.shadow.normalBias = 0.02;
     scene.add(sun); scene.add(sun.target);
 
     // Player fill light (Art Pass 3): one warm point light that hovers
@@ -360,6 +411,17 @@
     // own fresnel rim shells.
     charRim = new THREE.DirectionalLight(0xffc890, 0);
     scene.add(charRim); scene.add(charRim.target);
+
+    // Character key (FX2): one warm point light parked front-top-side
+    // of the camera focus — the lab's key-light recipe (0xfff1dd)
+    // carried into the game. After the round-1 grade fix, a figure's
+    // front was lit almost only by the directionless hemisphere +
+    // ambient wash, so the toon ramp collapsed to a single chalky
+    // step (the "crayon" read). A short-throw point light models the
+    // body the way the lab key does, without touching the world:
+    // intensity/position are driven by applyLighting.
+    charKey = new THREE.PointLight(0xfff1dd, 0, 18, 1.8);
+    scene.add(charKey);
 
     SH.Roads.build(scene);
     SH.Buildings.build(scene);
@@ -475,9 +537,13 @@
     else if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
-    // CSS-side grade (Step 5): a gentle contrast/saturation lift on the
-    // 3D canvas only (the DOM HUD keeps its own colours).
-    canvas.style.filter = 'contrast(1.08) saturate(1.15)';
+    // FX fix: NO CSS grade on the canvas anymore. The old
+    // contrast(1.08) saturate(1.15) filter existed only in the game
+    // (the lab has none) and was a root cause of the character
+    // regression: oversaturated orange skin, clothes crushed to
+    // black, face shading reading coarse. Character materials also
+    // opt out of tone mapping individually (factory charGrade), so
+    // people now render through the same pipeline as the lab.
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;

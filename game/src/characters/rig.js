@@ -24,7 +24,17 @@
       shoulder: p.shoulder || 1, waist: p.waist || 1, hips: p.hips || 1,
       belly: p.belly || 0, thigh: p.thigh || 1,
       headScale: p.headScale || 1, handScale: p.handScale || 1,
-      neckR: p.neckR || 1
+      neckR: p.neckR || 1,
+      // FX6 head & face upgrade: per-character head variation,
+      // resolved by the factory from archetype + seed (never by
+      // callers directly). headJit = [x,y,z] scale jitter around
+      // the shared headDims factors (+-6%); jawF/jawBump/chinW =
+      // jaw class (square / oval / taper). Defaults reproduce the
+      // pre-FX6 head exactly.
+      headJit: p.headJit || null,
+      jawF: p.jawF != null ? p.jawF : null,
+      jawBump: p.jawBump != null ? p.jawBump : null,
+      chinW: p.chinW != null ? p.chinW : null
     };
   }
 
@@ -449,9 +459,13 @@
     // touch at the pelvis underside; arms darkest at the armpit
     // root (0) with an elbow-crease dip (3-4); legs dip at the hip
     // crease (0) and knee (3-4). Subtle — 0.80 worst case.
-    var aoTorso = [0.94, 1, 1, 1, 1, 1, 1, 0.99, 0.98, 0.97, 0.94, 0.92, 0.90, 0.88];
-    var aoArm = [0.80, 0.90, 0.97, 0.93, 0.95, 1, 1, 1, 1];
-    var aoLeg = [0.92, 0.97, 1, 0.93, 0.95, 1, 1, 1, 1, 1];
+    // PREMIUM PASS: the same zones deepened one notch (neck end
+    // 0.88->0.81, arm root 0.80->0.75, hip crease 0.92->0.88) —
+    // vertex-colour data only; stations, radii and skin weights
+    // are untouched.
+    var aoTorso = [0.94, 1, 1, 1, 1, 1, 1, 0.99, 0.97, 0.95, 0.91, 0.88, 0.85, 0.81];
+    var aoArm = [0.75, 0.86, 0.96, 0.90, 0.94, 1, 1, 1, 1];
+    var aoLeg = [0.88, 0.95, 1, 0.90, 0.94, 1, 1, 1, 1, 1];
     var parts = [
       // torso capped at BOTH ends: the top cap seals the neck tube
       // under the head's neck funnel, so no camera angle can see
@@ -578,10 +592,23 @@
   // jaw/cheek = 0.90 at the jaw-angle ring, a single smooth curve
   // with no cheek->jaw break (the bald sample read as a pure egg).
   // Target: jaw width 0.78-0.84x cheek width at the jaw angle.
-  var JAWF = 0.26; // jaw taper depth
+  var JAWF = 0.26; // jaw taper depth (the 'oval' class centre)
   function headDims(p) {
     var r0 = p.u * HEAD_RF * p.headScale;
-    return { r0: r0, sx: 0.80, sy: 0.96, sz: 0.90, cy: p.u * 0.46 };
+    // FX6: seed jitter scales the three head axes (+-6% each, so
+    // no two seeded heads share an exact silhouette), and the jaw
+    // class rides along in the dims so EVERY consumer of the head
+    // cross-section (funnel, ears, hair shells) follows the same
+    // jaw. r0 itself never jitters — hats/eyewear are placed from
+    // r0 fractions and the face UV lives on the sphere, so the
+    // drawn features cannot drift.
+    var hj = p.headJit || [1, 1, 1];
+    return {
+      r0: r0, sx: 0.80 * hj[0], sy: 0.96 * hj[1], sz: 0.90 * hj[2], cy: p.u * 0.46,
+      jawF: p.jawF != null ? p.jawF : JAWF,
+      jawBump: p.jawBump != null ? p.jawBump : 0.012,
+      chinW: p.chinW != null ? p.chinW : 1
+    };
   }
   function ssF(e0, e1, x) { var t = (x - e0) / (e1 - e0); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
   function gF(x, c, s) { var d = (x - c) / s; return Math.exp(-d * d); }
@@ -594,7 +621,7 @@
   // real surface) and the hair shells (they must clear it).
   function headCross(ny, d) {
     var f = Math.sqrt(Math.max(0.0004, 1 - ny * ny));
-    return [d.r0 * d.sx * (1 - JAWF * jawT(ny)) * f, d.r0 * d.sz * f * 1.05];
+    return [d.r0 * d.sx * (1 - (d.jawF != null ? d.jawF : JAWF) * jawT(ny)) * f, d.r0 * d.sz * f * 1.05];
   }
 
   function buildHead(p, boneIndex) {
@@ -614,8 +641,13 @@
       var back = dz < 0 ? ssF(0.05, 0.85, -dz) : 0;
       var zs = d.sz * (1 + 0.14 * back * (ny > -0.55 ? 1 : 0.35));
       // round 2: a whisper of extra width right at the chin keeps
-      // the stronger jaw taper reading as a U, not a V point
-      var x = dx * r0 * d.sx * (1 - JAWF * jawT(ny)) * (1 + 0.05 * gF(ny, -0.88, 0.12));
+      // the stronger jaw taper reading as a U, not a V point.
+      // FX6: the taper depth is the character's JAW CLASS now
+      // (d.jawF) and the chin whisper scales with d.chinW (wide
+      // square chins, narrower tapered ones). jawT() is 0 above
+      // ny -0.10, so none of this touches the eye/brow band — the
+      // face UV area cannot shift (Stage C eyewear lesson).
+      var x = dx * r0 * d.sx * (1 - d.jawF * jawT(ny)) * (1 + 0.05 * d.chinW * gF(ny, -0.88, 0.12));
       var y = dy * r0 * d.sy;
       var z = dz * r0 * zs;
       // smooth radial relief, applied along the sphere normal
@@ -636,10 +668,13 @@
       rad -= 0.013 * (g2F(dx, ny, 0.60, -0.34, 0.17) +
                       g2F(dx, ny, -0.60, -0.34, 0.17)) * (0.45 + 0.55 * front);
       // round 2: jaw-angle corners — small bumps where the jaw
-      // turns under, so the U reads from the front
-      rad += 0.012 * (g2F(dx, ny, 0.47, -0.60, 0.16) +
+      // turns under, so the U reads from the front.
+      // FX6: bump strength is the jaw class (square jaws turn
+      // under HARD, tapered jaws barely) and the chin gaussian
+      // widens/narrows with d.chinW.
+      rad += d.jawBump * (g2F(dx, ny, 0.47, -0.60, 0.16) +
                       g2F(dx, ny, -0.47, -0.60, 0.16)) * (0.5 + 0.5 * front);
-      rad += 0.020 * g2F(dx, ny, 0, -0.86, 0.20) * front;              // chin (broad, rounded — iter-2)
+      rad += 0.020 * g2F(dx / d.chinW, ny, 0, -0.86, 0.20) * front;   // chin (broad, rounded — iter-2)
       // iter-2 structure vs the iter-1 "egg": parietal width high
       // on the skull, a slight temple inset, a flatter crown
       rad += 0.016 * (g2F(dx, ny, 0.80, 0.35, 0.20) + g2F(dx, ny, -0.80, 0.35, 0.20));
@@ -965,13 +1000,23 @@
               vy,
               -Math.sin(th) * rz - r * 0.035];
     }
-    var pos = [];
-    function tri(a, b, c) { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+    var pos = [], uvP = [];
+    // FX6: shells carry REAL uvs (azimuth x2 wraps, v = ring
+    // fraction) — the hair material's fibre-noise normal map
+    // needs uv variation to exist at all (the old all-zero uv
+    // sampled one texel = a flat normal). uvOf takes kk UNWRAPPED
+    // (kk+1 at the seam) so no quad stretches across the wrap.
+    function uvOf(kk, ri) { return [(kk / seg) * 2, rings.length > 1 ? ri / (rings.length - 1) : 0]; }
+    function tri(a, b, c, ua, ub, uc) {
+      pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+      uvP.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
+    }
     for (var ri = 0; ri < rings.length - 1; ri++) {
       for (var kk = 0; kk < seg; kk++) {
         var kN = (kk + 1) % seg;
         var a0 = vert(kk, ri), a1 = vert(kN, ri), b0 = vert(kk, ri + 1), b1 = vert(kN, ri + 1);
-        tri(a0, a1, b0); tri(b0, a1, b1); // same winding as tube(): outward
+        tri(a0, a1, b0, uvOf(kk, ri), uvOf(kk + 1, ri), uvOf(kk, ri + 1));
+        tri(b0, a1, b1, uvOf(kk, ri + 1), uvOf(kk + 1, ri), uvOf(kk + 1, ri + 1)); // same winding as tube(): outward
       }
     }
     // Apex ABOVE the head pole (cy + 1.06r) plus pad: at 0.99 the
@@ -980,21 +1025,24 @@
     // round-6 pole ring the final fan spans only ~padA of height:
     // a shallow rounded cap instead of a cone.
     var topPt = [0, cy + r * hd.sy + padA * 0.2, -r * 0.035], lastRi = rings.length - 1;
-    for (var kt = 0; kt < seg; kt++) tri(topPt, vert(kt, lastRi), vert((kt + 1) % seg, lastRi));
+    for (var kt = 0; kt < seg; kt++) tri(topPt, vert(kt, lastRi), vert((kt + 1) % seg, lastRi),
+      [0.5, 1], uvOf(kt, lastRi), uvOf(kt + 1, lastRi));
     // HEAD PASS: optional azimuth crop — keep only triangles whose
     // centroid azimuth |atan2(x, z)| <= opt.phiMax (front sector).
     // Used for the separate fringe piece of layered styles.
     if (opt.phiMax != null) {
-      var kept = [];
+      var kept = [], keptUv = [];
       for (var ti = 0; ti < pos.length; ti += 9) {
         var ccx = (pos[ti] + pos[ti + 3] + pos[ti + 6]) / 3;
         var ccz = (pos[ti + 2] + pos[ti + 5] + pos[ti + 8]) / 3;
-        if (Math.abs(Math.atan2(ccx, ccz)) <= opt.phiMax) for (var tk = 0; tk < 9; tk++) kept.push(pos[ti + tk]);
+        if (Math.abs(Math.atan2(ccx, ccz)) <= opt.phiMax) {
+          for (var tk = 0; tk < 9; tk++) kept.push(pos[ti + tk]);
+          for (var tu = 0; tu < 6; tu++) keptUv.push(uvP[(ti / 9) * 6 + tu]);
+        }
       }
-      pos = kept;
+      pos = kept; uvP = keptUv;
     }
-    var uvA = [];
-    for (var q2 = 0; q2 < pos.length / 3; q2++) uvA.push(0, 0);
+    var uvA = uvP;
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvA, 2));
@@ -1055,11 +1103,11 @@
   function hairGeometry(style, p) {
     p = baseParams(p);
     var hd = headDims(p), r = hd.r0, cy = hd.cy;
-    var cap = hairShell(p, { teeth: 0.14, teethSeed: 1 }); // APPEAL iter 2: deeper fringe teeth (iter-1 close-ups read the fringe as one straight helmet line)
+    var cap = hairShell(p, { teeth: 0.14, teethSeed: 1, lobe: 0.028 }); // APPEAL iter 2: deeper fringe teeth (iter-1 close-ups read the fringe as one straight helmet line); FX6: clumpier lobe
     var layer2 = hairShell(p, { padA: 0.15, rimF: 1.08, peak: 0.34, front: 0.42, temple: 0.34,
-      side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.07, teethSeed: 2, jit: 0.045 });
+      side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.13, teethSeed: 2, jit: 0.045 }); // FX6: teeth 0.07->0.13 — the front hairline must break, not shelf
     var fringe = hairShell(p, { padA: 0.085, rimF: 1.06, peak: 0.26, front: 0.30, temple: 0.26,
-      side: 0.24, back: 0.30, levels: [[0.34, 1.03], [0.48, 0.99], [0.62, 0.94], [0.78, 0.88]], teeth: 0.09, teethSeed: 3, phiMax: 1.05, jit: 0.02 });
+      side: 0.24, back: 0.30, levels: [[0.34, 1.03], [0.48, 0.99], [0.62, 0.94], [0.78, 0.88]], teeth: 0.15, teethSeed: 3, phiMax: 1.05, jit: 0.02 }); // FX6: teeth 0.09->0.15
     var parts = [];
     switch (style) {
       case 'bald': return null;
@@ -1116,6 +1164,68 @@
       case 'cap':
         parts.push(cap, layer2);
         parts.push(prim(new THREE.CylinderGeometry(r * 1.05, r * 1.05, r * 0.07, 14, 1, false, 0, Math.PI), 0, cy + r * 0.26, r * 0.50, 1, 1, 1.4, 0));
+        break;
+      // ---- FX6 styles: ASSEMBLED PIECES, not one helmet shell ----
+      case 'buzz':
+        // crew cut: ONE tight shell hugging the displaced head
+        // (pad 0.045r — the floor set by the head's own relief
+        // bumps, ~0.034r at the parietal/cheek fields; a tighter
+        // pad lets scalp poke through, probe-verified), rim cut
+        // high on sides/back. The read is
+        // the hairline STEP + two-tone paint against the skin —
+        // the silhouette stays close to the skull on purpose.
+        parts.push(hairShell(p, { padA: 0.0520, rimF: 1.04, peak: 0.34, front: 0.35, temple: 0.30,
+          side: 0.04, back: -0.10, levels: [[0.42, 1.03], [0.72, 0.97], [0.97, 0.50]],
+          teeth: 0.15, teethSeed: 7, lobe: 0.012, jit: 0.02 }));
+        break;
+      case 'undercut':
+        // short tight sides/back (same tight shell family as
+        // buzz, rim a touch lower) + a SEPARATE top mass whose
+        // rim ENDS HIGH — the visible step between the two shells
+        // is the undercut line; the top keeps jagged front teeth.
+        parts.push(hairShell(p, { padA: 0.0550, rimF: 1.04, peak: 0.36, front: 0.42, temple: 0.36,
+          side: 0.10, back: -0.02, levels: [[0.45, 1.03], [0.75, 0.97], [0.97, 0.50]],
+          teeth: 0.12, teethSeed: 8, lobe: 0.012, jit: 0.02 }));
+        parts.push(hairShell(p, { padA: 0.13, rimF: 1.10, peak: 0.52, front: 0.55, temple: 0.50,
+          side: 0.34, back: 0.22, levels: [[0.62, 1.05], [0.84, 0.86], [0.97, 0.50]],
+          teeth: 0.14, teethSeed: 9, lobe: 0.020, jit: 0.03 }));
+        break;
+      case 'messy':
+        parts.push(cap, layer2, fringe);
+        // tufts: small flattened wedges at deterministic tilts
+        // over the crown — their tips break the dome outline
+        // from the back and side (the FX6 silhouette test).
+        var tuftSeed = [[-0.40, 0.25, 0.16, 0.55], [0.32, 0.40, -0.12, -0.45], [0.03, 0.52, 0.30, 0.95],
+                        [-0.14, 0.46, -0.36, 0.25], [0.46, 0.14, 0.36, -0.85], [-0.30, 0.05, -0.42, 0.65]];
+        for (var tqi = 0; tqi < tuftSeed.length; tqi++) {
+          var tq = tuftSeed[tqi];
+          var tg = new THREE.BoxGeometry(r * 0.38, r * 0.17, r * 0.52);
+          tg.rotateX(tq[3] * 0.45); tg.rotateZ(tq[3]);
+          parts.push(prim(tg, r * tq[0], cy + r * (0.90 + tq[1] * 0.14), r * tq[2], 1, 1, 1, tq[3] * 0.7));
+        }
+        break;
+      case 'slick':
+        // combed back: hairline swept UP (rim high in front, no
+        // fringe piece) + one elongated ridge mass flowing from
+        // the crown toward the nape.
+        parts.push(hairShell(p, { padA: 0.075, rimF: 1.08, peak: 0.40, front: 0.46, temple: 0.38,
+          side: -0.02, back: -0.24, levels: [[0.40, 1.06], [0.68, 0.97], [0.97, 0.50]],
+          teeth: 0.05, teethSeed: 10, lobe: 0.016, jit: 0.025 }));
+        var sg = new THREE.SphereGeometry(r * 0.70, 10, 6);
+        sg.rotateX(-0.30); sg.scale(0.62, 0.36, 1.18);
+        parts.push(prim(sg, 0, cy + r * 0.78, -r * 0.10, 1, 1, 1, 0));
+        break;
+      case 'bob':
+        parts.push(cap);
+        // jaw-length panels with a nearly STRAIGHT hem (teeth
+        // ~0 — a cut edge, not strands) on both sides + back,
+        // plus a straight-across fringe piece.
+        parts.push(panelGeo(p, { phiC: Math.PI / 2, phiW: 0.60, rimNy: -0.02, len: 1.00, pad: 0.09, teeth: 0.012, seed: 21 }));
+        parts.push(panelGeo(p, { phiC: -Math.PI / 2, phiW: 0.60, rimNy: -0.02, len: 1.00, pad: 0.09, teeth: 0.012, seed: 22 }));
+        parts.push(panelGeo(p, { phiC: Math.PI, phiW: 0.80, rimNy: -0.05, len: 1.06, pad: 0.09, teeth: 0.012, seed: 23 }));
+        parts.push(hairShell(p, { padA: 0.085, rimF: 1.06, peak: 0.28, front: 0.32, temple: 0.28,
+          side: 0.24, back: 0.30, levels: [[0.34, 1.03], [0.48, 0.99], [0.62, 0.94], [0.78, 0.88]],
+          teeth: 0.02, teethSeed: 24, phiMax: 1.05, jit: 0.015 }));
         break;
       default: parts.push(cap, layer2);
     }

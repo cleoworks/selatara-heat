@@ -42,15 +42,20 @@
   function css(hex) { return '#' + ('000000' + hex.toString(16)).slice(-6); }
 
   // ---- materials (shared / cached) ---------------------------------------
-  // APPEAL PASS shading lock: SOFT TOON everywhere on characters.
-  // One shared 4-step gradient ramp (LinearFilter = soft steps, no
-  // hard cel edge, never flat) drives every character material;
-  // there is NO specular highlight on skin/cloth/hair anymore (the
-  // old MeshStandardMaterial sheen read as plastic). All character
-  // materials are vertexColors:true — every geometry that reaches
-  // them carries a colour attribute (body/cloth are painted per
-  // ring with fake AO; hair is painted two-tone; plain accessories
-  // get a white fill in attach()).
+  // FX2 SHADING UPGRADE (user spec, supersedes the Appeal toon lock):
+  // characters now shade with MeshStandardMaterial — flatShading
+  // FALSE, roughness 0.8, metalness 0 — so light rolls smoothly
+  // across the body instead of snapping through the old 4-step toon
+  // ramp (the flat chalk "crayon" fill). Everything stylized is
+  // KEPT: the Appeal face/expression textures, the baked vertex AO,
+  // the two-tone hair paint, the warm rim shells and the outline.
+  // All character materials are vertexColors:true — every geometry
+  // that reaches them carries a colour attribute (body/cloth are
+  // painted per ring with fake AO; hair is painted two-tone; plain
+  // accessories get a white fill in attach()).
+  // RETIRED by FX2: the 4-step toon gradient ramp. Kept defined so
+  // any stale reference fails loud instead of silently; no material
+  // samples it anymore (see the FX2 shading note above).
   var RAMP = (function () {
     var steps = [118, 168, 216, 255], data = new Uint8Array(steps.length * 4);
     for (var i = 0; i < steps.length; i++) {
@@ -62,21 +67,154 @@
     return t;
   })();
   var matCache = {};
+  // FX PARITY (round 1, kept): character materials opt OUT of the
+  // game's post grade — the game renderer runs ACES tone mapping
+  // (the lab runs none) and scene fog exists only in the game.
+  // toneMapped:false + fog:false keep the shared factory shading
+  // consistent between lab and game. FX2 added envMapIntensity
+  // 0.35 on standard materials: the game's PMREM sky may kiss the
+  // characters with a whisper of environment light, never the old
+  // full-strength wash (the lab has no environment; the flag is a
+  // no-op there). PREMIUM PASS raised it to 0.6 on measured A/B:
+  // at the pants close-up, 0.35->0.6 moves 47.9% of region pixels
+  // with mean |delta| 4.5 and ZERO pixels beyond delta 30 (no
+  // specular sparkle of the ronde-3 class), while 0.85 produced
+  // 5,249 pixels beyond 30 (max 38) and was rejected.
+  function charGrade(m) { m.toneMapped = false; m.fog = false; if ('envMapIntensity' in m) m.envMapIntensity = 0.6; return m; }
   function mat(color, rough, opts) {
     var key = color + '|' + (opts && opts.key || '');
     if (matCache[key]) return matCache[key];
-    var m = new THREE.MeshToonMaterial({ color: color, gradientMap: RAMP, vertexColors: true, side: THREE.DoubleSide });
-    if (opts && opts.flat) m.flatShading = true;
+    var m = new THREE.MeshStandardMaterial({ color: color, roughness: (rough != null ? rough : 0.8), metalness: 0, flatShading: false, vertexColors: true, side: THREE.DoubleSide });
+    charGrade(m);
     matCache[key] = m; return m;
   }
-  var bodyMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP });
+  var bodyMat = charGrade(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, flatShading: false }));
   var darkMat = mat(0x14161c, 0.5);
 
+  // ---- PREMIUM PASS: procedural fabric micro-textures ------------------
+  // After FX2/FX3 the shading is clean, but garments still read as
+  // plain plastic action-figure shells: a perfectly uniform
+  // roughness lets light sheet across cloth like vinyl. Real fabric
+  // breaks reflections at THREAD scale. These two shared
+  // CanvasTextures are generated ONCE from a deterministic integer
+  // hash (lab and game build identical maps; no assets, no network,
+  // no geometry added):
+  //   fabricRoughTex  — grayscale weave: thread crowns and valleys
+  //     sit at different roughness, so highlights vary per thread
+  //     instead of rolling flat across the chest.
+  //   fabricNormalTex — the same weave height field converted to a
+  //     tangent-space normal map (Sobel), low strength: the surface
+  //     gains a woven hand under raking light.
+  // They hang on every patternMat material (tops, bottoms, skirts,
+  // hijab cloth) with their OWN repeat — the printed/detail map
+  // keeps its 1x transform (per-texture transforms, three r159).
+  // Weave pitch: 4 px period on a 256 canvas, repeated 9x6 over
+  // the loft UV — ~1.3 mm per thread around the chest: invisible
+  // as a pattern at gameplay distance, present as micro-variation
+  // in close-up. Mipmaps average it out with distance.
+  var fabricRoughTex = null, fabricNormalTex = null;
+  function fabricMaps() {
+    if (fabricRoughTex) return;
+    var S = 256, PER = 4;
+    function hash2(x, y) {
+      var h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    }
+    // Plain-weave height field: alternating over/under threads; the
+    // exposed thread bulges (sine profile) and carries a per-thread
+    // fibre streak, so no two threads are identical.
+    var H = new Float32Array(S * S), x, y, i;
+    for (y = 0; y < S; y++) for (x = 0; x < S; x++) {
+      var cx = Math.floor(x / PER), cy = Math.floor(y / PER);
+      var fx = (x - cx * PER) / PER, fy = (y - cy * PER) / PER;
+      var over = ((cx + cy) & 1) === 0;
+      var prof = over ? Math.sin(fx * Math.PI) : Math.sin(fy * Math.PI);
+      var streak = over ? hash2(cx * 7 + 1, Math.floor(y / 2)) : hash2(Math.floor(x / 2), cy * 7 + 3);
+      H[y * S + x] = prof * 0.80 + streak * 0.14 + (hash2(x, y) - 0.5) * 0.10;
+    }
+    // Roughness: valleys grip light (rougher), crowns a touch
+    // smoother; centre ~0.77 — patternMat sets material roughness
+    // to 1.0 so this map carries the value (was a flat 0.8).
+    var rc = document.createElement('canvas'); rc.width = rc.height = S;
+    var rctx = rc.getContext('2d'), rimg = rctx.createImageData(S, S);
+    for (i = 0; i < S * S; i++) {
+      var rv = 201 + (0.5 - H[i]) * 52 + (hash2(i % S, Math.floor(i / S)) - 0.5) * 14;
+      rv = Math.max(158, Math.min(242, Math.round(rv)));
+      rimg.data[i * 4] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = rv; rimg.data[i * 4 + 3] = 255;
+    }
+    rctx.putImageData(rimg, 0, 0);
+    fabricRoughTex = new THREE.CanvasTexture(rc);
+    // Normal map: Sobel gradient of the same height field,
+    // wrap-sampled so the tile stays seamless.
+    var nc = document.createElement('canvas'); nc.width = nc.height = S;
+    var nctx = nc.getContext('2d'), nimg = nctx.createImageData(S, S);
+    function hAt(x2, y2) { return H[((y2 + S) % S) * S + ((x2 + S) % S)]; }
+    for (y = 0; y < S; y++) for (x = 0; x < S; x++) {
+      var tl = hAt(x - 1, y - 1), tm = hAt(x, y - 1), tr = hAt(x + 1, y - 1);
+      var ml = hAt(x - 1, y), mr = hAt(x + 1, y);
+      var bl = hAt(x - 1, y + 1), bm = hAt(x, y + 1), br = hAt(x + 1, y + 1);
+      var gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
+      var gy = (bl + 2 * bm + br) - (tl + 2 * tm + tr);
+      var nx = gx * 1.35, ny = -gy * 1.35, nz = 1;
+      var il = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+      var o = (y * S + x) * 4;
+      nimg.data[o] = Math.round((nx * il * 0.5 + 0.5) * 255);
+      nimg.data[o + 1] = Math.round((ny * il * 0.5 + 0.5) * 255);
+      nimg.data[o + 2] = Math.round((nz * il * 0.5 + 0.5) * 255);
+      nimg.data[o + 3] = 255;
+    }
+    nctx.putImageData(nimg, 0, 0);
+    fabricNormalTex = new THREE.CanvasTexture(nc);
+    [fabricRoughTex, fabricNormalTex].forEach(function (t) {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(9, 6);
+      t.anisotropy = 8;
+    });
+  }
+
+  // FX6: fine fibre-noise normal map for hair, generated ONCE
+  // with the same deterministic-hash canvas technique as
+  // fabricMaps() — anisotropic streaks stretched along v, so
+  // light breaks like strands instead of one plastic cap. The
+  // shells carry real uvs since FX6 (rig.hairShell); panels and
+  // prim pieces always did.
+  var hairNoiseTex = null;
+  function hairMaps() {
+    if (hairNoiseTex) return;
+    function hash2(x, y) {
+      var h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    }
+    var S = 256, x, y, i;
+    var H = new Float32Array(S * S);
+    for (y = 0; y < S; y++) for (x = 0; x < S; x++) {
+      H[y * S + x] = 0.55 * hash2(x >> 1, y) + 0.45 * hash2(x, y >> 2);
+    }
+    var nc = document.createElement('canvas'); nc.width = nc.height = S;
+    var nctx = nc.getContext('2d'), nimg = nctx.createImageData(S, S), nd = nimg.data;
+    function hAt(x2, y2) { return H[((y2 + S) % S) * S + ((x2 + S) % S)]; }
+    for (y = 0; y < S; y++) for (x = 0; x < S; x++) {
+      var gx = (hAt(x - 1, y) - hAt(x + 1, y)) * 1.1;
+      var gy = (hAt(x, y - 1) - hAt(x, y + 1)) * 1.1;
+      var inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
+      i = (y * S + x) * 4;
+      nd[i] = (-gx * inv * 0.5 + 0.5) * 255; nd[i + 1] = (-gy * inv * 0.5 + 0.5) * 255;
+      nd[i + 2] = inv * 255; nd[i + 3] = 255;
+    }
+    nctx.putImageData(nimg, 0, 0);
+    hairNoiseTex = new THREE.CanvasTexture(nc);
+    hairNoiseTex.wrapS = hairNoiseTex.wrapT = THREE.RepeatWrapping;
+    hairNoiseTex.repeat.set(3, 2); hairNoiseTex.anisotropy = 4;
+  }
+  hairMaps();
   // APPEAL PASS hair: ONE shared toon material; the colour lives in
   // the vertices (base tone + a lighter curved band over the crown
   // baked by paintHair) — the band IS the soft highlight the style
   // lock asks for, never a metal/plastic specular streak.
-  var hairMatShared = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP, side: THREE.DoubleSide });
+  // FX6: roughness 0.9 (spec) + the fibre normal map above.
+  var hairMatShared = charGrade(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: false, side: THREE.DoubleSide, normalMap: hairNoiseTex, normalScale: new THREE.Vector2(0.55, 0.55) }));
   // HEAD PASS round 2: buildFaceGear + the eye/iris materials are
   // REMOVED with rig.faceGear — the face is texture-drawn now
   // (simplify clause; see faceTexture below).
@@ -179,7 +317,17 @@
     var tex = new THREE.CanvasTexture(cv);
     tex.anisotropy = 8;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-    var m = new THREE.MeshToonMaterial({ map: tex, gradientMap: RAMP, vertexColors: true, side: THREE.DoubleSide });
+    var m = charGrade(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, metalness: 0, flatShading: false, vertexColors: true, side: THREE.DoubleSide }));
+    // PREMIUM PASS: every cloth material carries the procedural
+    // fabric micro-textures (see fabricMaps above) — roughnessMap
+    // breaks the flat plastic reflection, the weave normalMap adds
+    // the woven hand. Material roughness goes to 1.0 because the
+    // map carries the ~0.77 centre (was a uniform 0.8).
+    fabricMaps();
+    m.roughnessMap = fabricRoughTex;
+    m.normalMap = fabricNormalTex;
+    m.normalScale = new THREE.Vector2(0.5, 0.5);
+    m.roughness = 1.0;
     patternCache[key] = m; return m;
   }
   function clothMat(spec) {
@@ -204,8 +352,25 @@
   // the 3D eye/brow gear are deleted), mouth line + lower-lip hint,
   // very soft blush. High contrast so features read at 3 m.
   // Expression variants (f.expr) swap the texture.
+  // FX6 — generateFaceTexture(archetypeSpec, skinHex): the same
+  // flat canvas, developed: brows are filled TAPERED blades with
+  // a seed-varied thickness and a sharper dive toward the nose
+  // (f.browThick / f.browDive); irises carry a seed colour (browns
+  // and blacks common, blue rare — f.irisColor) with pupil + main
+  // catchlight + a whisper second catchlight; the nose side
+  // shading is firmer (still texture only); f.stubble adds a light
+  // jaw shadow + deterministic speckle for the macho roles; soft
+  // temple and under-cheekbone shading deepen the face planes.
+  // Feature POSITIONS never move (eyes at canvas 64+-13.5, brow
+  // anchor rows, mouth row) — the Stage C eyewear alignment and
+  // the head displacement's eye band depend on them.
+  // CACHE: one texture per full spec (archetype face + the seed
+  // variation the factory bakes into it + expression) — the
+  // cache key is the spec itself, and setExpression() re-enters
+  // through the same key space, so a texture is generated once
+  // per (archetype, seed, expression) and never per frame.
   var faceCache = {};
-  function faceTexture(f, skinHex) {
+  function generateFaceTexture(f, skinHex) {
     var key = JSON.stringify(f) + '|' + skinHex;
     if (faceCache[key]) return faceCache[key];
     var cv = document.createElement('canvas'); cv.width = cv.height = 512;
@@ -233,6 +398,19 @@
     }
     warm(64, 142, 7, 0.10);
     warm(159, 141, 30, 0.09);
+    // FX6: face-plane shading — a soft shadow kiss at each temple
+    // and under each cheekbone, so the flat face carries a hint of
+    // bone structure at game distance (alphas stay low: this is
+    // plane modelling, not makeup). Drawn before the features so
+    // brows/eyes/blush sit cleanly on top.
+    function planeShade(x, y, r, a) {
+      var pg = c.createRadialGradient(x, y, 1, x, y, r);
+      pg.addColorStop(0, 'rgba(74,40,18,' + a + ')');
+      pg.addColorStop(1, 'rgba(74,40,18,0)');
+      c.fillStyle = pg; c.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    planeShade(31, 103, 13, 0.055); planeShade(97, 103, 13, 0.055);   // temples
+    planeShade(36, 131, 10, 0.055); planeShade(92, 131, 10, 0.055);   // under cheekbones
     // under-jaw AO: a soft shadow where the jaw meets the neck
     var jg = c.createLinearGradient(0, 168, 0, 198);
     jg.addColorStop(0, 'rgba(60,30,12,0)'); jg.addColorStop(1, 'rgba(60,30,12,0.12)');
@@ -241,13 +419,36 @@
     // APPEAL PASS: features sit WIDER than realistic (eye centres
     // at +-13.5 in 256-space, was +-12) over a smaller, rounder
     // lower face — the friendly stylized read.
-    var browCol = f.browColor != null ? css(f.browColor) : '#2b1d12';
-    c.strokeStyle = browCol; c.globalAlpha = 0.92; c.lineWidth = 5.5; c.lineCap = 'round';
+    // FX6: filled TAPERED BLADES instead of round-cap strokes —
+    // thick through the outer two-thirds, narrowing toward the
+    // nose, thickness varied per seed (f.browThick) and the inner
+    // end pulled DOWN by f.browDive so the brow dives sharply
+    // toward the nose. Anchor rows unchanged; only the mark got
+    // stronger.
+    // FX6 iteration 2 (lab verdict): brows drawn in the raw hair
+    // colour went PALE on light/mid hair rolls — tan planks on
+    // dark skin, contrast gone. Brows render DARKENED toward the
+    // hair hue (x0.5, like real brows vs head hair), so the blade
+    // reads on every skin/hair combination.
+    var browCol = f.browColor != null ? css(new THREE.Color(f.browColor).multiplyScalar(0.5).getHex()) : '#2b1d12';
+    c.fillStyle = browCol; c.globalAlpha = 0.94;
+    var browThick = 3.1 * (f.browThick || 1);
+    var browDive = (f.browDive || 0) * 2.4;
     function brow(cx, mirror, yOut, yMid, yIn) {
+      var x0 = cx + mirror * 8.5, x1 = cx, x2 = cx - mirror * 8.5, y2 = yIn + browDive;
+      var top = [], bot = [], N = 9, s, px, py, tt, half;
+      for (s = 0; s <= N; s++) {
+        tt = s / N;
+        px = (1 - tt) * (1 - tt) * x0 + 2 * (1 - tt) * tt * x1 + tt * tt * x2;
+        py = (1 - tt) * (1 - tt) * yOut + 2 * (1 - tt) * tt * yMid + tt * tt * y2;
+        half = browThick * (1.12 - 0.78 * tt);
+        top.push([px, py - half]); bot.push([px, py + half]);
+      }
       c.beginPath();
-      c.moveTo(cx + mirror * 8.5, yOut);
-      c.quadraticCurveTo(cx, yMid, cx - mirror * 8.5, yIn);
-      c.stroke();
+      c.moveTo(top[0][0], top[0][1]);
+      for (s = 1; s <= N; s++) c.lineTo(top[s][0], top[s][1]);
+      for (s = N; s >= 0; s--) c.lineTo(bot[s][0], bot[s][1]);
+      c.closePath(); c.fill();
     }
     if (expr === 'angry') { brow(50.5, 1, 105, 103.5, 111.5); brow(77.5, -1, 105, 103.5, 111.5); }
     else if (expr === 'surprised') { brow(50.5, 1, 106, 98.5, 105); brow(77.5, -1, 106, 98.5, 105); }
@@ -266,12 +467,18 @@
       c.fillStyle = '#f2ede4';
       c.beginPath(); c.ellipse(cx, 121, 7.4, ry, 0, 0, 7); c.fill();
       var iy = f.eyes === 'sleepy' ? 121.8 : 121;
-      c.fillStyle = '#2e1a0c';
+      // FX6: the iris carries the character's seed colour
+      // (browns/blacks common, blue rare — rolled by the factory);
+      // pupil + main catchlight + a whisper second catchlight.
+      c.fillStyle = f.irisColor || '#2e1a0c';
       c.beginPath(); c.arc(cx, iy, 4.3, 0, 7); c.fill();
       c.fillStyle = '#0d0603';
       c.beginPath(); c.arc(cx, iy, 2.3, 0, 7); c.fill();
       c.fillStyle = '#ffffff';
       c.beginPath(); c.arc(cx - 1.6, iy - 1.8, 1.4, 0, 7); c.fill();
+      c.globalAlpha = 0.45;
+      c.beginPath(); c.arc(cx + 1.9, iy + 1.6, 0.8, 0, 7); c.fill();
+      c.globalAlpha = 1;
       if (f.eyes === 'sleepy') { // lid band over the top of the eye
         c.fillStyle = css(skinHex); c.fillRect(cx - 7.8, 114.4, 15.6, 5.2);
       }
@@ -280,15 +487,21 @@
       c.beginPath(); c.ellipse(cx, 121, 7.7, ry + 0.4, 0, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
     }
     eye(50.5); eye(77.5);
-    // nose: soft side shading ONLY (no 3D nose) — a slightly
-    // stronger side shadow than round 1 (Iterasi 2 asks for it),
-    // a soft shadow under the tip, and the two nostril dots
+    // nose: soft side shading ONLY (no 3D nose) — FX6 firms the
+    // shading up so the nose reads PROMINENT (mancung) at game
+    // distance: a deeper bridge shadow, a soft light kiss on the
+    // bridge's lit side, a stronger under-tip shadow and firmer
+    // nostril dots. Still pure texture — the geometry nose stays
+    // forbidden (round-1 doll verdict).
     var ng = c.createLinearGradient(60, 0, 69, 0);
-    ng.addColorStop(0, 'rgba(60,30,10,0)'); ng.addColorStop(0.5, 'rgba(60,30,10,0.10)'); ng.addColorStop(1, 'rgba(60,30,10,0)');
-    c.fillStyle = ng; c.fillRect(59, 126, 10, 17);
-    c.fillStyle = 'rgba(60,30,10,0.13)';
+    ng.addColorStop(0, 'rgba(60,30,10,0)'); ng.addColorStop(0.5, 'rgba(60,30,10,0.17)'); ng.addColorStop(1, 'rgba(60,30,10,0)');
+    c.fillStyle = ng; c.fillRect(58.5, 125, 11, 18);
+    var nhl = c.createLinearGradient(61, 0, 64.5, 0);
+    nhl.addColorStop(0, 'rgba(255,226,196,0)'); nhl.addColorStop(0.5, 'rgba(255,226,196,0.10)'); nhl.addColorStop(1, 'rgba(255,226,196,0)');
+    c.fillStyle = nhl; c.fillRect(61, 126, 3.5, 15);
+    c.fillStyle = 'rgba(60,30,10,0.18)';
     c.beginPath(); c.ellipse(64, 146.5, 4.6, 1.7, 0, 0, 7); c.fill();
-    c.fillStyle = 'rgba(50,26,12,0.38)';
+    c.fillStyle = 'rgba(50,26,12,0.45)';
     c.beginPath(); c.arc(60.5, 144, 1.15, 0, 7); c.arc(67.5, 144, 1.15, 0, 7); c.fill();
     // mouth — one simple line with a slight curve, driven by the
     // resolved expression (strong enough to read at 2 m)
@@ -331,6 +544,28 @@
       bg.addColorStop(0, 'rgba(28,18,12,0)'); bg.addColorStop(0.4, 'rgba(28,18,12,0.12)'); bg.addColorStop(1, 'rgba(28,18,12,0.24)');
       c.fillStyle = bg; c.fillRect(42, 154, 44, 52);
     }
+    if (f.stubble) {
+      // FX6: THIN stubble + jaw line for the macho roles — a
+      // much lighter jaw shadow than f.beard (max alpha 0.10 vs
+      // 0.24) broken up by deterministic speckle, plus one soft
+      // stroke along the jaw curve so the jaw edge reads. The
+      // speckle hash is seeded (f.stubSeed) so the cached texture
+      // is stable and every seed wears a different stubble.
+      var sg2 = c.createLinearGradient(0, 154, 0, 202);
+      sg2.addColorStop(0, 'rgba(26,16,10,0)'); sg2.addColorStop(0.45, 'rgba(26,16,10,0.055)'); sg2.addColorStop(1, 'rgba(26,16,10,0.10)');
+      c.fillStyle = sg2; c.fillRect(43, 154, 42, 50);
+      var stubState = (f.stubSeed || 1234567) >>> 0;
+      function stubRnd() { stubState = (stubState * 1664525 + 1013904223) >>> 0; return stubState / 4294967296; }
+      for (var si = 0; si < 300; si++) {
+        var sx2 = 45 + stubRnd() * 38, sy2 = 152 + stubRnd() * 46;
+        var jawHalf = 20 - (sy2 - 152) * 0.16;
+        if (Math.abs(sx2 - 64) > jawHalf) continue;
+        c.fillStyle = 'rgba(24,14,8,' + (0.05 + stubRnd() * 0.09).toFixed(3) + ')';
+        c.beginPath(); c.arc(sx2, sy2, 0.55, 0, 7); c.fill();
+      }
+      c.strokeStyle = 'rgba(40,22,10,0.13)'; c.lineWidth = 1.6; c.lineCap = 'round';
+      c.beginPath(); c.arc(64, 138, 27, Math.PI * 0.28, Math.PI * 0.72); c.stroke();
+    }
     if (f.wrinkles) {
       c.strokeStyle = 'rgba(70,40,20,0.22)'; c.lineWidth = 1.3;
       c.beginPath(); c.moveTo(47, 99); c.quadraticCurveTo(64, 95.5, 81, 99); c.stroke();
@@ -363,6 +598,32 @@
   }
   function tubePart(stations, boneIndex, capEnd) {
     return Rig.tube(stations, boneIndex, 10, false, !!capEnd);
+  }
+
+  // PREMIUM PASS fake AO, azimuthal: Rig.shadePart works per RING,
+  // but the armpit crease lives at the SIDES of specific torso
+  // rings — the band where the sleeve exits and the arm hangs
+  // against the body. This pass darkens only the side vertices of
+  // the armpit-band rings of an already-shaded part (side-ness read
+  // back from the tube's own u coordinate: u 0 / 0.5 are the two
+  // flanks). Vertex colour data only — no geometry is touched.
+  // Local rings 5..9 of the top copy are torso stations 6..10
+  // (upper chest -> slope -> neck taper); the weight peaks at
+  // local 7 (station 8, mid-slope, level with the arm exit).
+  function armpitAO(part, ringVerts) {
+    if (!part.col || !part.uv) return part;
+    var band = { 5: 0.30, 6: 0.65, 7: 1.0, 8: 0.80, 9: 0.40 };
+    var DEPTH = 0.13;
+    var n = part.pos.length / 3;
+    for (var i = 0; i < n; i++) {
+      var w = band[Math.floor(i / ringVerts)];
+      if (!w) continue;
+      var u = part.uv[i * 2];
+      var side = Math.abs(Math.cos(u * Math.PI * 2));
+      var f = 1 - DEPTH * w * side * side;
+      part.col[i * 3] *= f; part.col[i * 3 + 1] *= f; part.col[i * 3 + 2] *= f;
+    }
+    return part;
   }
 
   var WHITE = [1, 1, 1];
@@ -437,8 +698,13 @@
       // APPEAL PASS fake AO on cloth: hem slightly shaded, the
       // under-collar rings (local 9-10) darkest — the collar zone
       // must read as a fold, not a flat tube top.
-      var parts = [Rig.shadePart(Rig.tube(topSts, boneIndex, 10, false, false), WHITE,
-        [0.97, 1, 1, 1, 1, 1, 1, 1, 1, 0.94, 0.90], 11)];
+      // PREMIUM PASS: the whole AO set is deepened one notch (hem
+      // 0.97->0.94, under-collar 0.94/0.90 -> 0.90/0.84) and the
+      // armpit band gets its azimuthal pass (armpitAO) — the SSAO
+      // substitute the pass brief allows: baked occlusion where
+      // cloth folds against the body, zero runtime cost.
+      var parts = [armpitAO(Rig.shadePart(Rig.tube(topSts, boneIndex, 10, false, false), WHITE,
+        [0.94, 1, 1, 1, 1, 1, 1, 1, 1, 0.90, 0.84], 11), 11)];
       // Iterasi 2 (user spec): a short sleeve follows the upper
       // arm at +1 cm and its hem hangs 2-3 cm ABOVE THE ELBOW —
       // arm station 3 sits at elbowY+0.012H (~2.1 cm), so the
@@ -485,9 +751,13 @@
         // and crosses the torso wall transversally (a seam line,
         // not the near-parallel graze that streaks).
         // APPEAL PASS fake AO: armpit root darkest, elbow dip.
+        // PREMIUM PASS: deepened (root 0.85->0.78, first visible
+        // ring 0.93->0.85, second 1->0.94, elbow 0.94->0.92) so the
+        // sleeve head sits IN the armpit shadow with the torso
+        // band from armpitAO instead of floating on top of it.
         var slv = sts.concat(sub), slvF = [];
         for (var fi = 0; fi < slv.length; fi++)
-          slvF.push(fi === 0 ? 0.85 : fi === 1 ? 0.93 : fi === Math.min(4, slv.length - 2) ? 0.94 : 1);
+          slvF.push(fi === 0 ? 0.78 : fi === 1 ? 0.85 : fi === 2 ? 0.94 : fi === Math.min(4, slv.length - 2) ? 0.92 : 1);
         return Rig.shadePart(Rig.tube(slv, boneIndex, 10, true, false), WHITE, slvF, 11);
       }
       if (sleeveTo >= 0) {
@@ -504,7 +774,7 @@
         // covers most of that funnel.
         var colSt = [Rig.st(0, j.neckY - 0.026 * H, 0, 0.040 * H, 0.040 * H, 'neck'),
                      Rig.st(0, j.neckY + 0.020 * H, 0, 0.038 * H, 0.038 * H, 'neck', 'head', 0.3)];
-        parts.push(Rig.shadePart(tubePart(colSt, boneIndex), WHITE, [0.92, 0.96], 11));
+        parts.push(Rig.shadePart(tubePart(colSt, boneIndex), WHITE, [0.86, 0.93], 11));
       }
       meshes.push(clothMesh(parts, boneIndex, clothMat(top)));
     }
@@ -524,7 +794,7 @@
         Rig.st(0, j.pelvisY - 0.160 * H, 0, hipRxS + 0.085, hipRzS + 0.058, 'thighL', 'thighR', 0.5),
         Rig.st(0, j.pelvisY - 0.260 * H, 0, hipRxS + 0.125, hipRzS + 0.082, 'thighL', 'thighR', 0.5)
       ];
-      meshes.push(clothMesh([Rig.shadePart(tubePart(sk, boneIndex), WHITE, [0.96, 1, 1, 1, 1], 11)], boneIndex, clothMat(bottom)));
+      meshes.push(clothMesh([Rig.shadePart(tubePart(sk, boneIndex), WHITE, [0.93, 1, 1, 1, 1], 11)], boneIndex, clothMat(bottom)));
       meshes.push(clothMesh([Rig.paintPart(tubePart(subStations(S.legL, 4, 6, 0.004), boneIndex), WHITE),
                              Rig.paintPart(tubePart(subStations(S.legR, 4, 6, 0.004), boneIndex), WHITE)], boneIndex, mat(0x333333, 0.8)));
     } else if (bottom && bottom.type !== 'none') {
@@ -550,9 +820,11 @@
       });
       // APPEAL PASS fake AO: waistband shaded under the shirt hem,
       // knee dip on the leg tubes (station 3).
-      var pantsF = [0.96, 1, 1, 0.93, 0.95, 1, 1, 1];
+      // PREMIUM PASS: deepened (waistband 0.95->0.90 / 0.97->0.94,
+      // leg top ring 0.96->0.93, knee 0.93->0.90).
+      var pantsF = [0.93, 1, 1, 0.90, 0.94, 1, 1, 1];
       meshes.push(clothMesh([
-        Rig.shadePart(tubePart(subStations(S.torso, 0, 2, 0.009), boneIndex), WHITE, [0.95, 0.97, 1], 11),
+        Rig.shadePart(tubePart(subStations(S.torso, 0, 2, 0.009), boneIndex), WHITE, [0.90, 0.94, 1], 11),
         Rig.shadePart(tubePart(pantsL, boneIndex), WHITE, pantsF, 11),
         Rig.shadePart(tubePart(pantsR, boneIndex), WHITE, pantsF, 11)], boneIndex, clothMat(bottom)));
       // Thin belt band sealing the shirt/pants junction (the
@@ -670,8 +942,9 @@
     c.fillStyle = fg; c.font = 'bold 21px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(text, 64, 17);
     var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.Mesh(new THREE.PlaneGeometry(0.105, 0.026),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }));
+    var pm = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 });
+    pm.toneMapped = false; pm.fog = false; pm.envMapIntensity = 0; // FX parity (see charGrade)
+    return new THREE.Mesh(new THREE.PlaneGeometry(0.105, 0.026), pm);
   }
 
   function buildAccessories(char, wear, r) {
@@ -733,10 +1006,23 @@
       lensGeo.scale(headR * lw, headR * lh, headR * 0.05);
       var rimGeo = new THREE.TorusGeometry(1, 0.085, 6, 22);
       rimGeo.scale(headR * lw * 1.03, headR * lh * 1.03, headR * lw);
-      var ey = headCY + headR * 0.083;
+      // FX6 FIX — the Stage C anchor constants above (x 0.231,
+      // y +0.083) were derived for the pre-Appeal face (eyes at
+      // canvas 64+-12); the Appeal face widened the eyes to
+      // 64+-13.5 and the pair render (fx6-eyepair.png: same seed
+      // with vs without sunglasses) proved the lenses sat ~19 mm
+      // low and ~7 mm in. Anchors are now computed from the same
+      // headDims the head was built with (FX6 jitter included):
+      // eye x from the UV azimuth sin((13.5/256)*2pi) = 0.3253,
+      // eye z from the measured surface point, y raised by the
+      // render-measured delta.
+      var hdA = Rig.headDims(p);
+      var ex = hdA.r0 * hdA.sx * 0.3253;
+      var ez = hdA.r0 * hdA.sz * 0.9457;
+      var ey = headCY + headR * 0.133;
       [-1, 1].forEach(function (s) {
-        attach(b.head, lensGeo, lensMaterial, s * headR * 0.231, ey, headR * 0.868);
-        attach(b.head, rimGeo, rimMaterial, s * headR * 0.231, ey, headR * 0.878);
+        attach(b.head, lensGeo, lensMaterial, s * ex, ey, ez - headR * 0.004);
+        attach(b.head, rimGeo, rimMaterial, s * ex, ey, ez + headR * 0.006);
         // temple arm: one straight thin bar from the frame's
         // outer edge (x 0.40, z 0.86) back to the ear (x 0.80,
         // z 0.02); its middle rides inside the head's elliptical
@@ -744,13 +1030,15 @@
         // disappear into hair — the visible front stub and the
         // ear tip carry the read.
         attach(b.head, new THREE.BoxGeometry(headR * 0.026, headR * 0.030, headR * 0.93),
-          rimMaterial, s * headR * 0.60, headCY + headR * 0.10, headR * 0.44, 0, s * 2.697, 0);
+          rimMaterial, s * headR * 0.60, ey + headR * 0.017, headR * 0.44, 0, s * 2.697, 0);
       });
       attach(b.head, new THREE.BoxGeometry(headR * 0.15, headR * 0.032, headR * 0.028),
-        rimMaterial, 0, headCY + headR * 0.118, headR * 0.878);
+        rimMaterial, 0, ey + headR * 0.035, ez + headR * 0.006);
     }
     if (has('glasses')) {
-      eyewear(new THREE.MeshStandardMaterial({ color: 0xcfe0e8, roughness: 0.12, transparent: true, opacity: 0.45 }),
+      var lensMat = new THREE.MeshStandardMaterial({ color: 0xcfe0e8, roughness: 0.12, transparent: true, opacity: 0.45 });
+      lensMat.toneMapped = false; lensMat.fog = false; lensMat.envMapIntensity = 0; // FX parity: the game's PMREM sky must not wash the lenses (the lab has no environment)
+      eyewear(lensMat,
         mat(0x3a2a1a, 0.4), 0.165, 0.125);
     }
     if (has('sunglasses')) {
@@ -896,10 +1184,10 @@
     var g = c.createRadialGradient(64, 64, 6, 64, 64, 62);
     g.addColorStop(0, 'rgba(8,6,4,0.50)'); g.addColorStop(0.7, 'rgba(8,6,4,0.28)'); g.addColorStop(1, 'rgba(8,6,4,0)');
     c.fillStyle = g; c.fillRect(0, 0, 128, 128);
-    return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false });
+    return charGrade(new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
   })();
   var outlineMat = (function () {
-    var m = new THREE.MeshBasicMaterial({ color: 0x2e1c11, side: THREE.BackSide });
+    var m = charGrade(new THREE.MeshBasicMaterial({ color: 0x2e1c11, side: THREE.BackSide }));
     m.onBeforeCompile = function (sh) {
       sh.uniforms.uOut = { value: 0.0038 };
       sh.vertexShader = 'uniform float uOut;\n' + sh.vertexShader.replace('#include <begin_vertex>',
@@ -913,16 +1201,31 @@
   // silhouette edge warm (0xffb36b) so a lead's shirt colour reads
   // separated from dark night ground even when the key light is
   // gone. Strength 1.25 (raised from the lab's ambient rim feel).
+  // RONDE 3B: the shell strength lives in ONE shared uniform object
+  // so the game can drive it per frame (see setRimLevel below). The
+  // default 1.25 is the authored/lab value — the lab never calls
+  // setRimLevel, so its look is unchanged.
+  var rimStrUniform = { value: 1.25 };
   var rimShellMat = (function () {
-    var m = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    // FX PARITY: toneMapped:false is load-bearing here — under the
+    // game's ACES + exposure this additive fresnel blew out into
+    // the jagged orange/white edge lines reported on pants/legs;
+    // unmapped it renders at the authored strength, exactly as in
+    // the lab (A/B proven: hiding the shells removed the lines,
+    // hiding the outlines did not).
+    var m = charGrade(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     m.onBeforeCompile = function (sh) {
       sh.uniforms.uRimCol = { value: new THREE.Color(0xffb36b) };
-      sh.uniforms.uRimStr = { value: 1.25 };
+      sh.uniforms.uRimStr = rimStrUniform;
       sh.vertexShader = 'varying vec3 vNv; varying vec3 vVp;\n' + sh.vertexShader
         .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normal * 0.005;')
         .replace('#include <project_vertex>', '#include <project_vertex>\nvNv = normalize(transformedNormal);\nvVp = normalize(-mvPosition.xyz);');
+      // RONDE 3B: fresnel exponent 2.0 -> 1.35 — a WIDER curve, so
+      // the edge light spreads softly over the silhouette instead of
+      // peaking in a thin line that climbs the loft's ring steps and
+      // reads as disconnected bright dots at gameplay distance.
       sh.fragmentShader = ('uniform vec3 uRimCol; uniform float uRimStr; varying vec3 vNv; varying vec3 vVp;\n' + sh.fragmentShader)
-        .replace('#include <opaque_fragment>', 'float fres = pow(1.0 - abs(dot(normalize(vNv), normalize(vVp))), 2.0);\ngl_FragColor = vec4(uRimCol * fres * uRimStr, 1.0);');
+        .replace('#include <opaque_fragment>', 'float fres = pow(1.0 - abs(dot(normalize(vNv), normalize(vVp))), 1.35);\ngl_FragColor = vec4(uRimCol * fres * uRimStr, 1.0);');
     };
     return m;
   })();
@@ -938,6 +1241,8 @@
     var head = new THREE.SphereGeometry(0.135, 7, 5); head.translate(0, 1.70, 0);
     farGeo = Rig.mergePlain([body.index ? body.toNonIndexed() : body, head.index ? head.toNonIndexed() : head]);
     farMesh = new THREE.InstancedMesh(farGeo, new THREE.MeshStandardMaterial({ roughness: 0.85 }), FAR_CAP);
+    farMesh.castShadow = true; // FX2: LOD2 silhouettes cast too
+    farMesh.material.toneMapped = false; farMesh.material.fog = false; farMesh.material.envMapIntensity = 0; // FX parity
     farMesh.frustumCulled = false; farMesh.count = 0;
     farMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   }
@@ -971,10 +1276,31 @@
     if (pool[key] && !pool[key].inUse) { pool[key].inUse = true; return pool[key]; }
     var r = rng(seed * 7919 + 17);
     var bp = arch.body || {};
+    // FX6: head + face variation rolls on its OWN rng stream,
+    // seeded per (archetype, seed) — the main stream above keeps
+    // its exact draw order, so height / skin / hair style / wear
+    // picks stay bit-identical to the pre-FX6 characters; only
+    // the head shape and face details are new.
+    var idHash = 7;
+    if (arch.id) for (var ih = 0; ih < arch.id.length; ih++) idHash = (idHash * 31 + arch.id.charCodeAt(ih)) >>> 0;
+    var hr = rng(seed * 104729 + idHash);
+    var jawClass = (arch.head && arch.head.jaw) || 'oval';
+    var jawBase = jawClass === 'square' ? { f: 0.19, b: 0.020, w: 1.12 }
+      : jawClass === 'taper' ? { f: 0.335, b: 0.006, w: 0.85 }
+      : { f: 0.26, b: 0.012, w: 1.00 };
+    var headJit = [0.94 + hr() * 0.12, 0.94 + hr() * 0.12, 0.94 + hr() * 0.12];
+    var jawF = jawBase.f + (hr() - 0.5) * 0.03;
     var p = Rig.baseParams({
       H: bp.H || (arch.heightRange ? arch.heightRange[0] + r() * (arch.heightRange[1] - arch.heightRange[0]) : 1.75),
       legFrac: bp.legFrac, shoulder: bp.shoulder, waist: bp.waist, hips: bp.hips,
-      belly: bp.belly, thigh: bp.thigh, headScale: bp.headScale, handScale: bp.handScale || 1.14, neckR: bp.neckR
+      belly: bp.belly, thigh: bp.thigh, headScale: bp.headScale, handScale: bp.handScale || 1.14,
+      // FX6: square-jaw (masculine) archetypes get a sturdier
+      // neck (x1.05). Skin stations, the head funnel and the cloth
+      // collars ALL scale with neckR, so the collar clearances
+      // keep their designed margins (verified by probe + close-up
+      // renders; see charlab-progress FX6 section).
+      neckR: (bp.neckR || 1) * (jawClass === 'square' ? 1.05 : 1),
+      headJit: headJit, jawF: jawF, jawBump: jawBase.b, chinW: jawBase.w
     });
     var skinHex = bp.skin != null ? SKIN_TONES[bp.skin % 8] : pick(r, SKIN_TONES);
     var skinRGB = rgb(skinHex);
@@ -997,7 +1323,18 @@
     var faceSpec = Object.assign({ eyes: 'round', mouth: 'smile' }, arch.face || {});
     if (faceSpec.randomEyes) faceSpec.eyes = pick(r, ['round', 'narrow', 'sleepy']);
     faceSpec.browColor = hairColor;
-    var headMat = new THREE.MeshToonMaterial({ map: faceTexture(faceSpec, skinHex), gradientMap: RAMP });
+    // FX6: per-seed face variation, drawn from the FX6 stream
+    // (hr) so the main stream is untouched. Everything lands in
+    // faceSpec, which IS the generateFaceTexture cache key — one
+    // texture per (archetype, seed, expression), and
+    // setExpression() inherits the same variation.
+    faceSpec.browThick = 0.85 + hr() * 0.5;
+    faceSpec.browDive = jawClass === 'square' ? 0.45 + hr() * 0.55 : hr() * 0.45;
+    faceSpec.irisColor = pick(hr, ['#4a2c14', '#4a2c14', '#3a2410', '#1c1108', '#1c1108', '#31517a']);
+    var stubP = arch.face && arch.face.stubble;
+    faceSpec.stubble = stubP === true ? true : (typeof stubP === 'number' ? hr() < stubP : false);
+    faceSpec.stubSeed = Math.floor(hr() * 1000003) + 11;
+    var headMat = charGrade(new THREE.MeshStandardMaterial({ map: generateFaceTexture(faceSpec, skinHex), roughness: 0.8, metalness: 0, flatShading: false }));
     var head0 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index), headMat);
     head0.frustumCulled = false; bind(head0);
     var wear = resolveWear(arch, r);
@@ -1055,7 +1392,7 @@
     char.faceSpec = faceSpec; char.skinHex = skinHex; char.expr = faceSpec.expr || null;
     char.setExpression = function (name) {
       var fs = Object.assign({}, char.faceSpec, { expr: name });
-      headMat.map = faceTexture(fs, char.skinHex);
+      headMat.map = generateFaceTexture(fs, char.skinHex);
       headMat.needsUpdate = true; char.expr = name;
     };
     // LOD1: no fingers, no small accessories (hair + clothes stay)
@@ -1064,7 +1401,7 @@
     // LOD1 head: plain skin material, NO face texture — the spec
     // drops face detail at 15-40 m (Stage D iteration 1).
     var head1 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index),
-      new THREE.MeshToonMaterial({ color: skinHex, gradientMap: RAMP }));
+      charGrade(new THREE.MeshStandardMaterial({ color: skinHex, roughness: 0.8, metalness: 0, flatShading: false })));
     head1.frustumCulled = false; head1.bind(sk.skeleton); head1.visible = false; group.add(head1);
     var clothes1 = buildClothes(p, sk.index, wear, skinRGB);
     for (var q = 0; q < clothes1.length; q++) { clothes1[q].bind(sk.skeleton); clothes1[q].visible = false; group.add(clothes1[q]); }
@@ -1083,6 +1420,16 @@
       // accessories hang on bones; visibility is level-aware:
       setDecoVisible(char, level);
     };
+    // FX2 (user spec): REAL SHADOWS — every character mesh casts:
+    // body, head, clothes, hair, accessories, weapons, LOD1
+    // stand-ins and the outline/rim hulls (their shadows are the
+    // body's own silhouette, +4-5 mm). The single exclusion is the
+    // fake blob-shadow plane (name 'blob'): a horizontal decal must
+    // never stamp its own square onto the ground. Ground/roads
+    // already receiveShadow (roads.js), so figures now sit in the
+    // world with a true sun shadow. Applied here in the factory so
+    // lab and game stay in sync by construction.
+    group.traverse(function (o) { if (o.isMesh && o.name !== 'blob') o.castShadow = true; });
     pool[key] = char; active.push(char);
     return char;
   }
@@ -1172,6 +1519,12 @@
 
   SH.CharFactory = {
     create: create, update: update, release: release, triCount: triCount,
+    // RONDE 3B: context lever for the leads' rim shell (shared
+    // material, one uniform drives every shell). The game rides it
+    // on its night curve; callers that never call it (the lab) keep
+    // the authored 1.25.
+    setRimLevel: function (v) { rimStrUniform.value = v; },
+    getRimLevel: function () { return rimStrUniform.value; },
     SKIN_TONES: SKIN_TONES, HAIR_COLORS: HAIR_COLORS, rng: rng, active: active
   };
 })(window.SH = window.SH || {});

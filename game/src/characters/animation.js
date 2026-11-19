@@ -126,10 +126,17 @@
   // weight carried on the LEFT leg (constant pelvis roll + the
   // right knee nearly straight, left knee softly bent), head
   // tilted a few degrees with a slow look-around drift.
+  // FX2 (user spec): the BREATH is now a full visible cycle across
+  // the 3.6 s loop — inhale (0->1.8 s) lifts the pelvis +11 mm,
+  // opens the chest (spine1 +1.6 deg, spine2 pitch to 3.6 deg) and
+  // drifts both arms ~2.6 deg outward with the swell; exhale
+  // (1.8->3.6 s) settles everything back. Keyframe values only —
+  // the Walk/Run transition logic is untouched.
   def('idle', 3.6, [
     { t: 0, p: { spine2: [1.5, 0, 0], pelvis: [0, 0, 2.4], spine1: [0, 0, -1.2], thighL: [-4, 0, 1.5], shinL: [6, 0, 0], thighR: [1, 0, -1.5], shinR: [1, 0, 0], uArmL: [0, 0, 7], uArmR: [0, 0, -7], fArmL: [-14, 0, 2], fArmR: [-14, 0, -2], neck: [0, 0, -1.5], head: [1, -7, 3] } },
-    { t: 1.2, p: { spine2: [2.8, 0, 0], head: [1, 5, 3.4], pelvis: [0, 0, 2.6] }, dy: -0.004 },
-    { t: 2.2, p: { spine2: [1.7, 0, 0], head: [2, 9, 2.6], pelvis: [0, 0, 2.2] }, dy: -0.002 },
+    { t: 0.9, p: { spine2: [2.6, 0, 0], spine1: [0.8, 0, -1.2], pelvis: [0, 0, 2.5], uArmL: [0, 0, 8.4], uArmR: [0, 0, -8.4], fArmL: [-15, 0, 2], fArmR: [-15, 0, -2], head: [0.5, -4, 3.2] }, dy: 0.007 },
+    { t: 1.8, p: { spine2: [3.6, 0, 0], spine1: [1.6, 0, -1.2], pelvis: [0, 0, 2.6], uArmL: [0, 0, 9.6], uArmR: [0, 0, -9.6], fArmL: [-16, 0, 2], fArmR: [-16, 0, -2], neck: [0, 0, -1.5], head: [0, 3, 3.4] }, dy: 0.011 },
+    { t: 2.7, p: { spine2: [2.4, 0, 0], spine1: [0.6, 0, -1.2], pelvis: [0, 0, 2.4], uArmL: [0, 0, 8], uArmR: [0, 0, -8], fArmL: [-14.6, 0, 2], fArmR: [-14.6, 0, -2], head: [1.5, 8, 2.8] }, dy: 0.005 },
     { t: 3.6, p: { spine2: [1.5, 0, 0], pelvis: [0, 0, 2.4], spine1: [0, 0, -1.2], thighL: [-4, 0, 1.5], shinL: [6, 0, 0], thighR: [1, 0, -1.5], shinR: [1, 0, 0], uArmL: [0, 0, 7], uArmR: [0, 0, -7], fArmL: [-14, 0, 2], fArmR: [-14, 0, -2], neck: [0, 0, -1.5], head: [1, -7, 3] }, dy: 0 }
   ], true);
   def('idle_phone', 3.4, [
