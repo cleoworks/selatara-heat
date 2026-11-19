@@ -206,6 +206,18 @@
         st.cash = 1250;
         st.objective = { title: 'FREE ROAM', text: 'Danau Cermin, Taman Arus', x: -18, z: 28 };
         stagePeds([[-30, 112], [14, 110], [-44, 96]]);
+      } else if (name === 'canal') {
+        // W1 proof: Kanal Senja at night — standing on the south bank
+        // looking west along the water: lantern strings, moored
+        // sampans, laundry lines, the night market glowing behind.
+        SH.Main.setHour(19.35);
+        st.player.x = -356; st.player.z = 117.5;
+        st.player.heading = Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = 0.05;
+        snapCamera();
+        st.cash = 2210;
+        st.objective = { title: 'FREE ROAM', text: 'Kanal Senja, Ruko Senja', x: -316, z: 122 };
+        stagePeds([[-338, 132], [-298, 117], [-322, 133.5]]);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
         st.mode = 'map';

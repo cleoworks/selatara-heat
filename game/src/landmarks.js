@@ -11,8 +11,37 @@
   'use strict';
 
   var W = null; // SH.World.waterData, bound in build()
-  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null };
+  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null };
   var envTex = null;
+  var mats = null;
+  function makeMats() {
+    return {
+      water: new THREE.MeshPhongMaterial({ color: 0x45b8d0, specular: 0x9fd4e8, shininess: 110, emissive: 0x062a36, transparent: true, opacity: 0.92, side: THREE.DoubleSide }),
+      dress: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide }),
+      timber: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }),
+      glow: new THREE.MeshBasicMaterial({ vertexColors: true })
+    };
+  }
+  // Linear-interpolated z of the Kanal Senja centreline at world x.
+  function canalZAt(x) {
+    var pts = W.ruko;
+    if (x <= pts[0][0]) return pts[0][1];
+    for (var i = 0; i < pts.length - 1; i++) {
+      if (x <= pts[i + 1][0]) {
+        var t = (x - pts[i][0]) / (pts[i + 1][0] - pts[i][0]);
+        return pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t;
+      }
+    }
+    return pts[pts.length - 1][1];
+  }
+  // Polyline shifted sideways by off metres (perpendicular, averaged).
+  function offsetLine(pts, off) {
+    return pts.map(function (p, i) {
+      var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      var dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1;
+      return [p[0] - dz / L * off, p[1] + dx / L * off];
+    });
+  }
 
   // ---------- flat geometry helpers (XZ ribbons and fans) -------------
   function mkGeo(pos, col, upNormals) {
@@ -206,8 +235,8 @@
     return SH.World.mergeGeos(parts);
   }
 
-  function buildTaman(scene) {
-    var water = [], dress = [], timber = [];
+  function buildTaman(scene, shared) {
+    var water = shared.water, dress = shared.dress, timber = shared.timber;
     var lake = W.lake, island = W.island;
     var lc = centroid(lake), ic = centroid(island);
 
@@ -274,19 +303,6 @@
       part(dress, new THREE.IcosahedronGeometry(0.95 + (mi % 3) * 0.22, 0), 0x3d6b35, mp[0], 1.05, mp[1], 0, mi * 1.3, 0);
     });
 
-    var waterMat = new THREE.MeshPhongMaterial({ color: 0x45b8d0, specular: 0x9fd4e8, shininess: 110, emissive: 0x062a36, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
-    var waterMesh = new THREE.Mesh(SH.World.mergeGeos(water), waterMat);
-    waterMesh.name = 'w1-water';
-    scene.add(waterMesh);
-    var dressMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide });
-    var dressMesh = new THREE.Mesh(SH.World.mergeGeos(dress), dressMat);
-    dressMesh.name = 'w1-dressing';
-    scene.add(dressMesh);
-    var timberMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
-    var timberMesh = new THREE.Mesh(SH.World.mergeGeos(timber), timberMat);
-    timberMesh.name = 'w1-timber';
-    scene.add(timberMesh);
-
     // The moored rowboat (animated gently in update()).
     var boatParts = [];
     box(boatParts, 0x7a4a30, 0, 0.16, 0, 2.4, 0.16, 1.05);
@@ -295,7 +311,7 @@
     box(boatParts, 0x8a5a38, 1.14, 0.32, 0, 0.12, 0.32, 0.9);
     box(boatParts, 0x8a5a38, -1.14, 0.32, 0, 0.12, 0.32, 0.9);
     box(boatParts, 0xa8794e, 0, 0.3, 0, 0.34, 0.06, 0.9);
-    var boat = new THREE.Mesh(SH.World.mergeGeos(boatParts), timberMat);
+    var boat = new THREE.Mesh(SH.World.mergeGeos(boatParts), mats.timber);
     boat.position.set(10.5, 0.04, 93);
     boat.rotation.y = 0.7;
     scene.add(boat);
@@ -330,10 +346,122 @@
     scene.add(birdMesh);
   }
 
+  // ---------- Feature 2: Kanal Ruko Senja ------------------------------
+  function sampanGeo() {
+    var parts = [];
+    box(parts, 0x6e5133, 0, 0.18, 0, 4.6, 0.16, 1.15);
+    box(parts, 0x7d5f3c, 0, 0.38, 0.55, 4.6, 0.3, 0.09);
+    box(parts, 0x7d5f3c, 0, 0.38, -0.55, 4.6, 0.3, 0.09);
+    box(parts, 0x7d5f3c, 2.25, 0.36, 0, 0.14, 0.34, 1.0);
+    box(parts, 0x7d5f3c, -2.25, 0.36, 0, 0.14, 0.34, 1.0);
+    [[-0.9, 0.38], [0.9, 0.38], [-0.9, -0.38], [0.9, -0.38]].forEach(function (pp) {
+      box(parts, 0x5f4630, pp[0], 0.72, pp[1], 0.055, 0.8, 0.055);
+    });
+    part(parts, new THREE.BoxGeometry(2.3, 0.06, 0.66), 0xb4552f, 0, 1.3, 0.26, 0.42, 0, 0);
+    part(parts, new THREE.BoxGeometry(2.3, 0.06, 0.66), 0xa34a2a, 0, 1.3, -0.26, -0.42, 0, 0);
+    box(parts, 0xe07b2a, 1.55, 0.5, 0.15, 0.55, 0.4, 0.55);
+    box(parts, 0x37b6e0, 1.5, 0.48, -0.28, 0.5, 0.36, 0.4);
+    box(parts, 0x7ed957, -1.6, 0.45, 0, 0.6, 0.3, 0.7);
+    return SH.World.mergeGeos(parts);
+  }
+
+  function buildRuko(scene, shared) {
+    var water = shared.water, dress = shared.dress, timber = shared.timber, glow = shared.glow;
+    var curve = new THREE.CatmullRomCurve3(W.ruko.map(function (p) { return new THREE.Vector3(p[0], 0, p[1]); }));
+    var line = curve.getPoints(48).map(function (v) { return [v.x, v.z]; });
+
+    // Stone-earth banks, the water ribbon, pale stone rims, end basins.
+    dress.push(stripGeo(line, 5.6, -0.025, function (x, z) {
+      return lerpHex(0x7a6a52, 0x66583f, 0.5 + 0.5 * Math.sin(x * 0.3 + z * 0.17)).getHex();
+    }));
+    water.push(stripGeo(line, W.rukoHalfW, -0.01));
+    dress.push(stripGeo(offsetLine(line, 3.85), 0.5, 0.005, 0xb8ab90));
+    dress.push(stripGeo(offsetLine(line, -3.85), 0.5, 0.005, 0xb8ab90));
+    dress.push(fanGeo(ellipsePts(-489, 125.8, 7.5, 6.5, 0, 12), -0.028, 0x7a6a52));
+    water.push(fanGeo(ellipsePts(-489, 125.8, 6.2, 5.2, 0, 12), -0.01));
+    dress.push(fanGeo(ellipsePts(-251, 120.2, 7, 6, 0, 12), -0.028, 0x7a6a52));
+    water.push(fanGeo(ellipsePts(-251, 120.2, 5.8, 4.8, 0, 12), -0.01));
+
+    // Moored sampans (the floating market) + bank-side goods piles.
+    var sg = sampanGeo();
+    [[-438, -0.9, 0.12], [-316, 0.8, -0.09], [-264, -0.7, 0.2]].forEach(function (sp) {
+      timber.push(SH.World.xformGeo(sg, sp[0], 0.0, canalZAt(sp[0]) + sp[1], 0, sp[2], 0));
+    });
+    [[-432, 5.6], [-310, -5.8], [-258, 5.4]].forEach(function (gp, gi) {
+      var gz = canalZAt(gp[0]) + gp[1];
+      box(timber, 0xe07b2a, gp[0], 0.3, gz, 0.8, 0.6, 0.8);
+      box(timber, gi % 2 ? 0x37b6e0 : 0xe84a6f, gp[0] + 0.9, 0.22, gz + 0.3, 0.6, 0.44, 0.6);
+      box(timber, 0x7ed957, gp[0] - 0.85, 0.18, gz - 0.2, 0.55, 0.36, 0.55);
+    });
+    // One working sampan ferries the canal (animated in update()).
+    var ferry = new THREE.Mesh(sg, mats.timber);
+    ferry.name = 'w1-sampan';
+    scene.add(ferry);
+    anim.sampan = ferry;
+
+    // Stairs down to the water (south bank west, north bank east).
+    [[-410, 1], [-292, -1]].forEach(function (st) {
+      var zc = canalZAt(st[0]);
+      for (var si = 0; si < 3; si++) {
+        box(timber, 0x9a8f7c, st[0], 0.05 - si * 0.16, zc + st[1] * (5.1 - si * 0.62), 2.3, 0.15, 0.66);
+      }
+      box(timber, 0x8a6844, st[0], 0.03, zc + st[1] * 3.1, 2.7, 0.07, 1.5);
+    });
+
+    // Bridge rails where the avenues cross.
+    [-480, -360].forEach(function (ax) {
+      var zc = canalZAt(ax);
+      [-7.35, 7.35].forEach(function (off) {
+        box(timber, 0x6b5a48, ax + off, 0.5, zc, 0.14, 0.72, 25);
+        box(timber, 0x7d6a52, ax + off, 0.92, zc, 0.2, 0.1, 25);
+      });
+    });
+
+    // Laundry lines strung over the water, with bright washing.
+    var clothCols = [0xe84a6f, 0x37b6e0, 0xffd23f, 0xf2ede2, 0x7ed957];
+    [-452, -398, -336, -278].forEach(function (lx, li) {
+      var zc = canalZAt(lx);
+      box(timber, 0x4a3b28, lx + 1.2, 4.45, zc, 0.035, 0.035, 15.6, 0.158);
+      for (var k = 0; k < 4; k++) {
+        var t = 0.2 + k * 0.2;
+        box(dress, clothCols[(li + k) % clothCols.length], lx + 1.2 + (t - 0.5) * 2.4, 3.95, zc - 7.8 + t * 15.6, 0.62, 0.82, 0.03, 0.158);
+      }
+    });
+
+    // Lantern strings sagging across the canal (fake glow family:
+    // basic material, no dynamic light).
+    for (var sx = -476; sx <= -264; sx += 26.5) {
+      var szc = canalZAt(sx);
+      box(timber, 0x4a3b28, sx, 3.5, szc, 0.03, 0.03, 11.6);
+      for (var sk = 0; sk < 5; sk++) {
+        var st2 = 0.12 + sk * 0.19;
+        part(glow, new THREE.SphereGeometry(0.11, 6, 5), sk % 2 ? 0xffb03a : 0xff5340,
+          sx + (st2 - 0.5) * 1.4, 3.42 - Math.sin(st2 * Math.PI) * 0.5, szc - 5.6 + st2 * 11.2, 0, 0, 0);
+      }
+    }
+  }
+
   var Landmarks = {
     build: function (scene) {
       W = SH.World.waterData;
-      buildTaman(scene);
+      mats = makeMats();
+      var shared = { water: [], dress: [], timber: [], glow: [] };
+      buildTaman(scene, shared);
+      buildRuko(scene, shared);
+      var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
+      waterMesh.name = 'w1-water';
+      scene.add(waterMesh);
+      var dressMesh = new THREE.Mesh(SH.World.mergeGeos(shared.dress), mats.dress);
+      dressMesh.name = 'w1-dressing';
+      scene.add(dressMesh);
+      var timberMesh = new THREE.Mesh(SH.World.mergeGeos(shared.timber), mats.timber);
+      timberMesh.name = 'w1-timber';
+      scene.add(timberMesh);
+      if (shared.glow.length) {
+        var glowMesh = new THREE.Mesh(SH.World.mergeGeos(shared.glow), mats.glow);
+        glowMesh.name = 'w1-glow';
+        scene.add(glowMesh);
+      }
     },
 
     setEnvMap: function (tex) { envTex = tex; },
@@ -345,6 +473,14 @@
         anim.boat.rotation.z = Math.sin(t * 0.9) * 0.045;
         anim.boat.rotation.x = Math.sin(t * 0.7 + 1) * 0.03;
         anim.boat.position.y = 0.04 + Math.sin(t * 1.25) * 0.03;
+      }
+      if (anim.sampan) {
+        var smx = -370 + Math.sin(t * 0.021 + 1.3) * 88;
+        var smDir = Math.cos(t * 0.021 + 1.3) >= 0 ? 1 : -1;
+        var smSlope = (canalZAt(smx + 3) - canalZAt(smx - 3)) / 6;
+        anim.sampan.position.set(smx, 0.02 + Math.sin(t * 1.4) * 0.02, canalZAt(smx));
+        anim.sampan.rotation.y = (smDir > 0 ? 0 : Math.PI) - Math.atan(smSlope) * smDir;
+        anim.sampan.rotation.z = Math.sin(t * 1.1) * 0.02;
       }
       if (anim.birdGeo && anim.birds.length) {
         var arr = anim.birdGeo.attributes.position.array, tpl = anim.birdTpl;

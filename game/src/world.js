@@ -249,11 +249,11 @@
         }
       }
     }
-    // Ruko Senja alleys: a lane along z=124 through the two market blocks,
-    // threaded between the shophouse rows (front row ends z~112, back row
-    // starts z~136, so the lane at 124 stays clear of every collider).
-    var alleyNodes = [nodeAt(-480, 124), addNode(-420, 124), nodeAt(-360, 124), addNode(-300, 124), nodeAt(-240, 124)];
-    for (i = 0; i + 1 < alleyNodes.length; i++) addEdge(alleyNodes[i], alleyNodes[i + 1], false, 'alley');
+    // The z=124 lane is gone: Kanal Ruko Senja (W1) cuts the two market
+    // blocks along the same corridor, threaded between the shophouse
+    // rows (front row ends z~112, back row starts z~136, so the canal
+    // stays clear of every collider). The avenue mid nodes at z=124
+    // stay — their road planes are the canal's bridges.
 
     // Rev 5C: diagonal pedestrian alleys cutting four Ruko blocks
     // corner-to-corner. Each crossed cell is marked in diagCells, so
@@ -515,6 +515,14 @@
   // lake's south shore to the sea at Pantai Kencana.
   var outflowPts = [[0, 94], [0, 200], [0, 336]];
   var outflowHalfW = 5;
+  // Kanal Ruko Senja: a gently curved cut along the old z=124 lane,
+  // splitting the old town between its shophouse rows.
+  var rukoPts = [];
+  for (var rki = 0; rki <= 20; rki++) {
+    var rkx = -488 + rki * 11.8;
+    rukoPts.push([rkx, 124 + 4.5 * Math.sin((rkx + 492) / 244 * Math.PI * 1.35 + 0.4)]);
+  }
+  var rukoHalfW = 3.3;
   // Crossings where water may be crossed: {seg, half-width}.
   var waterBridges = [
     { x1: 0, z1: 126, x2: 0, z2: 148, hw: 9.5 },     // lakeside arc over the outflow
@@ -524,6 +532,8 @@
     { x1: -58, z1: 13, x2: -36, z2: 23, hw: 3.2 },   // footbridge over Kali Arus
     { x1: 0, z1: 99, x2: 0, z2: 117, hw: 4.2 },      // jogging path over the outflow
     { x1: 6, z1: 106, x2: 6, z2: 87, hw: 2.2 },      // the lake pier
+    { x1: -480, z1: 112, x2: -480, z2: 140, hw: 9.5 }, // avenue bridges over Kanal Senja
+    { x1: -360, z1: 111, x2: -360, z2: 139, hw: 9.5 },
     { x1: -34, z1: -55, x2: -34, z2: -39, hw: 8.5 }  // culvert mouth under the z=-60 street
   ];
 
@@ -556,6 +566,7 @@
     if (distToLine(riverPts, x, z).d < riverHalfW) return true;
     if (Math.hypot(x - riverPool.x, z - riverPool.z) < riverPool.r) return true;
     if (distToLine(outflowPts, x, z).d < outflowHalfW) return true;
+    if (distToLine(rukoPts, x, z).d < rukoHalfW) return true;
     return false;
   }
   // Nearest dry point for a point in inland water, or null when the
@@ -582,7 +593,7 @@
         offer(c.x + ux / ul * (radius + 0.3), c.z + uz / ul * (radius + 0.3));
       }
     }
-    var lines = [[riverPts, riverHalfW], [outflowPts, outflowHalfW]];
+    var lines = [[riverPts, riverHalfW], [outflowPts, outflowHalfW], [rukoPts, rukoHalfW]];
     for (i = 0; i < lines.length; i++) {
       var cl = distToLine(lines[i][0], x, z);
       var need = lines[i][1] + radius + 0.3;
@@ -599,12 +610,14 @@
     lake: lakePoly, island: lakeIslandPoly,
     river: riverPts, riverHalfW: riverHalfW, pool: riverPool,
     outflow: outflowPts, outflowHalfW: outflowHalfW,
+    ruko: rukoPts, rukoHalfW: rukoHalfW,
     bridges: waterBridges
   };
   CityData.water = [
     { pts: lakePoly, island: lakeIslandPoly },
     { pts: riverPts, halfW: riverHalfW },
-    { pts: outflowPts, halfW: outflowHalfW }
+    { pts: outflowPts, halfW: outflowHalfW },
+    { pts: rukoPts, halfW: rukoHalfW }
   ];
 
   SH.World = {
