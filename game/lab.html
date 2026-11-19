@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SELATARA HEAT — Character Lab</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #23262c; font-family: sans-serif; }
+  #ui { position: absolute; top: 10px; left: 10px; z-index: 5; background: rgba(12,14,18,0.82); color: #e8e6df;
+        padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; max-width: 300px; }
+  #ui select, #ui button { font-size: 13px; margin: 2px 2px 2px 0; }
+  #info { position: absolute; left: 10px; bottom: 10px; z-index: 5; background: rgba(12,14,18,0.82); color: #ffd76a;
+          padding: 6px 10px; border-radius: 6px; font-size: 13px; white-space: pre; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div><b>CHARACTER LAB</b></div>
+  <div>Archetype <select id="selArch"></select></div>
+  <div>Animation <select id="selAnim"></select></div>
+  <div>
+    <button id="btnSheet">Contact sheet</button>
+    <button id="btnCrowd">Crowd 30</button>
+    <button id="btnSingle">Single</button>
+  </div>
+  <div style="opacity:.75">Drag to orbit, wheel to zoom.</div>
+</div>
+<div id="info">loading…</div>
+
+<script src="./vendor/three.min.js"></script>
+<script src="./src/characters/rig.js"></script>
+<script src="./src/characters/factory.js"></script>
+<script>
+(function () {
+  'use strict';
+  var qs = {};
+  location.search.slice(1).split('&').forEach(function (kv) {
+    var p = kv.split('='); if (p[0]) qs[p[0]] = decodeURIComponent(p[1] || '');
+  });
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x353a42);
+  var camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.05, 300);
+
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3428, 0.95));
+  var key = new THREE.DirectionalLight(0xfff1dd, 1.6); key.position.set(3.5, 5, 4); scene.add(key);
+  var rim = new THREE.DirectionalLight(0xbcd4ff, 0.7); rim.position.set(-4, 3, -3.5); scene.add(rim);
+  var ground = new THREE.Mesh(new THREE.CircleGeometry(30, 40),
+    new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  var grid = new THREE.PolarGridHelper(6, 12, 6, 48, 0x666c76, 0x555b64);
+  grid.position.y = 0.002; scene.add(grid);
+
+  var stage = new THREE.Group(); scene.add(stage);
+  var chars = [];
+
+  // Test wear sets used until Stage C lands the real archetype table.
+  var TEST = [
+    { id: 'test-tee', body: {}, face: { randomEyes: true }, hair: { styles: ['short', 'quiff', 'afro'] },
+      wear: { top: { type: 'tee', colors: [0xd84a3a, 0x3a7ad8, 0xf2b13c, 0x4ab86a] }, bottom: { type: 'long', colors: [0x2c3242, 0x4a3a2c] }, shoes: 0x2a2c33 } },
+    { id: 'test-jacket', body: { shoulder: 1.08, waist: 0.95 }, face: {}, hair: { styles: ['short', 'bald'] },
+      wear: { top: { type: 'jacket', sleeve: 'long', colors: [0x6e1423, 0x24303e] }, bottom: { type: 'long', colors: [0x23242c] }, shoes: 0x1c1c20 } },
+    { id: 'test-skirt', body: { hips: 1.12, waist: 0.88, H: 1.66 }, face: { blush: true }, hair: { styles: ['long', 'bun', 'ponytail'] },
+      wear: { top: { type: 'blouse', colors: [0xe86a9a, 0xf2e3c6] }, bottom: { type: 'skirt', colors: [0x7a4a8a, 0xb83a4a] }, shoes: 0x3a2c22 } }
+  ];
+
+  function clearStage() {
+    for (var i = 0; i < chars.length; i++) { SH.CharFactory.release(chars[i]); }
+    chars = [];
+    while (stage.children.length) stage.remove(stage.children[0]);
+  }
+  function place(char, x, z, ry) {
+    char.group.position.set(x, 0, z); char.group.rotation.y = ry || 0;
+    stage.add(char.group); chars.push(char);
+    return char;
+  }
+
+  var mode = qs.mode || 'single';
+  var infoLines = [];
+  if (mode === 'single') {
+    var t = TEST[parseInt(qs.test || '0', 10) % TEST.length];
+    var c = SH.CharFactory.create(t, parseInt(qs.seed || '7', 10));
+    place(c, 0, 0, parseFloat(qs.ry || '0.5'));
+    infoLines.push(t.id + '  tris=' + SH.CharFactory.triCount(c));
+    camera.position.set(1.35, 1.30, 2.9); camera.lookAt(0, 0.92, 0);
+  }
+
+  var info = document.getElementById('info');
+  function tick() {
+    requestAnimationFrame(tick);
+    if (qs.spin) stage.rotation.y += 0.0035;
+    SH.CharFactory.update(camera, scene);
+    renderer.render(scene, camera);
+    info.textContent = infoLines.join('\n') +
+      '\ndrawCalls=' + renderer.info.render.calls + ' trisFrame=' + renderer.info.render.triangles;
+  }
+  tick();
+
+  // minimal orbit for humans
+  var drag = null;
+  addEventListener('pointerdown', function (e) { drag = [e.clientX, e.clientY]; });
+  addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    stage.rotation.y += (e.clientX - drag[0]) * 0.008;
+    drag = [e.clientX, e.clientY];
+  });
+  addEventListener('pointerup', function () { drag = null; });
+  addEventListener('wheel', function (e) {
+    camera.position.multiplyScalar(e.deltaY > 0 ? 1.08 : 0.93);
+  });
+
+  window.LAB = { scene: scene, camera: camera, stage: stage, chars: chars, TEST: TEST };
+})();
+</script>
+</body>
+</html>
