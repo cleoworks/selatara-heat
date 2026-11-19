@@ -34,15 +34,45 @@
     var H = p.H, pelvisY = H * p.legFrac;
     return {
       pelvisY: pelvisY,
-      spine1Y: pelvisY + H * 0.085,
-      spine2Y: pelvisY + H * 0.165,
-      neckY: pelvisY + H * 0.275,
-      headY: pelvisY + H * 0.318,
-      shoulderY: pelvisY + H * 0.255,
-      shoulderX: 0.102 * H * p.shoulder,
-      elbowY: pelvisY + H * 0.08,
+      // Iterasi 2 (user spec): the torso is LENGTHENED — spine
+      // stations spread (spine1 0.085->0.100H, spine2 0.165->0.225H,
+      // neck 0.272->0.335H rel pelvis) so shoulder->waist grows
+      // from 0.30 m to ~0.41 m and, just as importantly, the crown
+      // now actually reaches H: headY = pelvisY+0.346H puts the
+      // displaced head's top (headY + 0.46u + 0.96*r0) at ~1.00H
+      // instead of the old 0.94H (the "1.75 m" figure really stood
+      // ~1.64 m). Elbow sits at waist height (spine1), wrist at
+      // crotch height, as before.
+      spine1Y: pelvisY + H * 0.100,
+      spine2Y: pelvisY + H * 0.225,
+      // Round 10: the neck segment is COMPRESSED toward the
+      // references — neckY up 0.016H and headY down 0.014H, so the
+      // visible collar->jaw column halves (~104 mm -> ~52 mm on
+      // the H=1.75 figure, probe10-measured). The head now sits
+      // LOW, close to the shoulder line, and the trapezius slope
+      // (stations keyed to neckY) rises to meet it, as in both
+      // reference figures. (Through round 9 the head perched on a
+      // 0.041H neck segment — a straight column the a9 front shot
+      // reads as a peg, however clean its seams were.)
+      neckY: pelvisY + H * 0.335,
+      headY: pelvisY + H * 0.346,
+      shoulderY: pelvisY + H * 0.318,
+      // Round 8: the arm PIVOT (glenohumeral joint) sits at ARMPIT
+      // height, 0.050H BELOW the clavicle/shoulder line — as in the
+      // reference mannequin, where the shoulder ball hangs at the
+      // END of the trapezius slope instead of sitting on top of it.
+      // (Rounds 4-7 pivoted the arm AT neck height: the capped
+      // first arm station was a flat skin disc of r 0.040H at
+      // neck-base height, and every cloth slope built over it was
+      // pierced by that disc.)
+      armY: pelvisY + H * 0.262,
+      // Iterasi 2: shoulders a touch wider (0.102 -> 0.107H)
+      shoulderX: 0.107 * H * p.shoulder,
+      elbowY: pelvisY + H * 0.100,
       wristY: pelvisY - H * 0.025,
-      hipX: 0.052 * H,
+      // Iterasi 2: stance narrowed (0.052 -> 0.046H) — feet land
+      // closer together, soles parallel, per the spec's idle stance
+      hipX: 0.046 * H,
       kneeY: H * 0.295 * (p.legFrac / 0.52),
       ankleY: H * 0.062
     };
@@ -69,23 +99,28 @@
     bone('head', neck, 0, j.headY - j.neckY, 0);
     var sx = j.shoulderX, cx = sx * 0.45;
     var clavL = bone('clavL', spine2, cx, j.shoulderY - j.spine2Y, 0);
-    var uArmL = bone('uArmL', clavL, sx - cx, 0, 0);
-    bone('fArmL', uArmL, sx * 0.10, j.elbowY - j.shoulderY, 0);
+    var uArmL = bone('uArmL', clavL, sx - cx, j.armY - j.shoulderY, 0);
+    // Round 10: elbow/wrist pushed outboard (1.10/1.05 -> 1.16/1.15
+    // shoulderX) so the hanging arm takes the references' light
+    // A-angle with clear air between upper arm and torso. Bone
+    // offsets and the arm() stations move together — bind
+    // geometry must sit exactly on the bones or skinning shears.
+    bone('fArmL', uArmL, sx * 0.16, j.elbowY - j.armY, 0);
     var fL = bones.fArmL;
-    bone('handL', fL, -sx * 0.05, j.wristY - j.elbowY, 0);
+    bone('handL', fL, -sx * 0.01, j.wristY - j.elbowY, 0);
     var clavR = bone('clavR', spine2, -cx, j.shoulderY - j.spine2Y, 0);
-    var uArmR = bone('uArmR', clavR, -(sx - cx), 0, 0);
-    bone('fArmR', uArmR, -sx * 0.10, j.elbowY - j.shoulderY, 0);
+    var uArmR = bone('uArmR', clavR, -(sx - cx), j.armY - j.shoulderY, 0);
+    bone('fArmR', uArmR, -sx * 0.16, j.elbowY - j.armY, 0);
     var fR = bones.fArmR;
-    bone('handR', fR, sx * 0.05, j.wristY - j.elbowY, 0);
+    bone('handR', fR, sx * 0.01, j.wristY - j.elbowY, 0);
     var hx = j.hipX;
     var thL = bone('thighL', pelvis, hx, -0.01 * p.H, 0);
-    bone('shinL', thL, hx * 0.08, j.kneeY - j.pelvisY + 0.01 * p.H, 0);
-    bone('footL', bones.shinL, hx * 0.04, j.ankleY - j.kneeY, 0.01 * p.H);
+    bone('shinL', thL, hx * 0.03, j.kneeY - j.pelvisY + 0.01 * p.H, 0);
+    bone('footL', bones.shinL, hx * 0.02, j.ankleY - j.kneeY, 0.01 * p.H);
     bone('toeL', bones.footL, 0, -0.035 * p.H, 0.135 * p.H);
     var thR = bone('thighR', pelvis, -hx, -0.01 * p.H, 0);
-    bone('shinR', thR, -hx * 0.08, j.kneeY - j.pelvisY + 0.01 * p.H, 0);
-    bone('footR', bones.shinR, -hx * 0.04, j.ankleY - j.kneeY, 0.01 * p.H);
+    bone('shinR', thR, -hx * 0.03, j.kneeY - j.pelvisY + 0.01 * p.H, 0);
+    bone('footR', bones.shinR, -hx * 0.02, j.ankleY - j.kneeY, 0.01 * p.H);
     bone('toeR', bones.footR, 0, -0.035 * p.H, 0.135 * p.H);
     root.updateMatrixWorld(true);
     var skeleton = new THREE.Skeleton(list);
@@ -108,47 +143,114 @@
     p = baseParams(p);
     var j = joints(p), H = p.H;
     var sw = p.shoulder, ww = p.waist, hw = p.hips, bl = p.belly;
-    var chestRx = 0.089 * H * (0.55 + 0.45 * sw) * (0.7 + 0.3 * ww);
-    var waistRx = 0.072 * H * ww, hipRx = 0.086 * H * hw;
+    // Round 10: chest->waist taper sharpened toward the
+    // references (chest 0.104->0.108H wide, waist 0.084->0.080H,
+    // depth contrast likewise) — the a9 torso read as a straight
+    // tube between two similar rings.
+    var chestRx = 0.108 * H * (0.55 + 0.45 * sw) * (0.7 + 0.3 * ww);
+    var waistRx = 0.080 * H * ww, hipRx = 0.099 * H * hw;
     var torso = [
-      st(0, j.pelvisY - 0.055 * H, 0, hipRx * 0.94, 0.062 * H * hw, 'pelvis'),
-      st(0, j.pelvisY, 0, hipRx, 0.066 * H * hw, 'pelvis'),
-      st(0, j.pelvisY + 0.045 * H, 0, hipRx * 0.96, 0.064 * H, 'pelvis', 'spine1', 0.45),
-      st(0, j.spine1Y, 0, waistRx, (0.056 + 0.030 * bl) * H * ww, 'spine1'),
-      st(0, j.spine1Y + 0.040 * H, 0, waistRx * 1.06, (0.058 + 0.026 * bl) * H, 'spine1', 'spine2', 0.45),
-      st(0, j.spine2Y, 0, chestRx, 0.062 * H * (0.8 + 0.2 * ww), 'spine2'),
-      st(0, j.spine2Y + 0.045 * H, 0, chestRx * 0.99, 0.060 * H, 'spine2'),
-      st(0, j.shoulderY, 0, chestRx * 0.82, 0.052 * H, 'spine2', 'neck', 0.35),
-      st(0, j.neckY - 0.034 * H, 0, 0.041 * H, 0.037 * H, 'spine2', 'neck', 0.55),
-      st(0, j.neckY - 0.012 * H, 0, 0.023 * H * p.neckR, 0.023 * H * p.neckR, 'neck'),
-      st(0, j.headY - 0.010 * H, 0, 0.021 * H * p.neckR, 0.021 * H * p.neckR, 'neck', 'head', 0.4)
+      st(0, j.pelvisY - 0.055 * H, 0, hipRx * 0.94, 0.072 * H * hw, 'pelvis'),
+      st(0, j.pelvisY, 0, hipRx, 0.076 * H * hw, 'pelvis'),
+      st(0, j.pelvisY + 0.045 * H, 0, hipRx * 0.96, 0.073 * H, 'pelvis', 'spine1', 0.45),
+      st(0, j.spine1Y, 0, waistRx, (0.061 + 0.032 * bl) * H * ww, 'spine1'),
+      st(0, j.spine1Y + 0.055 * H, 0, waistRx * 1.06, (0.064 + 0.028 * bl) * H, 'spine1', 'spine2', 0.45),
+      st(0, j.spine2Y, 0, chestRx, 0.073 * H * (0.8 + 0.2 * ww), 'spine2'),
+      st(0, j.spine2Y + 0.045 * H, 0, chestRx * 0.99, 0.069 * H, 'spine2'),
+      // TRAPEZIUS SLOPE as real loft geometry: from the shoulder
+      // line the rings climb INWARD and UP in even steps to the
+      // neck base, so the front silhouette descends diagonally
+      // from the neck to the shoulder point (0.030H of drop) and
+      // no horizontal segment survives. (Up to round 4 the wide
+      // shoulder ring sat AT neck height with a dip behind it —
+      // the top envelope was flat from arm to arm and the head
+      // perched on a peg: the pawn / coat-hanger read.)
+      st(0, j.neckY - 0.046 * H, 0, 0.086 * H, 0.060 * H, 'spine2', 'neck', 0.20),
+      st(0, j.neckY - 0.030 * H, 0, 0.068 * H, 0.052 * H, 'spine2', 'neck', 0.40),
+      st(0, j.neckY - 0.019 * H, 0, 0.052 * H, 0.045 * H, 'spine2', 'neck', 0.60),
+      // Round 10: the neck is a short thick FRUSTUM, not the
+      // round-7 taper column — the slope stations climb closer
+      // under the lowered head, and the four neck stations run
+      // 0.036 -> 0.027H over just 0.024H of height (the whole
+      // visible segment), widening steadily into the base so the
+      // trapezius flows into the head instead of the head sitting
+      // on a peg. Top rim (neckY+0.010H) lands almost exactly on
+      // the head sphere's surface at that height; the funnel
+      // seals the interior as before.
+      st(0, j.neckY - 0.014 * H, 0, 0.036 * H * p.neckR, 0.036 * H * p.neckR, 'spine2', 'neck', 0.75),
+      st(0, j.neckY - 0.004 * H, 0, 0.032 * H * p.neckR, 0.032 * H * p.neckR, 'neck'),
+      st(0, j.neckY + 0.003 * H, 0, 0.029 * H * p.neckR, 0.029 * H * p.neckR, 'neck', 'head', 0.25),
+      st(0, j.neckY + 0.010 * H, 0, 0.027 * H * p.neckR, 0.027 * H * p.neckR, 'neck', 'head', 0.4)
     ];
     function arm(side) { // side: +1 left, -1 right
       var s = side > 0 ? 'L' : 'R', sx = j.shoulderX * side;
-      var ex = sx * 1.10, wx = sx * 1.05, dR = 0.034 * H;
-      return [
-        st(sx, j.shoulderY, 0, dR, dR, 'clav' + s, 'uArm' + s, 0.55),
-        st(sx * 1.05, (j.shoulderY + j.elbowY) / 2, 0, 0.027 * H, 0.027 * H, 'uArm' + s),
-        st(ex, j.elbowY + 0.012 * H, 0, 0.023 * H, 0.023 * H, 'uArm' + s, 'fArm' + s, 0.4),
-        st(ex, j.elbowY - 0.014 * H, 0, 0.022 * H, 0.022 * H, 'fArm' + s),
-        st((ex + wx) / 2, (j.elbowY + j.wristY) / 2, 0, 0.019 * H, 0.019 * H, 'fArm' + s),
-        st(wx, j.wristY + 0.010 * H, 0, 0.0155 * H, 0.0155 * H, 'fArm' + s, 'hand' + s, 0.45),
-        st(wx, j.wristY - 0.006 * H, 0, 0.0165 * H * p.handScale, 0.011 * H * p.handScale, 'hand' + s)
+      // Round 10: elbow 1.10 -> 1.16, wrist 1.05 -> 1.15 (matches
+      // the skeleton offsets in buildSkeleton) — the light
+      // A-angle hang of the references.
+      var ex = sx * 1.16, wx = sx * 1.15;
+      // Round 8 — the deltoid is rebuilt UNDER the trapezius line.
+      // The straight line from the neck base (0.035H, neckY-0.010H)
+      // to the shoulder tip (0.125H, neckY-0.052H) drops 0.467 per
+      // unit of x. Every point of the arm's top surface must stay
+      // BELOW that line:
+      //  - station 0 sits at the lowered pivot (armY = neckY-0.051H)
+      //    with radius cut 0.040H -> 0.032H, and its ring + cap fan
+      //    are TILTED by the slope angle (0.42 rad), so the cap is a
+      //    slanted disc lying ALONG the line: its inboard edge tucks
+      //    just under the torso slope wall (they meet at x~0.070H)
+      //    and its outboard edge drops to neckY-0.064H — the cap
+      //    CONTINUES the trapezius slope instead of capping it with
+      //    a horizontal shelf at neck height (the rounds 4-7 disc).
+      //  - station 1 (deltoid belly, the widest arm ring) is a full
+      //    0.036H below the pivot, entirely under the line.
+      //  - the tube then descends along the torso's side at armpit
+      //    height; it never re-enters the shoulder's top surface.
+      var st0 = st(sx * 0.97, j.armY, 0, 0.032 * H, 0.032 * H, 'clav' + s, 'uArm' + s, 0.60);
+      st0.tiltZ = -side * 0.42;
+      // Round 9: dome the deltoid cap (see tube()'s capLift). The
+      // dome peak stays ~8 mm BELOW the trapezius line at its x —
+      // the slope silhouette the parent passed in round 8 is not
+      // raised; only the flat-disc slice through the torso wall
+      // becomes a convex ball emerging from it, which softens the
+      // notch dents at the arm root.
+      st0.capLift = 0.007 * H;
+      var arr = [
+        st0,
+        st(sx * 1.05, j.armY - 0.036 * H, 0, 0.0365 * H, 0.0365 * H, 'uArm' + s),
+        st(sx * 1.10, (j.armY + j.elbowY) / 2, 0, 0.030 * H, 0.030 * H, 'uArm' + s),
+        st(ex, j.elbowY + 0.012 * H, 0, 0.0265 * H, 0.0265 * H, 'uArm' + s, 'fArm' + s, 0.4),
+        st(ex, j.elbowY - 0.014 * H, 0, 0.0255 * H, 0.0255 * H, 'fArm' + s),
+        st((ex + wx) / 2, (j.elbowY + j.wristY) / 2, 0, 0.0225 * H, 0.0225 * H, 'fArm' + s),
+        st(wx, j.wristY + 0.010 * H, 0, 0.018 * H, 0.018 * H, 'fArm' + s, 'hand' + s, 0.45),
+        // Iterasi 2: the palm is LENGTHENED (stations reach
+        // wristY-0.048H) so wrist->mitten-tip measures ~0.17 m —
+        // the spec's 0.18 m hand. The mitten itself is mittenPart.
+        st(wx, j.wristY - 0.020 * H, 0.001 * H, 0.0265 * H * p.handScale, 0.0155 * H * p.handScale, 'hand' + s),
+        st(wx, j.wristY - 0.048 * H, 0.002 * H, 0.0245 * H * p.handScale, 0.0145 * H * p.handScale, 'hand' + s)
       ];
+      return arr;
     }
     function leg(side) {
-      var s = side > 0 ? 'L' : 'R', hx = j.hipX * side, tR = 0.053 * H * p.thigh;
+      var s = side > 0 ? 'L' : 'R', hx = j.hipX * side;
+      // Iterasi 2 (user spec, absolute ring radii): thigh 9-10 cm,
+      // knee 7 cm with a soft forward bump, calf 6.5 cm with the
+      // muscle pushed slightly BACK, ankle 4.5 cm. At H=1.75:
+      // thigh 0.054H = 9.5 cm, knee 0.040H = 7.0, calf 0.037H =
+      // 6.5, ankle 0.0257H = 4.5. The stance is near-vertical now
+      // (x multipliers ~1.00-1.02, was 1.04-1.08): feet land under
+      // the hips, close together, soles parallel.
+      var tR = 0.054 * H * p.thigh;
       return [
         st(hx, j.pelvisY - 0.015 * H, 0, tR, tR * 1.05, 'pelvis', 'thigh' + s, 0.55),
         st(hx, j.pelvisY - 0.075 * H, 0, tR * 0.97, tR, 'thigh' + s),
-        st(hx * 1.04, (j.pelvisY + j.kneeY) / 2, 0, tR * 0.82, tR * 0.86, 'thigh' + s),
-        st(hx * 1.08, j.kneeY + 0.016 * H, 0, 0.036 * H, 0.037 * H, 'thigh' + s, 'shin' + s, 0.4),
-        st(hx * 1.08, j.kneeY - 0.018 * H, 0, 0.039 * H, 0.040 * H, 'shin' + s),
-        st(hx * 1.06, (j.kneeY + j.ankleY) / 2, 0, 0.027 * H, 0.028 * H, 'shin' + s),
-        st(hx * 1.05, j.ankleY + 0.012 * H, 0, 0.020 * H, 0.021 * H, 'shin' + s, 'foot' + s, 0.45),
-        st(hx * 1.05, j.ankleY, 0.012 * H, 0.023 * H, 0.020 * H, 'foot' + s),
-        st(hx * 1.05, j.ankleY - 0.022 * H, 0.075 * H, 0.024 * H, 0.017 * H, 'foot' + s, 'toe' + s, 0.4),
-        st(hx * 1.05, j.ankleY - 0.034 * H, 0.140 * H, 0.020 * H, 0.012 * H, 'toe' + s)
+        st(hx * 1.01, (j.pelvisY + j.kneeY) / 2, 0, tR * 0.82, tR * 0.86, 'thigh' + s),
+        st(hx * 1.02, j.kneeY + 0.016 * H, 0.006 * H, 0.040 * H, 0.041 * H, 'thigh' + s, 'shin' + s, 0.4),
+        st(hx * 1.02, j.kneeY - 0.018 * H, -0.010 * H, 0.037 * H, 0.038 * H, 'shin' + s),
+        st(hx * 1.01, (j.kneeY + j.ankleY) / 2, -0.004 * H, 0.028 * H, 0.029 * H, 'shin' + s),
+        st(hx * 1.00, j.ankleY + 0.012 * H, 0, 0.0257 * H, 0.026 * H, 'shin' + s, 'foot' + s, 0.45),
+        st(hx * 1.00, j.ankleY, 0.012 * H, 0.025 * H, 0.021 * H, 'foot' + s),
+        st(hx * 1.00, j.ankleY - 0.022 * H, 0.075 * H, 0.026 * H, 0.017 * H, 'foot' + s, 'toe' + s, 0.4),
+        st(hx * 1.00, j.ankleY - 0.034 * H, 0.140 * H, 0.021 * H, 0.012 * H, 'toe' + s)
       ];
     }
     return { torso: torso, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), joints: j };
@@ -166,17 +268,44 @@
       var a = centers[Math.max(0, i - 1)], b = centers[Math.min(n - 1, i + 1)];
       tans.push(new V3().subVectors(b, a).normalize());
     }
-    var side = new V3(1, 0, 0), fwd = new V3();
+    var side = new V3(1, 0, 0), fwd = new V3(), prevFwd = null;
     for (i = 0; i < n; i++) {
       var s = stations[i];
       fwd.crossVectors(tans[i], side).normalize();
       if (fwd.lengthSq() < 0.1) fwd.set(0, 0, 1);
+      // Frame continuity: where the centre path reverses direction
+      // (the torso at the trapezius dip: up to the shoulder line,
+      // down into the dip, back up the neck) the raw tangent flips
+      // and fwd flips with it, mirroring the ring's angular
+      // assignment. The band between the flipped rings then joins
+      // front vertices to back vertices — a twisted web across the
+      // tube instead of a wall. (This was the true source of both
+      // the neck-base spike triangles and the skin slope showing
+      // through the cloth from above; the ring vertex SETS are
+      // identical either way, which is why vertex-level probes
+      // looked healthy.) Negate fwd back so every ring of the tube
+      // shares one angular frame.
+      if (prevFwd && fwd.dot(prevFwd) < 0) fwd.negate();
+      prevFwd = fwd.clone();
       var ia = boneIndex[s.a], ib = s.b ? boneIndex[s.b] : ia, w = s.b ? s.w : 0;
       for (k = 0; k <= radial; k++) {
         var th = (k / radial) * Math.PI * 2, co = Math.cos(th), si = Math.sin(th);
         var ox = side.x * co * s.rx + fwd.x * si * s.rz;
         var oy = side.y * co * s.rx + fwd.y * si * s.rz;
         var oz = side.z * co * s.rx + fwd.z * si * s.rz;
+        if (s.tiltZ) {
+          // Optional ring tilt around Z (all our paths run in the
+          // z=0 plane, so plain rings are always horizontal). The
+          // sleeve origin ring uses it to lie parallel to the
+          // trapezius diagonal — outer edge down, inner edge up —
+          // instead of capping the shoulder with a flat disc. The
+          // cap fan reuses these ring vertices, so the cap tilts
+          // with the ring. (The offset doubles as the authored
+          // normal direction, so rotating it keeps normals right.)
+          var ct = Math.cos(s.tiltZ), sn = Math.sin(s.tiltZ);
+          var rxx = ox * ct - oy * sn, ryy = ox * sn + oy * ct;
+          ox = rxx; oy = ryy;
+        }
         pos.push(centers[i].x + ox, centers[i].y + oy, centers[i].z + oz);
         var nl = Math.sqrt(ox * ox + oy * oy + oz * oz) || 1;
         nor.push(ox / nl, oy / nl, oz / nl);
@@ -193,7 +322,14 @@
     }
     function cap(ci, flip) {
       var s = stations[ci], base = pos.length / 3;
-      pos.push(s.p[0], s.p[1], s.p[2]);
+      // Optional dome: a station may carry capLift, pushing the
+      // fan centre OUT of the tube along the tangent (flip already
+      // points out of the tube at both ends). The flat fan then
+      // becomes a shallow cone — used for the deltoid cap, whose
+      // flat disc used to slice through the curved torso wall and
+      // leave angular notch dents at the arm root (round 9).
+      var lift = (s.capLift || 0) * flip;
+      pos.push(s.p[0] + tans[ci].x * lift, s.p[1] + tans[ci].y * lift, s.p[2] + tans[ci].z * lift);
       nor.push(tans[ci].x * flip, tans[ci].y * flip, tans[ci].z * flip);
       uv.push(0.5, ci / (n - 1));
       var ia = boneIndex[s.a], ib = s.b ? boneIndex[s.b] : ia, w = s.b ? s.w : 0;
@@ -241,27 +377,27 @@
     part.col = col; return part;
   }
 
-  // Fingers for one hand (LOD0): 4 tapered fingers + thumb, rigid to the
-  // hand bone, merged as one part. Built in bind world space.
-  function fingersPart(p, boneIndex, side) {
+  // Mitten hand for one hand (LOD0): Iterasi 2 replaces the five
+  // separate finger tubes with ONE tapered mitten (continuing the
+  // palm stations of arm()) + a separate thumb — the spec's own
+  // poly lever ("mitten dengan jempol terpisah cukup"). The mitten
+  // tip lands at wristY-0.090H, so wrist->tip ~0.17 m at H=1.75.
+  // Rigid to the hand bone, merged as one part, bind world space.
+  function mittenPart(p, boneIndex, side) {
     var j = joints(p), H = p.H, s = side > 0 ? 'L' : 'R';
-    var wx = j.shoulderX * 1.05 * side, wy = j.wristY - 0.006 * H;
+    var wx = j.shoulderX * 1.15 * side, wy = j.wristY; // round 10: matches the A-angled wrist station
     var hs = p.handScale, parts = [];
-    var spread = [-0.027, -0.009, 0.009, 0.027], lens = [0.052, 0.060, 0.056, 0.044];
-    for (var f = 0; f < 4; f++) {
-      var fx = wx + spread[f] * H * hs * 0.62, L = lens[f] * H * hs;
-      var sts = [
-        st(fx, wy - 0.028 * H * hs, 0.004 * H, 0.0075 * H * hs, 0.0068 * H * hs, 'hand' + s),
-        st(fx, wy - 0.028 * H * hs - L * 0.55, 0.006 * H, 0.0066 * H * hs, 0.0060 * H * hs, 'hand' + s),
-        st(fx, wy - 0.028 * H * hs - L, 0.007 * H, 0.0052 * H * hs, 0.0048 * H * hs, 'hand' + s)
-      ];
-      parts.push(tube(sts, boneIndex, 6, false, true));
-    }
+    var palm = [
+      st(wx, wy - 0.048 * H, 0.002 * H, 0.0245 * H * hs, 0.0145 * H * hs, 'hand' + s),
+      st(wx, wy - 0.070 * H, 0.003 * H, 0.0220 * H * hs, 0.0135 * H * hs, 'hand' + s),
+      st(wx, wy - 0.090 * H, 0.004 * H, 0.0175 * H * hs, 0.0115 * H * hs, 'hand' + s)
+    ];
+    parts.push(tube(palm, boneIndex, 7, false, true));
     var tx = wx - side * 0.020 * H * hs;
     var tst = [
-      st(tx, wy - 0.016 * H * hs, 0.006 * H, 0.008 * H * hs, 0.0072 * H * hs, 'hand' + s),
-      st(tx - side * 0.012 * H * hs, wy - 0.040 * H * hs, 0.012 * H, 0.0068 * H * hs, 0.0062 * H * hs, 'hand' + s),
-      st(tx - side * 0.020 * H * hs, wy - 0.058 * H * hs, 0.016 * H, 0.0054 * H * hs, 0.0050 * H * hs, 'hand' + s)
+      st(tx, wy - 0.030 * H, 0.006 * H, 0.0080 * H * hs, 0.0072 * H * hs, 'hand' + s),
+      st(tx - side * 0.010 * H * hs, wy - 0.048 * H, 0.012 * H, 0.0068 * H * hs, 0.0062 * H * hs, 'hand' + s),
+      st(tx - side * 0.015 * H * hs, wy - 0.062 * H, 0.016 * H, 0.0054 * H * hs, 0.0050 * H * hs, 'hand' + s)
     ];
     parts.push(tube(tst, boneIndex, 6, false, true));
     var merged = { pos: [], nor: [], uv: [], sIdx: [], sWgt: [], idx: [] };
@@ -282,51 +418,217 @@
     p = baseParams(p);
     var S = bodyStations(p);
     var parts = [
-      paintPart(tube(S.torso, boneIndex, 12, true, false), skinRGB),
-      paintPart(tube(S.armL, boneIndex, 10, false, false), skinRGB),
-      paintPart(tube(S.armR, boneIndex, 10, false, false), skinRGB),
-      paintPart(tube(S.legL, boneIndex, 10, false, true), skinRGB),
-      paintPart(tube(S.legR, boneIndex, 10, false, true), skinRGB)
+      // torso capped at BOTH ends: the top cap seals the neck tube
+      // under the head's neck funnel, so no camera angle can see
+      // through the annulus between the jaw and the neck ring
+      paintPart(tube(S.torso, boneIndex, 12, true, true), skinRGB),
+      // arm tubes capped at the shoulder: with the trapezius slope
+      // the arm's open top ring sits exposed beside the slope for
+      // sleeveless tops — the cap seals it as a deltoid top (it
+      // stays hidden inside the torso/sleeve volume otherwise)
+      // Iterasi 2 poly trim: arm/leg tubes radial 10 -> 9 (thin
+      // parts; the silhouette is carried by the station radii)
+      paintPart(tube(S.armL, boneIndex, 9, true, false), skinRGB),
+      paintPart(tube(S.armR, boneIndex, 9, true, false), skinRGB),
+      paintPart(tube(S.legL, boneIndex, 9, false, true), skinRGB),
+      paintPart(tube(S.legR, boneIndex, 9, false, true), skinRGB)
     ];
     if (withFingers) {
-      parts.push(paintPart(fingersPart(p, boneIndex, 1), skinRGB));
-      parts.push(paintPart(fingersPart(p, boneIndex, -1), skinRGB));
+      parts.push(paintPart(mittenPart(p, boneIndex, 1), skinRGB));
+      parts.push(paintPart(mittenPart(p, boneIndex, -1), skinRGB));
     }
     var g = mergeParts(parts);
     g.computeVertexNormals();
     return g;
   }
 
+  // ---- neck funnel --------------------------------------------------------
+  // ONE continuous skin loft from the jaw underside down into the
+  // torso: the seam is tucked inside the head sphere (see below),
+  // the loft pinches in at the throat, then runs DOWN as a narrow
+  // column (radius close to the jaw's underside) and flares ONLY
+  // at its base, merging into the trapezius slope inside the
+  // torso wall. Below the throat it stays a clear 6+ mm inside
+  // the torso tube — never hugging it (near-parallel shells
+  // interleave in the depth buffer) — and its only transversal
+  // crossing is the torso's top cap disc, which it pierces on the
+  // way down from the sphere. The visible neck surface is the
+  // torso loft's own top stations; the funnel backs the throat
+  // and seals the jaw->collar interval. (Round 4's funnel flared
+  // to 0.0305H immediately under the jaw — a short wide cup the
+  // head sat in. This replaces the old joint — sphere bottom pole
+  // floating above a separate open neck pipe — which left a
+  // see-through annulus between chin and collar.)
+  // Skin weights follow the same height curve geoPart uses, so the
+  // funnel deforms together with the sphere above and neck below.
+  function neckFunnel(p, boneIndex, cy, r) {
+    var j = joints(p), H = p.H;
+    var nR = p.neckR;
+    function cross(ny, pad) { // HEAD PASS: cross-section of the DISPLACED head at polar ny (-1..0)
+      var c = headCross(ny, headDims(p));
+      return [c[0] + pad, c[1] + pad];
+    }
+    function wAt(y) { return THREE.MathUtils.clamp((y - (j.headY - 0.02 * H)) / (0.05 * H), 0, 1); }
+    function ring(ny, pad) {
+      var y = cy + ny * r * 1.06, c = cross(ny, pad);
+      return st(0, y, 0, c[0], c[1], 'neck', 'head', wAt(y));
+    }
+    // The seam is TUCKED INSIDE the sphere: the first ring sits
+    // ~4 mm INSIDE the sphere surface and the second emerges just
+    // proud of it near the pole, so the funnel crosses the sphere
+    // transversally in one clean circle. (The first version hugged
+    // the sphere at +2.8 mm over three rings — two near-parallel
+    // shells that interleaved per-triangle in the depth buffer and
+    // rendered as a woven lattice of teeth under the jaw.)
+    // Round 6: the two sphere rings sit exactly ON the head sphere's
+    // own latitude rings (SphereGeometry(.,18,14): ny = cos(k*pi/14),
+    // k=11 -> -0.782, k=12 -> -0.901). The emergence ring therefore
+    // coincides with the sphere's own edge loop at the jaw underside
+    // instead of crossing a facet band mid-way — the mid-band crossing
+    // (old -0.92) tessellated against the sphere's facets and read as
+    // a dark zigzag seam under the jaw. The column below is narrowed.
+    // HEAD PASS: the sphere is now (20,16) — its underside latitude
+    // rings are ny = cos(k*pi/16): k=13 -> -0.831, k=14 -> -0.924.
+    // Round 10: the lower stations are keyed to headY, not
+    // neckY — the neck segment compressed (headY-neckY now
+    // 0.011H), so the old neckY+0.010H station would sit ABOVE
+    // the throat pinch and invert the path. Same descent shape,
+    // re-based: the funnel still ends deep inside the torso
+    // (headY-0.078H = neckY-0.067H, wall ~0.10H there).
+    var sts = [
+      ring(-0.831, -0.0025 * H),
+      ring(-0.924, 0.0015 * H),
+      st(0, j.headY - 0.018 * H, 0, 0.0155 * H * nR, 0.0165 * H * nR, 'neck', 'head', wAt(j.headY - 0.018 * H)),
+      st(0, j.headY - 0.028 * H, 0, 0.019 * H * nR, 0.020 * H * nR, 'neck', 'head', wAt(j.headY - 0.028 * H)),
+      st(0, j.headY - 0.040 * H, 0, 0.023 * H * nR, 0.024 * H * nR, 'neck'),
+      st(0, j.headY - 0.052 * H, 0, 0.030 * H * nR, 0.030 * H * nR, 'neck'),
+      st(0, j.headY - 0.064 * H, 0, 0.045 * H * nR, 0.044 * H * nR, 'neck'),
+      st(0, j.headY - 0.078 * H, 0, 0.060 * H * nR, 0.057 * H * nR, 'neck')
+    ];
+    // Radial 18 = the head sphere's own width segments, and the
+    // first band is lengthened (pinch at headY-0.018H): at radial 12
+    // the short emergence band faceted against the sphere's rhythm
+    // and read as a dark zigzag fringe under the jaw (round 6).
+    var part = tube(sts, boneIndex, 18, false, false);
+    // pin every UV to a plain-skin point of the face canvas (the same
+    // point the ears use) so the funnel shades as bare neck skin
+    for (var i = 0; i < part.uv.length; i += 2) { part.uv[i] = 0.62; part.uv[i + 1] = 0.45; }
+    return part;
+  }
+
   // ---- head ---------------------------------------------------------------
-  // Scaled sphere: forehead a touch wide, jaw tapered in, small ears.
-  // Built in bind world space; base verts blend neck->head. UVs are the
-  // sphere's own: the face lives at u = 0.25 (the +Z meridian).
+  // HEAD PASS (user spec 2026-11-19): the head is a SphereGeometry
+  // (r, 20, 16) DISPLACED per area — never a plain scaled sphere.
+  // Cranium oval elongated backward, forehead slightly forward with
+  // a soft brow ridge, wide cheekbones narrowing to a firm U jaw,
+  // rounded chin pushed a touch forward. HEAD PASS ROUND 2
+  // (simplify clause, parent verdict on round 1): the 3D nose and
+  // the 3D face gear are GONE — the face is a flat, clean canvas
+  // texture (drawn oval eyes / thick brows / soft nose shading),
+  // and the displacement amplitude is RAISED until the silhouette
+  // itself changes (round 1 measured jaw/cheek 0.90 = pure egg).
+  // Every field is smooth (gaussians / smoothsteps); normals are
+  // recomputed on the indexed sphere BEFORE the non-indexed merge,
+  // so shading stays continuous.
+  // Size: height ~0.262 m at H=1.75 (~1/7 body), height:width
+  // ~1.25:1. UVs are the sphere's own: face centre at u = 0.25.
+  var HEAD_RF = 0.57; // head radius factor (was 0.52: the head reads ~10% larger)
+  // HEAD PASS round 2: jaw taper STRENGTHENED (0.17 -> 0.26, ramp
+  // starting right under the cheek line) — round 1 measured
+  // jaw/cheek = 0.90 at the jaw-angle ring, a single smooth curve
+  // with no cheek->jaw break (the bald sample read as a pure egg).
+  // Target: jaw width 0.78-0.84x cheek width at the jaw angle.
+  var JAWF = 0.26; // jaw taper depth
+  function headDims(p) {
+    var r0 = p.u * HEAD_RF * p.headScale;
+    return { r0: r0, sx: 0.80, sy: 0.96, sz: 0.90, cy: p.u * 0.46 };
+  }
+  function ssF(e0, e1, x) { var t = (x - e0) / (e1 - e0); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+  function gF(x, c, s) { var d = (x - c) / s; return Math.exp(-d * d); }
+  function g2F(x, y, cx, cyy, s) { var dx = (x - cx) / s, dy = (y - cyy) / s; return Math.exp(-dx * dx - dy * dy); }
+  // Jaw taper amount at polar height ny: 0 at the cheek line,
+  // ramping to 1 at the chin (x radius factor 1 -> 1-JAWF).
+  function jawT(ny) { return ny < 0 ? ssF(-0.10, -0.80, ny) : 0; }
+  // Elliptical cross-section radii of the displaced head at polar
+  // height ny — shared by the neck funnel (its seam must track the
+  // real surface) and the hair shells (they must clear it).
+  function headCross(ny, d) {
+    var f = Math.sqrt(Math.max(0.0004, 1 - ny * ny));
+    return [d.r0 * d.sx * (1 - JAWF * jawT(ny)) * f, d.r0 * d.sz * f * 1.05];
+  }
+
   function buildHead(p, boneIndex) {
     p = baseParams(p);
-    var j = joints(p), H = p.H, u = p.u;
-    var r = u * 0.52 * p.headScale;
-    var cy = j.headY + u * 0.46;
-    var geo = new THREE.SphereGeometry(r, 18, 14);
+    var j = joints(p), H = p.H;
+    var d = headDims(p), r0 = d.r0;
+    var cy = j.headY + d.cy;
+    var geo = new THREE.SphereGeometry(r0, 20, 16);
     var posA = geo.attributes.position;
     var v = new V3();
     var i;
     for (i = 0; i < posA.count; i++) {
       v.fromBufferAttribute(posA, i);
-      var ny = v.y / r; // -1..1
-      var xs = 0.84, zs = 0.92;
-      if (ny < 0) { var t = -ny; xs *= 1 - 0.20 * t; zs *= 1 - 0.10 * t; }
-      else if (ny > 0.25) xs *= 1 + 0.045 * (ny - 0.25);
-      v.x *= xs; v.z *= zs;
-      v.y = cy + v.y * 1.06;
-      posA.setXYZ(i, v.x, v.y, v.z);
+      var dx = v.x / r0, dy = v.y / r0, dz = v.z / r0, ny = dy;
+      // cranium: the back half swells backward (less at the nape) —
+      // round 2: 0.10 -> 0.14 so the elongation reads in profile
+      var back = dz < 0 ? ssF(0.05, 0.85, -dz) : 0;
+      var zs = d.sz * (1 + 0.14 * back * (ny > -0.55 ? 1 : 0.35));
+      // round 2: a whisper of extra width right at the chin keeps
+      // the stronger jaw taper reading as a U, not a V point
+      var x = dx * r0 * d.sx * (1 - JAWF * jawT(ny)) * (1 + 0.05 * gF(ny, -0.88, 0.12));
+      var y = dy * r0 * d.sy;
+      var z = dz * r0 * zs;
+      // smooth radial relief, applied along the sphere normal
+      var front = ssF(0.25, 0.75, dz);
+      var rad = 0;
+      rad += 0.016 * gF(ny, 0.44, 0.15) * front;                       // forehead
+      rad += 0.020 * gF(ny, 0.21, 0.065) * front;                      // brow ridge
+      // round 2: sockets nearly FLAT now (-0.040 -> -0.010) — the
+      // face is a clean canvas texture again (simplify clause), a
+      // deep pressed socket would warp the drawn eyes
+      rad -= 0.010 * front * (g2F(dx, ny, 0.30, 0.075, 0.15) +
+                              g2F(dx, ny, -0.30, 0.075, 0.15));        // eye sockets (shading only)
+      rad += 0.034 * (g2F(dx, ny, 0.64, -0.02, 0.21) +
+                      g2F(dx, ny, -0.64, -0.02, 0.21)) * ssF(-0.1, 0.35, dz); // cheekbones (round 2: stronger)
+      // round 2: the soft BREAK between cheek and jaw — a shallow
+      // hollow under each cheekbone, present on the sides too, so
+      // the cheek->jaw transition is a plane change, not one curve
+      rad -= 0.013 * (g2F(dx, ny, 0.60, -0.34, 0.17) +
+                      g2F(dx, ny, -0.60, -0.34, 0.17)) * (0.45 + 0.55 * front);
+      // round 2: jaw-angle corners — small bumps where the jaw
+      // turns under, so the U reads from the front
+      rad += 0.012 * (g2F(dx, ny, 0.47, -0.60, 0.16) +
+                      g2F(dx, ny, -0.47, -0.60, 0.16)) * (0.5 + 0.5 * front);
+      rad += 0.020 * g2F(dx, ny, 0, -0.86, 0.20) * front;              // chin (broad, rounded — iter-2)
+      // iter-2 structure vs the iter-1 "egg": parietal width high
+      // on the skull, a slight temple inset, a flatter crown
+      rad += 0.016 * (g2F(dx, ny, 0.80, 0.35, 0.20) + g2F(dx, ny, -0.80, 0.35, 0.20));
+      rad -= 0.014 * (g2F(dx, ny, 0.62, 0.30, 0.16) + g2F(dx, ny, -0.62, 0.30, 0.16)) * front;
+      rad -= 0.018 * gF(ny, 0.92, 0.10);
+      x += dx * rad * r0; y += dy * rad * r0; z += dz * rad * r0;
+      // round 2: the 3D nose bump is GONE (simplify clause) — the
+      // nose is soft side shading in the face texture only.
+      posA.setXYZ(i, x, cy + y, z);
     }
-    // ears: two small flattened spheres at eye level
-    var earGeo = new THREE.SphereGeometry(r * 0.30, 8, 6);
+    geo.computeVertexNormals(); // indexed sphere -> smooth normals
     var parts = [geoPart(geo, p, boneIndex, cy)];
-    parts.push(geoPart(earGeo, p, boneIndex, cy, [r * 0.86, cy + r * 0.02, 0], [0.38, 0.62, 0.20], [0.62, 0.45]));
-    parts.push(geoPart(earGeo.clone(), p, boneIndex, cy, [-r * 0.86, cy + r * 0.02, 0], [0.38, 0.62, 0.20], [0.62, 0.45]));
+    // ears: small C shells (flattened torus arcs) on the head side,
+    // centred between the brow line and the nose base
+    function makeEar(side) {
+      var g = new THREE.TorusGeometry(r0 * 0.185, r0 * 0.047, 4, 7, 4.1);
+      g.rotateZ(2.2);                    // arc opening toward lower-front
+      g.rotateY(side * Math.PI / 2);     // ring plane -> YZ, facing outward
+      g.scale(0.55, 1, 1);               // flatten the tube thickness (x)
+      return g;
+    }
+    var ec = headCross(-0.02, d);
+    parts.push(geoPart(makeEar(1), p, boneIndex, cy, [ec[0] - r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]));
+    parts.push(geoPart(makeEar(-1), p, boneIndex, cy, [-ec[0] + r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]));
+    // continuous skin loft: jaw -> throat -> neck -> inside torso
+    parts.push(neckFunnel(p, boneIndex, cy, r0));
     var g = mergeParts(parts);
-    g.computeVertexNormals();
+    // normals come from the indexed sphere / torus (smooth); do NOT
+    // computeVertexNormals on this non-indexed merge (flat bands)
     return g;
   }
 
@@ -420,60 +722,370 @@
     return out;
   }
 
+  // Break the perfect-dome silhouette of a hair cap: the rim is shaped
+  // by azimuth — lifted at the front into a real hairline (with a slight
+  // widow's peak), tapered over the ears at the sides, dropped at the
+  // nape — plus deterministic micro-noise and a slightly flattened
+  // crown, so hair never reads as a bowl / helmet again.
+  function shapeHair(geo, r, cy, opt) {
+    opt = opt || {};
+    var front = opt.front != null ? opt.front : 0.38;
+    var back = opt.back != null ? opt.back : -0.26;
+    var side = opt.side != null ? opt.side : -0.05;
+    var noise = opt.noise != null ? opt.noise : 0.028;
+    var flat = opt.flat != null ? opt.flat : 0.95;
+    var pa = geo.attributes.position;
+    var v = new V3();
+    for (var i = 0; i < pa.count; i++) {
+      v.fromBufferAttribute(pa, i);
+      var h = (v.y - cy) / r;
+      var w = THREE.MathUtils.clamp((0.72 - h) / 0.75, 0, 1);
+      var phi = Math.atan2(v.x, v.z); // 0 = front (+Z)
+      var cf = Math.cos(phi);
+      var lift = cf > 0 ? front * Math.pow(cf, 1.4) : back * Math.pow(-cf, 1.3);
+      lift += side * Math.pow(Math.abs(Math.sin(phi)), 2);
+      if (cf > 0) lift -= 0.09 * Math.exp(-Math.pow(phi / 0.38, 2)); // widow's peak
+      v.y += lift * r * w;
+      var rad = Math.sqrt(v.x * v.x + v.z * v.z);
+      if (rad > 0.001) {
+        var ns = 1 + noise * Math.sin(phi * 5 + 1.7) * w + noise * 0.7 * Math.sin(phi * 3 - 0.6) * w;
+        v.x *= ns; v.z *= ns;
+      }
+      if (h > 0.5) v.y = cy + (v.y - cy) * flat;
+      pa.setXYZ(i, v.x, v.y, v.z);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // Chunky STEPPED hair shell (replaces the smooth dome): terraced
+  // rings with flat facets, and a rim whose height steps by azimuth —
+  // widow's-peak hairline in front, recessed temple steps, sides
+  // dropped over the ear tops, back down to the nape. The silhouette
+  // is deliberately NOT drawable as a smooth half-circle. Built in
+  // head-bone local space, non-indexed (flat normals), open bottom.
+  function hairShell(p, opt) {
+    opt = opt || {};
+    var hd = headDims(p), r = hd.r0, cy = hd.cy;
+    var padA = (opt.padA != null ? opt.padA : 0.06) * r;
+    var jit = opt.jit != null ? opt.jit : 0.035;
+    var rimF = opt.rimF != null ? opt.rimF : 1.10;
+    var levels = opt.levels || [[0.36, 1.07], [0.62, 0.96], [0.84, 0.78], [0.97, 0.52]];
+    // HEAD PASS: cross-sections track the DISPLACED head (shared
+    // headCross), so the shells clear the new cranium/jaw surface.
+    function headRX(ny) { return headCross(ny, hd)[0]; }
+    function headRZ(ny) { return headCross(ny, hd)[1]; }
+    function rimRaw(phi) {
+      var a = Math.abs(phi);
+      if (a < 0.22) return opt.peak != null ? opt.peak : 0.32;   // widow's peak point (round 2: raised 0.24 -> 0.32 — the drawn brows must clear the hairline)
+      if (a < 0.60) return opt.front != null ? opt.front : 0.36; // hairline (iter-3: raised so the 3D brows clear the shell overhang — proven occluded at 0.30 by a red-brow debug render)
+      if (a < 1.10) return opt.temple != null ? opt.temple : 0.30; // recessed corners (lowered: the old 0.28 left a wing point at the temple step)
+      if (a < 2.05) return opt.side != null ? opt.side : -0.10;  // over the ear tops
+      return opt.back != null ? opt.back : -0.36;                // down to the nape
+    }
+    var seg = 14, rings = [], fac = [rimF], poleRi = -1;
+    var rim = [], k, li;
+    for (k = 0; k < seg; k++) {
+      var th = (k / seg) * Math.PI * 2;
+      var phi = Math.atan2(Math.cos(th), -Math.sin(th));
+      var q = Math.round(rimRaw(phi) / 0.09) * 0.09; // quantised -> stepped edge
+      rim.push(q + jit * Math.sin(k * 7.3 + 1.3));
+    }
+    // HEAD PASS iter-2: smooth the rim steps around the ring (two
+    // 0.25/0.5/0.25 passes). The raw sector steps plunged ~0.26 of
+    // height across ONE segment at the side->back boundary, which
+    // tessellated as a long thin fin sticking out at the nape.
+    for (var rp = 0; rp < 2; rp++) {
+      var sm = rim.slice();
+      for (k = 0; k < seg; k++) rim[k] = sm[(k + seg - 1) % seg] * 0.25 + sm[k] * 0.5 + sm[(k + 1) % seg] * 0.25;
+    }
+    rings.push(rim);
+    // HEAD PASS round 2: IRREGULAR strand teeth per rim vertex —
+    // round 1's uniform alternate teeth (±5 mm) smoothed into the
+    // dome and the back still read as a plain helmet. Teeth now
+    // vary in length by a deterministic hash (long/short mix), and
+    // scale by sector: full at the back (the third-person camera's
+    // main view), strong at the sides, slightly less on the fringe.
+    function hash1(n) { var s = Math.sin(n * 127.1 + (opt.teethSeed || 0) * 311.7) * 43758.5453; return s - Math.floor(s); }
+    var teethArr = [];
+    for (k = 0; k < seg; k++) {
+      var tPhi = Math.atan2(Math.cos((k / seg) * Math.PI * 2), -Math.sin((k / seg) * Math.PI * 2));
+      var tA = Math.abs(tPhi);
+      var secF = tA > 2.05 ? 1.0 : tA > 1.10 ? 0.9 : 0.45;
+      teethArr.push((opt.teeth || 0) * secF * (k % 2 === 0 ? 0.30 : 0.55 + 0.35 * hash1(k * 3.7 + 1)));
+    }
+    for (li = 0; li < levels.length; li++) {
+      var row = [];
+      for (k = 0; k < seg; k++) row.push(levels[li][0]);
+      rings.push(row); fac.push(levels[li][1]);
+    }
+    // Round 6: DOME finish. The levels end at ny 0.97 and the old
+    // build fanned straight from that wide ring (0.28r) to one apex
+    // point — a tall cone over an elliptical ring, which read as a
+    // pointed front-back crest/fin on the crown. Always add a pole
+    // ring at ny = 1.00 (radius clamped to the head cross-section +
+    // pad by the vert() rule) so the loft steps 0.97 -> 1.00 -> apex
+    // in two short terraces: a rounded dome cap, no ridge line.
+    if (levels[levels.length - 1][0] < 0.99) {
+      var prow = [];
+      for (k = 0; k < seg; k++) prow.push(1.00);
+      rings.push(prow); fac.push(0.30);
+      poleRi = rings.length - 1;
+    }
+    function vert(kk, ri) {
+      var th = (kk / seg) * Math.PI * 2, ny = rings[ri][kk], f = fac[ri];
+      // The shell must stay OUTSIDE the head surface at every
+      // height: a level factor below 1.0 converges faster than
+      // the sphere does, and the scalp pokes through the crown
+      // fan as a drippy-edged skin patch (visible from above).
+      // Factors may only ADD volume over the head cross-section,
+      // never subtract from it.
+      var rx, rz;
+      if (ri === poleRi) {
+        // Round 7: the pole ring is an explicitly SMALL concentric
+        // cap — both axes scaled by the same factor (0.17) off the
+        // head's own proportions. The anti-poke clamp forced the
+        // old pole ring to head cross-section + pad (0.21r), and
+        // the wide ring feeding one apex point read as a pointed
+        // crest/fin on the crown. The band below still clears the
+        // sphere everywhere (checked against the sphere radii at
+        // the band's heights).
+        rx = r * 0.80 * 0.21 + padA * 0.5;
+        rz = r * 0.90 * 0.21 + padA * 0.5;
+      } else {
+        rx = Math.max(headRX(ny) * f, headRX(ny)) + padA;
+        rz = Math.max(headRZ(ny) * f, headRZ(ny)) + padA;
+      }
+      if (ri === 0) {
+        // soften the temple "wing": where the rim steps down from
+        // temple to side, the corner vertex used to jut sideways —
+        // pull the rim ring in ~8% around that azimuth
+        var phi = Math.atan2(Math.cos(th), -Math.sin(th)), a = Math.abs(phi);
+        var d = (a - 1.18) / 0.30;
+        var pinch = 1 - 0.08 * Math.exp(-d * d);
+        rx *= pinch; rz *= pinch;
+      }
+      // HEAD PASS round 2: strand-clump lobes — the radius breathes
+      // ±lobe around the ring (7 clumps), same phase on every ring
+      // so clumps run vertically like combed strands. This is what
+      // breaks the perfect-ellipse outline that read as a dome /
+      // helmet from behind; the rim ring gets a gentler dose so
+      // the hairline stays controlled.
+      var lobeAmp = (opt.lobe != null ? opt.lobe : 0.022) * (ri === 0 ? 0.55 : 1);
+      var lobeF = 1 + lobeAmp * Math.sin(th * 7 + 1.3);
+      rx *= lobeF; rz *= lobeF;
+      // HEAD PASS round 2 fix: back-bulge compensation — headCross
+      // is a plain ellipse, but the displaced head's cranium swells
+      // PAST it at the back (elongation field), and the wide chord
+      // between the rim and the first level ring grazed the scalp
+      // at the back equator (centroid probe: +0.1 mm; one skin
+      // triangle visible in kA-back/kB-back). Push the back half
+      // out by a gaussian band around ny 0.10.
+      var sinTh = Math.sin(th);
+      if (sinTh > 0) rz *= 1 + 0.09 * sinTh * Math.exp(-Math.pow((ny - 0.10) / 0.50, 2));
+      var vy = cy + ny * r * hd.sy;
+      // HEAD PASS round 2: jagged strand teeth on the rim — rim
+      // vertices drop by irregular precomputed lengths, so the
+      // hair edge cuts the silhouette as strands, never a brim.
+      if (ri === 0 && opt.teeth) vy -= teethArr[kk] * r;
+      return [Math.cos(th) * rx,
+              vy,
+              -Math.sin(th) * rz - r * 0.035];
+    }
+    var pos = [];
+    function tri(a, b, c) { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+    for (var ri = 0; ri < rings.length - 1; ri++) {
+      for (var kk = 0; kk < seg; kk++) {
+        var kN = (kk + 1) % seg;
+        var a0 = vert(kk, ri), a1 = vert(kN, ri), b0 = vert(kk, ri + 1), b1 = vert(kN, ri + 1);
+        tri(a0, a1, b0); tri(b0, a1, b1); // same winding as tube(): outward
+      }
+    }
+    // Apex ABOVE the head pole (cy + 1.06r) plus pad: at 0.99 the
+    // fan apex sat BELOW the pole and the fan plane sliced the
+    // sphere cap — the other half of the crown patch. With the
+    // round-6 pole ring the final fan spans only ~padA of height:
+    // a shallow rounded cap instead of a cone.
+    var topPt = [0, cy + r * hd.sy + padA * 0.2, -r * 0.035], lastRi = rings.length - 1;
+    for (var kt = 0; kt < seg; kt++) tri(topPt, vert(kt, lastRi), vert((kt + 1) % seg, lastRi));
+    // HEAD PASS: optional azimuth crop — keep only triangles whose
+    // centroid azimuth |atan2(x, z)| <= opt.phiMax (front sector).
+    // Used for the separate fringe piece of layered styles.
+    if (opt.phiMax != null) {
+      var kept = [];
+      for (var ti = 0; ti < pos.length; ti += 9) {
+        var ccx = (pos[ti] + pos[ti + 3] + pos[ti + 6]) / 3;
+        var ccz = (pos[ti + 2] + pos[ti + 5] + pos[ti + 8]) / 3;
+        if (Math.abs(Math.atan2(ccx, ccz)) <= opt.phiMax) for (var tk = 0; tk < 9; tk++) kept.push(pos[ti + tk]);
+      }
+      pos = kept;
+    }
+    var uvA = [];
+    for (var q2 = 0; q2 < pos.length / 3; q2++) uvA.push(0, 0);
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvA, 2));
+    geo.computeVertexNormals(); // non-indexed -> flat facets per face
+    return geo;
+  }
+
+  // Hanging hair panel (head-bone local space): a curved grid that
+  // follows the head cross-sections down past the jaw — long-hair
+  // backs and sides. The bottom row has jagged strand teeth.
+  // HEAD PASS round 2: hem teeth are IRREGULAR per column (hash
+  // mix of short/long) — round 1's uniform alternate teeth read as
+  // a zigzag hem on a single flat slab, not as strands.
+  function panelGeo(p, opt) {
+    var hd = headDims(p), r0 = hd.r0, cy = hd.cy;
+    var cols = 6, rows = 4, pos = [], uvA = [], idx = [];
+    function hashP(n) { var s = Math.sin(n * 141.3 + (opt.seed || 0) * 197.9) * 43758.5453; return s - Math.floor(s); }
+    var ri, ci;
+    for (ri = 0; ri <= rows; ri++) {
+      var t = ri / rows;
+      var ny = opt.rimNy - t * opt.len;
+      var nyC = Math.max(-0.85, Math.min(1, ny));
+      var c = headCross(nyC, hd);
+      var shrink = ny < -0.85 ? 1 - 0.10 * (-0.85 - ny) : 1;
+      var y = cy + ny * r0 * hd.sy;
+      for (ci = 0; ci <= cols; ci++) {
+        var phi = opt.phiC + (ci / cols - 0.5) * 2 * opt.phiW;
+        var edge = Math.abs(ci / cols - 0.5) * 2;
+        var rr = (1 + (opt.pad || 0.08)) * (1 - 0.05 * edge * t) * shrink;
+        var yy = y;
+        if (ri === rows) yy -= (ci % 2 === 0 ? 0.30 : 0.55 + 0.35 * hashP(ci * 7.1 + 1)) * (opt.teeth || 0.04) * r0; // jagged hem
+        pos.push(Math.sin(phi) * c[0] * rr, yy, Math.cos(phi) * c[1] * rr);
+        uvA.push(ci / cols, t);
+      }
+    }
+    for (ri = 0; ri < rows; ri++) for (ci = 0; ci < cols; ci++) {
+      var a = ri * (cols + 1) + ci, b = a + cols + 1;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvA, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo.toNonIndexed();
+  }
+
+  // HEAD PASS hair: layered volume, never a flat cap. Every style =
+  // stepped base shell + a shorter, puffier outer shell over the
+  // crown/back (different pad + rim, so the two read as layers) +
+  // style pieces (fringe crop with jagged teeth, hanging panels,
+  // bun, tail...). Sides and back are covered FULLY — the game's
+  // third-person camera mostly sees the back of the head.
+  // HEAD PASS round 2: teeth amplitudes roughly doubled and made
+  // irregular (see hairShell), layer-2's rim raised so the layer
+  // STEP reads from behind, and long hair is built from SEPARATE
+  // narrow strips with gaps + jagged hems instead of flat slabs.
   function hairGeometry(style, p) {
     p = baseParams(p);
-    var u = p.u, r = u * 0.52 * p.headScale, cy = u * 0.46;
-    // Cap = open DOME (partial sphere), never a closed shell: a full
-    // sphere would swallow the face. Rim sits just above the eye line.
-    var dome = new THREE.SphereGeometry(r * 1.07, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.52);
-    var cap = prim(dome, 0, cy + r * 0.16, -r * 0.05, 0.90, 0.96, 0.98);
+    var hd = headDims(p), r = hd.r0, cy = hd.cy;
+    var cap = hairShell(p, { teeth: 0.10, teethSeed: 1 });
+    var layer2 = hairShell(p, { padA: 0.15, rimF: 1.08, peak: 0.34, front: 0.42, temple: 0.34,
+      side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.07, teethSeed: 2, jit: 0.045 });
+    var fringe = hairShell(p, { padA: 0.085, rimF: 1.06, peak: 0.26, front: 0.30, temple: 0.26,
+      side: 0.24, back: 0.30, levels: [[0.34, 1.03], [0.48, 0.99], [0.62, 0.94], [0.78, 0.88]], teeth: 0.09, teethSeed: 3, phiMax: 1.05, jit: 0.02 });
     var parts = [];
     switch (style) {
       case 'bald': return null;
-      case 'short': parts.push(cap); break;
+      case 'short': parts.push(cap, layer2); break;
       case 'quiff':
-        parts.push(cap);
-        parts.push(prim(new THREE.BoxGeometry(r * 0.9, r * 0.34, r * 0.7), 0, cy + r * 0.80, r * 0.40, 1, 1, 1, 0));
+        parts.push(cap, layer2, fringe);
+        // swept wedge, tilted forward and flattened — a plain
+        // squashed sphere read as a shiny beret dome on the crown
+        var qb = new THREE.SphereGeometry(r * 0.52, 10, 6);
+        qb.rotateX(-0.30); qb.scale(1.05, 0.36, 0.90);
+        parts.push(prim(qb, 0, cy + r * 0.74, r * 0.36, 1, 1, 1, 0));
         break;
-      case 'long':
-        parts.push(cap);
-        parts.push(prim(new THREE.BoxGeometry(r * 1.62, r * 1.5, r * 0.5), 0, cy - r * 0.45, -r * 0.80, 1, 1, 1, 0));
-        parts.push(prim(new THREE.BoxGeometry(r * 0.34, r * 1.1, r * 0.9), r * 0.82, cy - r * 0.3, -r * 0.1, 1, 1, 1, 0));
-        parts.push(prim(new THREE.BoxGeometry(r * 0.34, r * 1.1, r * 0.9), -r * 0.82, cy - r * 0.3, -r * 0.1, 1, 1, 1, 0));
+      case 'long': // back strips are the swing part (hairSwing) — not merged here
+        parts.push(cap, layer2, fringe);
+        // round 2 fix: side strips sit AT/BEHIND the ear line
+        // (offsets -0.05/+0.45 from the side axis) — the first
+        // round-2 placement (front strip at 63 deg) hung in front
+        // of the cheeks and read as thin dark cords from the front
+        parts.push(panelGeo(p, { phiC: Math.PI / 2 - 0.05, phiW: 0.26, rimNy: -0.12, len: 0.78, pad: 0.08, teeth: 0.07, seed: 1 }));
+        parts.push(panelGeo(p, { phiC: Math.PI / 2 + 0.45, phiW: 0.26, rimNy: -0.12, len: 0.92, pad: 0.08, teeth: 0.07, seed: 2 }));
+        parts.push(panelGeo(p, { phiC: -Math.PI / 2 + 0.05, phiW: 0.26, rimNy: -0.12, len: 0.78, pad: 0.08, teeth: 0.07, seed: 3 }));
+        parts.push(panelGeo(p, { phiC: -Math.PI / 2 - 0.45, phiW: 0.26, rimNy: -0.12, len: 0.92, pad: 0.08, teeth: 0.07, seed: 4 }));
         break;
-      case 'ponytail':
-        parts.push(cap);
-        parts.push(prim(new THREE.CapsuleGeometry(r * 0.20, r * 0.9, 3, 8), 0, cy - r * 0.25, -r * 0.95, 1, 1, 1, 0));
+      case 'ponytail': // tail is the swing part (hairSwing)
+        parts.push(cap, layer2, fringe);
         break;
       case 'bun':
-        parts.push(cap);
-        parts.push(prim(new THREE.SphereGeometry(r * 0.42, 10, 8), 0, cy + r * 0.86, -r * 0.38, 1, 0.9, 1, 0));
+        parts.push(cap, layer2);
+        parts.push(prim(new THREE.SphereGeometry(r * 0.42, 10, 8), 0, cy + r * 0.80, -r * 0.42, 1, 0.9, 1, 0));
         break;
-      case 'afro':
-        parts.push(prim(new THREE.SphereGeometry(r * 1.20, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, cy + r * 0.34, -r * 0.04, 1.0, 0.95, 1.0));
+      case 'afro': // stepped shells, bigger mass + stronger steps + teeth + clump lobes
+        parts.push(hairShell(p, { peak: 0.22, front: 0.32, temple: 0.30, side: 0.06, back: -0.06,
+          padA: 0.10, jit: 0.05, rimF: 1.09, teeth: 0.11, teethSeed: 5, lobe: 0.045, levels: [[0.38, 1.14], [0.64, 1.03], [0.85, 0.84], [0.97, 0.46]] }));
+        parts.push(hairShell(p, { peak: 0.28, front: 0.36, temple: 0.32, side: 0.18, back: 0.04,
+          padA: 0.17, jit: 0.06, rimF: 1.14, teeth: 0.09, teethSeed: 6, lobe: 0.04, levels: [[0.50, 1.10], [0.80, 0.90], [0.97, 0.50]] }));
         break;
       case 'hijab': // cloth shell with a cut face window + neck drape
-        var shell = prim(new THREE.SphereGeometry(r * 1.13, 16, 12), 0, cy + r * 0.06, -r * 0.09, 0.96, 1.04, 1.02);
+        var shell = prim(new THREE.SphereGeometry(r * 1.14, 16, 12), 0, cy + r * 0.05, -r * 0.06, 0.86, 1.03, 0.97);
         parts.push(cutFaceWindow(shell, r, cy));
-        parts.push(prim(new THREE.CylinderGeometry(r * 1.04, r * 1.26, r * 1.10, 12, 1, true), 0, cy - r * 0.66, -r * 0.08, 1, 1, 1, 0));
+        parts.push(prim(new THREE.CylinderGeometry(r * 1.02, r * 1.24, r * 1.15, 12, 1, true), 0, cy - r * 0.70, -r * 0.05, 0.88, 1, 1, 0));
         break;
-      case 'peci':
-        parts.push(prim(new THREE.CylinderGeometry(r * 0.86, r * 0.90, r * 0.52, 14), 0, cy + r * 0.62, 0, 1, 1, 1, 0));
+      case 'peci': // sits DOWN over the crown (top must clear the new head top 0.985r)
+        parts.push(prim(new THREE.CylinderGeometry(r * 0.80, r * 0.88, r * 0.55, 14), 0, cy + r * 0.72, 0, 1, 1, 1, 0));
         break;
       case 'cap':
-        parts.push(cap);
-        parts.push(prim(new THREE.CylinderGeometry(r * 1.05, r * 1.05, r * 0.07, 14, 1, false, 0, Math.PI), 0, cy + r * 0.34, r * 0.55, 1, 1, 1.4, 0));
+        parts.push(cap, layer2);
+        parts.push(prim(new THREE.CylinderGeometry(r * 1.05, r * 1.05, r * 0.07, 14, 1, false, 0, Math.PI), 0, cy + r * 0.26, r * 0.50, 1, 1, 1.4, 0));
         break;
-      default: parts.push(cap);
+      default: parts.push(cap, layer2);
     }
     return mergePlain(parts);
   }
+
+  // Swinging hair parts (ponytail / long back panel), authored
+  // relative to a pivot on the head so the factory can spring them.
+  function hairSwing(style, p) {
+    p = baseParams(p);
+    var hd = headDims(p), r0 = hd.r0, cy = hd.cy;
+    if (style === 'ponytail') {
+      var parts = [];
+      parts.push(prim(new THREE.SphereGeometry(r0 * 0.15, 8, 6), 0, -r0 * 0.03, 0, 1, 1, 1, 0)); // knot
+      var tail = prim(new THREE.CapsuleGeometry(r0 * 0.125, r0 * 0.80, 3, 8), 0, -r0 * 0.52, -r0 * 0.06, 1, 1, 1, 0);
+      tail.rotateX(0.16); // tip drifts back, around the pivot
+      parts.push(tail);
+      return { geo: mergePlain(parts), pivot: [0, cy + r0 * 0.36, -r0 * 0.82] };
+    }
+    if (style === 'long') {
+      // HEAD PASS round 2: the back is FOUR separate strips with
+      // small gaps and different lengths (outer pair shorter) —
+      // round 1's single wide panel hung like a legion helmet
+      // flap. The cap underneath shows through the gaps, which is
+      // what makes the separation read as strands.
+      var strips = [[-0.48, 1.00], [-0.16, 1.10], [0.16, 1.10], [0.48, 1.00]];
+      var merged = [];
+      for (var si = 0; si < strips.length; si++) {
+        merged.push(panelGeo(p, { phiC: Math.PI + strips[si][0], phiW: 0.145, rimNy: -0.28, len: 1.05 * strips[si][1], pad: 0.10, teeth: 0.07, seed: 10 + si }));
+      }
+      var g = mergePlain(merged);
+      var piv = [0, cy - r0 * 0.24, -r0 * 0.88];
+      g.translate(-piv[0], -piv[1], -piv[2]);
+      return { geo: g, pivot: piv };
+    }
+    return null;
+  }
+
+  // HEAD PASS round 2: rig.faceGear (3D eyeballs / iris caps / lid
+  // rims / brow tori) is REMOVED — parent's verdict on round 1 was
+  // that the gear read as doll bead-eyes, so the user's simplify
+  // clause applies: the face is drawn in the factory's canvas
+  // texture (oval eyes with white + iris + highlight, thick brows,
+  // soft nose shading). Removing the gear also cuts ~600 tris.
 
   SH.CharRig = {
     baseParams: baseParams, joints: joints, BONE_NAMES: BONE_NAMES,
     buildSkeleton: buildSkeleton, bodyStations: bodyStations, st: st,
     tube: tube, mergeParts: mergeParts, paintPart: paintPart,
     buildBody: buildBody, buildHead: buildHead,
-    hairGeometry: hairGeometry, prim: prim, mergePlain: mergePlain
+    hairGeometry: hairGeometry, hairSwing: hairSwing,
+    headDims: headDims, headCross: headCross,
+    prim: prim, mergePlain: mergePlain
   };
 })(window.SH = window.SH || {});
