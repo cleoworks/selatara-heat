@@ -11,7 +11,7 @@
   'use strict';
 
   var W = null; // SH.World.waterData, bound in build()
-  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null, beam: null, ring: null };
+  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null, beam: null, ring: null, mono: null };
   var envTex = null;
   var mats = null;
   function makeMats() {
@@ -579,6 +579,121 @@
     SH.CityData.addRect(X, Z, 46, 46, 96);
   }
 
+  // ---- Feature 5: the elevated monorail --------------------------------
+  // A closed Catmull-Rom loop at beam-top y=9.85 following the street
+  // corridors (avenue 120 north-south, street -300 east-west, the
+  // coast bend, avenue -360 back down). Beam + pillars + stations are
+  // merged statics; pillars stand 8.6 m off the centreline (sidewalk
+  // verge) and are skipped where they'd land in water, off land, or
+  // within 8.2 m of any road-graph edge (junction mouths) — the beam
+  // spans those gaps. Only pillar feet and station shafts collide;
+  // the beam and platforms are 8+ m up, clear of all traffic.
+  function distToGraph(x, z) {
+    var g = SH.World.graph, best = 1e18;
+    for (var ei = 0; ei < g.edges.length; ei++) {
+      var e = g.edges[ei], a = g.nodes[e.a], b = g.nodes[e.b];
+      var vx = b.x - a.x, vz = b.z - a.z, wx = x - a.x, wz = z - a.z;
+      var tt = (vx * wx + vz * wz) / ((vx * vx + vz * vz) || 1);
+      tt = tt < 0 ? 0 : (tt > 1 ? 1 : tt);
+      var dx = wx - vx * tt, dz = wz - vz * tt, d2 = dx * dx + dz * dz;
+      if (d2 < best) best = d2;
+    }
+    return Math.sqrt(best);
+  }
+
+  function buildMonorel(scene, shared) {
+    var timber = shared.timber, glow = shared.glow;
+    var ctrl = [[120, -300], [120, -180], [120, -60], [120, 60], [120, 150], [120, 205], [84, 234], [30, 236], [-60, 238], [-150, 232], [-240, 224], [-320, 190], [-360, 110], [-360, -20], [-360, -160], [-360, -300], [-240, -300], [-120, -300], [0, -300]];
+    var v3 = ctrl.map(function (p) { return new THREE.Vector3(p[0], 0, p[1]); });
+    var curve = new THREE.CatmullRomCurve3(v3, true, 'catmullrom', 0.35);
+    var total = curve.getLength();
+
+    // Beam: plate + stem boxes per ~8 m of arc.
+    var segs = Math.round(total / 8);
+    var bp = curve.getSpacedPoints(segs);
+    for (var s = 0; s < segs; s++) {
+      var p0 = bp[s], p1 = bp[s + 1];
+      var mx = (p0.x + p1.x) / 2, mz = (p0.z + p1.z) / 2;
+      var dx = p1.x - p0.x, dz = p1.z - p0.z;
+      var sl = Math.sqrt(dx * dx + dz * dz) + 0.4, ry = Math.atan2(dx, dz);
+      part(timber, new THREE.BoxGeometry(2.3, 0.55, sl), 0xc9ccce, mx, 9.575, mz, 0, ry, 0);
+      part(timber, new THREE.BoxGeometry(0.85, 1.5, sl), 0xb4b7ba, mx, 8.55, mz, 0, ry, 0);
+    }
+    // Pillars every ~24 m, offset to the verge.
+    for (var pi = 0; pi < segs; pi += 3) {
+      var P = bp[pi], Pn = bp[pi + 1], Pp = bp[(pi + segs - 1) % segs];
+      var tx = Pn.x - Pp.x, tz = Pn.z - Pp.z, tl = Math.sqrt(tx * tx + tz * tz) || 1;
+      var qx = -tz / tl, qz = tx / tl, placed = false;
+      for (var sd = 0; sd < 2 && !placed; sd++) {
+        var sgn = sd === 0 ? 1 : -1;
+        var fx = P.x + qx * sgn * 8.6, fz = P.z + qz * sgn * 8.6;
+        if (!SH.World.isLand(fx, fz) || SH.World.inWater(fx, fz)) continue;
+        if (distToGraph(fx, fz) < 8.2) continue;
+        box(timber, 0xbfc2c5, fx, 3.9, fz, 1.3, 7.8, 1.3);
+        var amx = (fx + P.x) / 2, amz = (fz + P.z) / 2;
+        part(timber, new THREE.BoxGeometry(0.9, 0.7, 8.9), 0xb4b7ba, amx, 8.15, amz, 0, Math.atan2(P.x - fx, P.z - fz), 0);
+        SH.World.colliders.push({ x: fx, z: fz, hx: 0.75, hz: 0.75 });
+        placed = true;
+      }
+    }
+    // Stations: platform + canopy + ground access shaft.
+    function station(cx, cz, side, name) {
+      var px = cx + side * 5.9, sx2 = cx + side * 8.6;
+      box(timber, 0xd6d3cc, px, 9.0, cz, 4.6, 0.8, 20);
+      box(glow, 0xffd76a, cx + side * 3.75, 9.43, cz, 0.3, 0.06, 20);
+      box(timber, 0x3f6d7a, px, 12.6, cz, 5.4, 0.25, 20);
+      var postOff = [[-2.2, -8.5], [2.2, -8.5], [-2.2, 8.5], [2.2, 8.5]];
+      for (var po = 0; po < 4; po++) box(timber, 0x8f9296, px + postOff[po][0], 11.0, cz + postOff[po][1], 0.18, 3.2, 0.18);
+      box(glow, 0x53e0d4, cx + side * 3.3, 11.9, cz, 0.15, 0.7, 6);
+      box(timber, 0xcac7c0, sx2, 4.7, cz, 3.2, 9.4, 3.2);
+      box(timber, 0x2c3136, sx2 - side * 1.62, 1.1, cz, 0.08, 2.2, 1.2);
+      SH.World.colliders.push({ x: sx2, z: cz, hx: 1.7, hz: 1.7 });
+      return { x: cx, z: cz, name: name };
+    }
+    var stations = [station(120, -180, 1, 'Pelita'), station(120, 60, 1, 'Taman Arus'), station(-360, 60, 1, 'Ruko Senja')];
+
+    // The train: three cars from one merged-geometry template.
+    function carGeometry() {
+      var geos = [];
+      function cbox(sx, sy, sz, x, y, z, hex) {
+        var g = new THREE.BoxGeometry(sx, sy, sz);
+        g.translate(x, y, z);
+        paint(g, hex);
+        geos.push(g);
+      }
+      cbox(2.2, 0.5, 10.6, 0, 0.25, 0, 0x3a3f45);
+      cbox(2.5, 1.9, 11.0, 0, 1.45, 0, 0xd8dde2);
+      cbox(2.54, 0.8, 11.04, 0, 1.8, 0, 0x1d3a44);
+      cbox(2.54, 0.34, 11.04, 0, 0.92, 0, 0x1f8a8a);
+      cbox(2.2, 0.45, 10.2, 0, 2.62, 0, 0xb9bfc6);
+      cbox(2.0, 0.5, 0.5, 0, 1.45, 5.5, 0x2b2f34);
+      return SH.World.mergeGeos(geos);
+    }
+    var carGeo = carGeometry();
+    var carMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.35 });
+    var cars = [];
+    for (var ci = 0; ci < 3; ci++) {
+      var car = new THREE.Mesh(carGeo, carMat);
+      car.name = 'w1-monorail-car';
+      scene.add(car);
+      cars.push(car);
+    }
+    var headLamp = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.1), new THREE.MeshBasicMaterial({ color: 0xffedb5 }));
+    headLamp.position.set(0, 1.05, 5.78);
+    cars[0].add(headLamp);
+    var tailLamp = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.1), new THREE.MeshBasicMaterial({ color: 0xff4a3a }));
+    tailLamp.position.set(0, 1.05, -5.78);
+    cars[2].add(tailLamp);
+
+    var NS = 720;
+    var samples = curve.getSpacedPoints(NS);
+    samples.length = NS; // last point duplicates the first on a closed loop
+    anim.mono = { samples: samples, n: NS, spacing: total / NS, total: total, head: 0, cars: cars, debug: -1 };
+    var mapPts = [];
+    for (var mi = 0; mi < NS; mi += 15) mapPts.push([Math.round(samples[mi].x), Math.round(samples[mi].z)]);
+    SH.CityData.mono = { pts: mapPts, stations: stations };
+  }
+
   var Landmarks = {
     build: function (scene) {
       W = SH.World.waterData;
@@ -588,6 +703,7 @@
       buildRuko(scene, shared);
       buildMercusuar(scene, shared);
       buildMenara(scene, shared);
+      buildMonorel(scene, shared);
       var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
       waterMesh.name = 'w1-water';
       scene.add(waterMesh);
@@ -606,6 +722,18 @@
 
     setEnvMap: function (tex) { envTex = tex; },
 
+    // Shot staging: freeze the train with its head at the sample
+    // nearest to (x, z).
+    monoAt: function (x, z) {
+      if (!anim.mono) return;
+      var mo = anim.mono, bi = 0, bd = 1e18;
+      for (var i = 0; i < mo.n; i++) {
+        var dx = mo.samples[i].x - x, dz = mo.samples[i].z - z, d2 = dx * dx + dz * dz;
+        if (d2 < bd) { bd = d2; bi = i; }
+      }
+      mo.debug = bi * mo.spacing;
+    },
+
     update: function (dt) {
       anim.t += dt;
       var t = anim.t;
@@ -623,6 +751,19 @@
         anim.sampan.rotation.z = Math.sin(t * 1.1) * 0.02;
       }
       if (anim.ring) anim.ring.color.setHSL((t * 0.025) % 1, 0.85, 0.6);
+      if (anim.mono) {
+        var mo = anim.mono;
+        mo.head = mo.debug >= 0 ? mo.debug : (mo.head + dt * 11) % mo.total;
+        for (var mci = 0; mci < 3; mci++) {
+          var md = mo.head - mci * 12.3;
+          while (md < 0) md += mo.total;
+          var mf = md / mo.spacing, mf0 = Math.floor(mf);
+          var mi0 = mf0 % mo.n, mi1 = (mi0 + 1) % mo.n, mfr = mf - mf0;
+          var mp0 = mo.samples[mi0], mp1 = mo.samples[mi1];
+          mo.cars[mci].position.set(mp0.x + (mp1.x - mp0.x) * mfr, 9.85, mp0.z + (mp1.z - mp0.z) * mfr);
+          mo.cars[mci].rotation.y = Math.atan2(mp1.x - mp0.x, mp1.z - mp0.z);
+        }
+      }
       if (anim.beam) {
         anim.beam.group.rotation.y = t * 0.45;
         var bh = SH.State.hour;

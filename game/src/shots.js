@@ -194,7 +194,24 @@
         st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -308, z: 92 };
         stagePeds([[-300, 88], [-338, 96], [-314, 99], [-324, 86]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);
-      } else if (name === 'lake') {
+      } else if (name === 'monorail') {
+      // W1 proof: on avenue 120 south of Stasiun Taman Arus, the
+      // frozen train overhead — beam, pillars on the verge, the
+      // station canopy behind the cars.
+      SH.Main.setHour(10.5);
+      st.player.x = 152; st.player.z = 38;
+      st.player.heading = -1.62;
+      st.camYaw = 1.52; st.camPitch = 0.12;
+      if (SH.Landmarks.monoAt) SH.Landmarks.monoAt(120, 40);
+      snapCamera();
+      st.cash = 3420;
+      st.objective = { title: 'FREE ROAM', text: 'Monorel Layang — Stasiun Taman Arus', x: 120, z: 60 };
+      stagePeds([[104, 30], [110, 2]]);
+      stageTraffic([
+        { from: [120, -60], to: [120, 60], t: 0.3 },
+        { from: [120, 60], to: [120, -60], t: 0.65 }
+      ]);
+    } else if (name === 'lake') {
         // W1 proof: on foot on Danau Cermin's south shore path, looking
         // north across the lake — island + gazebo mid-frame, Kali Arus
         // entering at the left, Pelita towers behind.
