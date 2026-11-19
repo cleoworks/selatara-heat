@@ -909,6 +909,10 @@
           if (eev > 1) { var scv = 1 / Math.sqrt(eev); v.x = islV.x + (v.x - islV.x) * scv; v.z = islV.z + (v.z - islV.z) * scv; }
         }
       }
+      // Inland water (W1): cars stop at the bank of Danau Cermin,
+      // Kali Arus and the canals; bridges are exempt inside waterPush.
+      var wpv = SH.World.waterPush(v.x, v.z, 1.7);
+      if (wpv) { v.x = wpv.x; v.z = wpv.z; v.speed *= 0.35; }
       v.z = Math.max(-cfg.halfZ - 20, v.z);
     },
 

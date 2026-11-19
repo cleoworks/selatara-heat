@@ -43,6 +43,11 @@
           else p.z = c.z + (dz > 0 ? c.hz + radius : -c.hz - radius);
         }
       }
+      // Inland water (W1): Danau Cermin, Kali Arus and the canals stop
+      // wading — SH.World.waterPush returns the nearest bank point and
+      // exempts the bridge corridors.
+      var wp = SH.World.waterPush(p.x, p.z, radius);
+      if (wp) { p.x = wp.x; p.z = wp.z; }
       var cfg = SH.Config.world;
       p.x = Math.max(-cfg.halfX - 30, Math.min(cfg.halfX + 30, p.x));
       // Shoreline (Art Pass 3): the waterline curves with coastZ(x). The

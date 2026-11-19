@@ -340,6 +340,7 @@
 
     SH.Roads.build(scene);
     SH.Buildings.build(scene);
+    if (SH.Landmarks) SH.Landmarks.build(scene);
     SH.Player.build(scene);
     if (SH.Vehicles) SH.Vehicles.buildPool(scene);
     if (SH.Traffic) SH.Traffic.init(scene);
@@ -384,6 +385,7 @@
     State._autosave = (State._autosave || 0) + dt;
     if (State._autosave > 60) { State._autosave = 0; if (SH.Save) SH.Save.saveGame(); }
     SH.Roads.update(dt, State.time);
+    if (SH.Landmarks) SH.Landmarks.update(dt);
     SH.Player.updateCamera(dt, camera);
     if (SH.Vehicles && SH.Vehicles.updateLOD) SH.Vehicles.updateLOD(camera.position);
     if (SH.Effects) SH.Effects.update(dt, camera);
@@ -420,6 +422,7 @@
         if (SH.Pedestrians) SH.Pedestrians.update(stepSize);
         if (SH.Effects) SH.Effects.update(stepSize, camera);
         SH.Roads.update(stepSize, State.time);
+        if (SH.Landmarks) SH.Landmarks.update(stepSize);
         applyLighting();
         if (SH.Missions) SH.Missions.updateCutscene(stepSize, camera);
         if (SH.HUD) SH.HUD.refresh();
@@ -428,6 +431,7 @@
       else { // title/pause: still orbit the city slowly for the cinematic backdrop
         State.time += stepSize;
         SH.Roads.update(stepSize, State.time);
+        if (SH.Landmarks) SH.Landmarks.update(stepSize);
         applyLighting();
         SH.Input.endFrame();
       }

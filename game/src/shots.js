@@ -194,6 +194,18 @@
         st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -308, z: 92 };
         stagePeds([[-300, 88], [-338, 96], [-314, 99], [-324, 86]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);
+      } else if (name === 'lake') {
+        // W1 proof: on foot on Danau Cermin's south shore path, looking
+        // north across the lake — island + gazebo mid-frame, Kali Arus
+        // entering at the left, Pelita towers behind.
+        SH.Main.setHour(10.5);
+        st.player.x = -30; st.player.z = 105;
+        st.player.heading = Math.PI;
+        st.camYaw = 0.12; st.camPitch = 0.03;
+        snapCamera();
+        st.cash = 1250;
+        st.objective = { title: 'FREE ROAM', text: 'Danau Cermin, Taman Arus', x: -18, z: 28 };
+        stagePeds([[-30, 112], [14, 110], [-44, 96]]);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
         st.mode = 'map';

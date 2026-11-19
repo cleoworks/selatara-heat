@@ -493,6 +493,7 @@
       }
       for (pi = 0; pi < 90; pi++) {
         var tx = -560 + rng() * 1120, tz = -440 + rng() * 620;
+        if (SH.World.inWater(tx, tz)) continue; // W1: nothing sprouts from Danau Cermin or Kali Arus
         if (SH.World.districtAt(tx, tz) && SH.World.districtAt(tx, tz).id === 'taman' || (tx > -130 && tx < 130 && tz > -70 && tz < 190)) {
           parkTrees.push({ x: tx, z: tz, s: 0.85 + rng() * 0.5 });
         } else if ((pi % 3) === 0) {
@@ -520,6 +521,7 @@
             var gpz = ga.z + gdz * gt + gpz2 * gSide * (cfg.roadHalf + 2.6);
             var gd = SH.World.districtAt(gpx, gpz);
             if (!gd) continue;
+            if (SH.World.inWater(gpx, gpz)) continue; // W1: keep street palms out of the lake and channels
             palms.push({ x: gpx, z: gpz, s: 0.85 + rng() * 0.3, lean: rng() * Math.PI * 2 });
           }
         }
@@ -651,10 +653,8 @@
       makeInstanced(new THREE.CylinderGeometry(0.32, 0.5, 1, 5), trunkMat, treeTrunks, scene, false);
       makeInstanced(new THREE.IcosahedronGeometry(0.62, 0), treeMat, canopies, scene, false);
 
-      // Park pond.
-      var pond = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshStandardMaterial({ color: 0x2e8fb5, roughness: 0.15, metalness: 0.1 }));
-      pond.rotation.x = -Math.PI / 2; pond.position.set(0, 0.03, 60);
-      scene.add(pond);
+      // The old park pond is gone: Danau Cermin (landmarks.js, W1)
+      // fills the park's north half now.
 
       // ---- Streetlights: instanced poles + arms + heads (Rev 6) ----
       // Each pole carries an arm reaching over the carriageway and a

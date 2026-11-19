@@ -111,12 +111,36 @@
       if (x === -680) g.moveTo(w2mx(x), sy); else g.lineTo(w2mx(x), sy);
     }
     g.stroke();
-    // Park pond + the canal running from it to the sea.
-    g.strokeStyle = '#2e8fb5';
-    g.lineWidth = 9 / WORLD_W * MAP;
-    g.beginPath(); g.moveTo(w2mx(0), w2my(84)); g.lineTo(w2mx(0), w2my(SH.World.coastZ(0))); g.stroke();
-    g.fillStyle = '#2e8fb5';
-    g.beginPath(); g.arc(w2mx(0), w2my(60), 26 / WORLD_W * MAP, 0, Math.PI * 2); g.fill();
+    // Inland water from the shared city data (W1): Danau Cermin with
+    // its island, Kali Arus, and the outflow canal to Pantai Kencana.
+    var wat = (SH.CityData && SH.CityData.water) || [];
+    for (i = 0; i < wat.length; i++) {
+      var w = wat[i];
+      g.fillStyle = '#2e8fb5'; g.strokeStyle = '#2e8fb5';
+      if (w.halfW) {
+        g.lineWidth = Math.max(3, w.halfW * 2 / WORLD_W * MAP);
+        g.lineCap = 'round'; g.lineJoin = 'round';
+        g.beginPath();
+        for (var wp = 0; wp < w.pts.length; wp++) {
+          if (wp === 0) g.moveTo(w2mx(w.pts[wp][0]), w2my(w.pts[wp][1])); else g.lineTo(w2mx(w.pts[wp][0]), w2my(w.pts[wp][1]));
+        }
+        g.stroke();
+      } else {
+        g.beginPath();
+        for (var wq = 0; wq < w.pts.length; wq++) {
+          if (wq === 0) g.moveTo(w2mx(w.pts[wq][0]), w2my(w.pts[wq][1])); else g.lineTo(w2mx(w.pts[wq][0]), w2my(w.pts[wq][1]));
+        }
+        g.closePath(); g.fill();
+        if (w.island) {
+          g.fillStyle = '#79a84f';
+          g.beginPath();
+          for (var wi2 = 0; wi2 < w.island.length; wi2++) {
+            if (wi2 === 0) g.moveTo(w2mx(w.island[wi2][0]), w2my(w.island[wi2][1])); else g.lineTo(w2mx(w.island[wi2][0]), w2my(w.island[wi2][1]));
+          }
+          g.closePath(); g.fill();
+        }
+      }
+    }
     // Buildings from the Rev 8 city data model: the same footprint
     // polygons the 3D generator placed (rects, L annexes, drums as
     // 10-gons, polygon lots with cut corners / courtyards), drawn as
@@ -415,6 +439,14 @@
       g.strokeText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
       g.fillStyle = '#ffffff';
       g.fillText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
+      // W1 water names, lettered on the water itself.
+      g.font = 'italic bold 12px sans-serif';
+      g.lineWidth = 3; g.strokeStyle = 'rgba(8,20,32,0.7)';
+      g.fillStyle = '#dff2ff';
+      g.strokeText('Danau Cermin', px(-12), pz(30));
+      g.fillText('Danau Cermin', px(-12), pz(30));
+      g.strokeText('Kali Arus', px(-62), pz(-6));
+      g.fillText('Kali Arus', px(-62), pz(-6));
       // Expose the transform so menus can map clicks back to world coords.
       canvas._mapTransform = { s: s, ox: ox, oy: oy };
     },

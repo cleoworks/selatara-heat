@@ -333,10 +333,12 @@
     }
     diagCells['6,1'] = true;
 
-    // Taman Arus curved collector: a gentle arc across the park,
-    // following the pond's contour and crossing the canal where the
-    // park paths converge (the z=180 street sets the precedent).
-    var parkArc = [[-120, 60], [-64, 92], [0, 118], [64, 148], [120, 180]];
+    // Taman Arus curved collector: the lakeside drive along Danau
+    // Cermin's south shore (W1 reroute — the lake fills the park's
+    // north half, so the arc swung south to hug its shoreline) and
+    // crossing the outflow canal on its way (the z=180 street sets
+    // the precedent).
+    var parkArc = [[-120, 60], [-98, 102], [-44, 126], [22, 140], [72, 158], [120, 180]];
     var prevPk = gridNodeAt(parkArc[0][0], parkArc[0][1]);
     for (i = 1; i < parkArc.length; i++) {
       var pkn = (i === parkArc.length - 1) ? gridNodeAt(parkArc[i][0], parkArc[i][1]) : addNode(parkArc[i][0], parkArc[i][1]);
@@ -482,6 +484,129 @@
   };
   SH.CityData = CityData;
 
+  // ---- W1 inland water: Danau Cermin, Kali Arus, the outflow canal ---
+  // One water model for every consumer: landmarks.js renders these
+  // shapes, minimap.js draws them from CityData.water, and the movement
+  // blockers (inWater / waterPush, used by player.js and vehicles.js)
+  // keep feet and wheels out of them — bridges exempt. The sea is NOT
+  // here: the shoreline logic (coastZ / isLand) already owns it.
+  function organicLoop(cx, cz, rx, rz, seed, wobble, minX, maxX, minZ, maxZ) {
+    var pts = [], r = makeRng(seed), ph = [], i;
+    for (i = 0; i < 4; i++) ph.push(r() * Math.PI * 2);
+    for (i = 0; i < 28; i++) {
+      var t = i / 28 * Math.PI * 2;
+      var m = 1 + wobble * (0.55 * Math.sin(t * 2 + ph[0]) + 0.3 * Math.sin(t * 3 + ph[1]) + 0.25 * Math.sin(t * 5 + ph[2]) + 0.18 * Math.sin(t * 8 + ph[3]));
+      var x = cx + Math.cos(t) * rx * m, z = cz + Math.sin(t) * rz * m;
+      pts.push([Math.max(minX, Math.min(maxX, x)), Math.max(minZ, Math.min(maxZ, z))]);
+    }
+    return pts;
+  }
+  // Danau Cermin: ~200 m long axis filling Taman Arus' north half,
+  // clamped clear of the z=-60 street, the x=+-120 avenues and the
+  // rerouted lakeside arc.
+  var lakePoly = organicLoop(-12, 30, 92, 68, 77031, 0.13, -108, 104, -44, 112);
+  var lakeIslandPoly = organicLoop(-18, 28, 15, 10.5, 77032, 0.12, -60, 24, -10, 66);
+  // Kali Arus: rises at a culvert pool under the z=-60 street and
+  // winds south into the lake's west shore.
+  var riverPts = [[-34, -47], [-44, -16], [-36, 10], [-50, 26]];
+  var riverHalfW = 5.5;
+  var riverPool = { x: -34, z: -47, r: 6.5 };
+  // The outflow: the park canal roads.js already renders, from the
+  // lake's south shore to the sea at Pantai Kencana.
+  var outflowPts = [[0, 94], [0, 200], [0, 336]];
+  var outflowHalfW = 5;
+  // Crossings where water may be crossed: {seg, half-width}.
+  var waterBridges = [
+    { x1: 0, z1: 126, x2: 0, z2: 148, hw: 9.5 },     // lakeside arc over the outflow
+    { x1: 0, z1: 169, x2: 0, z2: 191, hw: 9.5 },     // z=180 street over the outflow
+    { x1: 0, z1: 224, x2: 0, z2: 246, hw: 9.5 },     // coast road over the outflow
+    { x1: -21, z1: 99, x2: -19, z2: 37, hw: 2.8 },   // footbridge to the lake island
+    { x1: -58, z1: 13, x2: -36, z2: 23, hw: 3.2 },   // footbridge over Kali Arus
+    { x1: 0, z1: 99, x2: 0, z2: 117, hw: 4.2 },      // jogging path over the outflow
+    { x1: 6, z1: 106, x2: 6, z2: 87, hw: 2.2 },      // the lake pier
+    { x1: -34, z1: -55, x2: -34, z2: -39, hw: 8.5 }  // culvert mouth under the z=-60 street
+  ];
+
+  function pointInPoly(pts, x, z) {
+    var inside = false;
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      var xi = pts[i][0], zi = pts[i][1], xj = pts[j][0], zj = pts[j][1];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function distSeg(px, pz, ax, az, bx, bz) {
+    var dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+    var t = L2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L2)) : 0;
+    var cx = ax + dx * t, cz = az + dz * t;
+    return { d: Math.hypot(px - cx, pz - cz), x: cx, z: cz };
+  }
+  function distToLine(pts, x, z) {
+    var best = null;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var c = distSeg(x, z, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+      if (!best || c.d < best.d) best = c;
+    }
+    var nx = 0, nz = 1;
+    if (best.d > 0.001) { nx = (x - best.x) / best.d; nz = (z - best.z) / best.d; }
+    return { d: best.d, x: best.x, z: best.z, nx: nx, nz: nz };
+  }
+  function inWater(x, z) {
+    if (pointInPoly(lakePoly, x, z) && !pointInPoly(lakeIslandPoly, x, z)) return true;
+    if (distToLine(riverPts, x, z).d < riverHalfW) return true;
+    if (Math.hypot(x - riverPool.x, z - riverPool.z) < riverPool.r) return true;
+    if (distToLine(outflowPts, x, z).d < outflowHalfW) return true;
+    return false;
+  }
+  // Nearest dry point for a point in inland water, or null when the
+  // point is dry or stands on a bridge corridor.
+  function waterPush(x, z, radius) {
+    if (!inWater(x, z)) return null;
+    var i;
+    for (i = 0; i < waterBridges.length; i++) {
+      var s = waterBridges[i];
+      if (distSeg(x, z, s.x1, s.z1, s.x2, s.z2).d < s.hw) return null;
+    }
+    var bx = 0, bz = 0, bt = Infinity;
+    function offer(cx2, cz2) {
+      var t = Math.hypot(cx2 - x, cz2 - z);
+      if (t < bt) { bt = t; bx = cx2; bz = cz2; }
+    }
+    var polys = [lakePoly, lakeIslandPoly];
+    for (var pi = 0; pi < polys.length; pi++) {
+      var poly = polys[pi];
+      for (i = 0; i < poly.length; i++) {
+        var a = poly[i], b = poly[(i + 1) % poly.length];
+        var c = distSeg(x, z, a[0], a[1], b[0], b[1]);
+        var ux = c.x - x, uz = c.z - z, ul = Math.hypot(ux, uz) || 1;
+        offer(c.x + ux / ul * (radius + 0.3), c.z + uz / ul * (radius + 0.3));
+      }
+    }
+    var lines = [[riverPts, riverHalfW], [outflowPts, outflowHalfW]];
+    for (i = 0; i < lines.length; i++) {
+      var cl = distToLine(lines[i][0], x, z);
+      var need = lines[i][1] + radius + 0.3;
+      if (cl.d < need + 4) offer(cl.x + cl.nx * need, cl.z + cl.nz * need);
+    }
+    var pdx = x - riverPool.x, pdz = z - riverPool.z, pdd = Math.hypot(pdx, pdz);
+    if (pdd < riverPool.r + 4) {
+      var pr = riverPool.r + radius + 0.3;
+      offer(riverPool.x + pdx / (pdd || 1) * pr, riverPool.z + pdz / (pdd || 1) * pr);
+    }
+    return { x: bx, z: bz };
+  }
+  var WaterData = {
+    lake: lakePoly, island: lakeIslandPoly,
+    river: riverPts, riverHalfW: riverHalfW, pool: riverPool,
+    outflow: outflowPts, outflowHalfW: outflowHalfW,
+    bridges: waterBridges
+  };
+  CityData.water = [
+    { pts: lakePoly, island: lakeIslandPoly },
+    { pts: riverPts, halfW: riverHalfW },
+    { pts: outflowPts, halfW: outflowHalfW }
+  ];
+
   SH.World = {
     rng: makeRng(20261124),
     makeRng: makeRng,
@@ -493,6 +618,9 @@
     isLand: isLand,
     onIsland: onIsland,
     bridgeClosest: bridgeClosest,
+    inWater: inWater,
+    waterPush: waterPush,
+    waterData: WaterData,
     diagCells: diagCells,
     graph: { nodes: nodes, edges: edges },
     nearestNode: nearestNode,
