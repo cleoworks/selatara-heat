@@ -24,7 +24,11 @@
   function pick(r, arr) { return arr[Math.floor(r() * arr.length) % arr.length]; }
 
   var SKIN_TONES = [0xf7d7b5, 0xf2c89b, 0xe8b184, 0xdb9a68, 0xc9824e, 0xa96638, 0x86502a, 0x6b3f22];
-  var HAIR_COLORS = [0x17130f, 0x2b1d12, 0x4a2f1a, 0x6e4a26, 0x8a6a3c, 0xb8b0a4, 0xd8d3c8, 0x101010];
+  // APPEAL PASS: hair is never flat pure black — blue-black and
+  // warm dark browns lead the list (two-tone shading is baked per
+  // vertex on top of these bases, see paintHair); greys stay at
+  // the end for elderly seeds.
+  var HAIR_COLORS = [0x1b1e28, 0x2b1d12, 0x3a2415, 0x54331b, 0x77572c, 0x9a7d52, 0xb8b0a4, 0xd8d3c8];
 
   function rgb(hex) {
     // Vertex colours live in LINEAR working space. The face texture
@@ -38,25 +42,41 @@
   function css(hex) { return '#' + ('000000' + hex.toString(16)).slice(-6); }
 
   // ---- materials (shared / cached) ---------------------------------------
+  // APPEAL PASS shading lock: SOFT TOON everywhere on characters.
+  // One shared 4-step gradient ramp (LinearFilter = soft steps, no
+  // hard cel edge, never flat) drives every character material;
+  // there is NO specular highlight on skin/cloth/hair anymore (the
+  // old MeshStandardMaterial sheen read as plastic). All character
+  // materials are vertexColors:true — every geometry that reaches
+  // them carries a colour attribute (body/cloth are painted per
+  // ring with fake AO; hair is painted two-tone; plain accessories
+  // get a white fill in attach()).
+  var RAMP = (function () {
+    var steps = [118, 168, 216, 255], data = new Uint8Array(steps.length * 4);
+    for (var i = 0; i < steps.length; i++) {
+      data[i * 4] = steps[i]; data[i * 4 + 1] = steps[i]; data[i * 4 + 2] = steps[i]; data[i * 4 + 3] = 255;
+    }
+    var t = new THREE.DataTexture(data, steps.length, 1, THREE.RGBAFormat);
+    t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = false; t.needsUpdate = true;
+    return t;
+  })();
   var matCache = {};
   function mat(color, rough, opts) {
-    var key = color + '|' + rough + '|' + (opts && opts.key || '');
+    var key = color + '|' + (opts && opts.key || '');
     if (matCache[key]) return matCache[key];
-    var m = new THREE.MeshStandardMaterial({ color: color, roughness: rough, metalness: 0.0, side: THREE.DoubleSide });
+    var m = new THREE.MeshToonMaterial({ color: color, gradientMap: RAMP, vertexColors: true, side: THREE.DoubleSide });
     if (opts && opts.flat) m.flatShading = true;
     matCache[key] = m; return m;
   }
-  var bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0 });
+  var bodyMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP });
   var darkMat = mat(0x14161c, 0.5);
 
-  // HEAD PASS hair material: roughness 0.5 + a light envMap sheen
-  // (spec) so the layered shells read as volume, not matte plastic.
-  var hairMatCache = {};
-  function hairMat(color) {
-    if (hairMatCache[color]) return hairMatCache[color];
-    var m = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 0.7 });
-    hairMatCache[color] = m; return m;
-  }
+  // APPEAL PASS hair: ONE shared toon material; the colour lives in
+  // the vertices (base tone + a lighter curved band over the crown
+  // baked by paintHair) — the band IS the soft highlight the style
+  // lock asks for, never a metal/plastic specular streak.
+  var hairMatShared = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP, side: THREE.DoubleSide });
   // HEAD PASS round 2: buildFaceGear + the eye/iris materials are
   // REMOVED with rig.faceGear — the face is texture-drawn now
   // (simplify clause; see faceTexture below).
@@ -118,16 +138,48 @@
         c.beginPath(); c.arc(i + 16, j + 16, 9, 0, 7); c.stroke();
         c.beginPath(); c.arc(i + 16, j + 16, 3.5, 0, 7); c.fill();
       }
+    } else if (kind === 'cloth') {
+      // APPEAL PASS: solid cloth gets its selling details from the
+      // TEXTURE, never from extra meshes — soft chest light, hem
+      // shading, stitch dashes at the wrap seam, faint mottling.
+      // c2 = detail flag: 1 adds a button column + chest pocket
+      // (jackets/blazers). Loft UVs: u wraps the tube (front at
+      // u~0.75), v runs along the stations (0 = first station).
+      var grd = c.createLinearGradient(0, 128, 0, 0);
+      grd.addColorStop(0, 'rgba(0,0,0,0.10)'); grd.addColorStop(0.10, 'rgba(0,0,0,0)');
+      grd.addColorStop(0.55, 'rgba(255,255,255,0.05)'); grd.addColorStop(0.85, 'rgba(255,255,255,0)');
+      grd.addColorStop(0.97, 'rgba(0,0,0,0.08)'); grd.addColorStop(1, 'rgba(0,0,0,0.10)');
+      c.fillStyle = grd; c.fillRect(0, 0, 128, 128);
+      c.fillStyle = 'rgba(0,0,0,0.16)';
+      for (j = 0; j < 128; j += 8) { c.fillRect(3, j, 1.4, 4); c.fillRect(123, j, 1.4, 4); } // stitch dashes
+      var seedN = 7; // deterministic mottle (iter 2: softened —
+      // alpha .05->.03, 260->180; iter-1 close-ups read as dirt)
+      c.fillStyle = 'rgba(0,0,0,0.03)';
+      for (i = 0; i < 180; i++) {
+        seedN = (seedN * 16807) % 2147483647;
+        var mx = seedN % 128; seedN = (seedN * 16807) % 2147483647;
+        c.fillRect(mx, seedN % 128, 1.6, 1.6);
+      }
+      if (c2 === 1) {
+        c.fillStyle = 'rgba(20,12,8,0.5)';
+        [84, 74, 64, 54].forEach(function (by) { c.beginPath(); c.arc(96, by, 1.9, 0, 7); c.fill(); });
+        c.strokeStyle = 'rgba(20,12,8,0.35)'; c.lineWidth = 1.2;
+        c.strokeRect(104, 36, 11, 15); c.beginPath(); c.moveTo(104, 41); c.lineTo(115, 41); c.stroke();
+      }
     }
     var tex = new THREE.CanvasTexture(cv);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-    var m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide });
+    var m = new THREE.MeshToonMaterial({ map: tex, gradientMap: RAMP, vertexColors: true, side: THREE.DoubleSide });
     patternCache[key] = m; return m;
   }
   function clothMat(spec) {
     if (!spec) return mat(0x888888, 0.85);
     if (spec.pattern) return patternMat(spec.pattern, spec.color, spec.color2 || 0xffffff);
-    return mat(spec.color, spec.rough != null ? spec.rough : 0.85);
+    // APPEAL PASS: solids go through the 'cloth' detail painter
+    // (jackets/blazers get buttons + pocket; everything else gets
+    // stitching + fold shading only).
+    var detail = (spec.type === 'jacket' || spec.type === 'blazer' || spec.detail) ? 1 : 0;
+    return patternMat('cloth', spec.color, detail);
   }
 
   // ---- procedural face -----------------------------------------------------
@@ -155,7 +207,30 @@
     var glow = c.createRadialGradient(64, 118, 12, 64, 118, 110);
     glow.addColorStop(0, 'rgba(255,240,220,0.10)'); glow.addColorStop(1, 'rgba(40,16,0,0.015)');
     c.fillStyle = glow; c.fillRect(0, 0, 256, 256);
+    // APPEAL PASS: ONE expression resolver for every face. Legacy
+    // archetype data speaks in mouths (grin/flat/stern); the style
+    // lock speaks in 5 expressions — f.expr wins when set, else
+    // the mouth implies it. char.setExpression() swaps at runtime.
+    var expr = f.expr || (f.mouth === 'grin' ? 'smile' : (f.mouth === 'flat' || f.mouth === 'stern') ? 'serious' : 'neutral');
+    // Warm skin variation (style lock: never one flat tone) — a
+    // soft warm tint on the nose tip for EVERY face, and a warm
+    // patch at the ear/funnel sample point (u 0.62, v 0.45) so the
+    // ears and neck funnel read warm instead of grey.
+    function warm(x, y, r, a) {
+      var g = c.createRadialGradient(x, y, 1, x, y, r);
+      g.addColorStop(0, 'rgba(233,116,74,' + a + ')'); g.addColorStop(1, 'rgba(233,116,74,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    }
+    warm(64, 142, 7, 0.10);
+    warm(159, 141, 30, 0.09);
+    // under-jaw AO: a soft shadow where the jaw meets the neck
+    var jg = c.createLinearGradient(0, 168, 0, 198);
+    jg.addColorStop(0, 'rgba(60,30,12,0)'); jg.addColorStop(1, 'rgba(60,30,12,0.12)');
+    c.fillStyle = jg; c.fillRect(42, 168, 44, 30);
     // ---- brows: thick arched strokes, hair colour ---------------
+    // APPEAL PASS: features sit WIDER than realistic (eye centres
+    // at +-13.5 in 256-space, was +-12) over a smaller, rounder
+    // lower face — the friendly stylized read.
     var browCol = f.browColor != null ? css(f.browColor) : '#2b1d12';
     c.strokeStyle = browCol; c.globalAlpha = 0.92; c.lineWidth = 5.5; c.lineCap = 'round';
     function brow(cx, mirror, yOut, yMid, yIn) {
@@ -164,35 +239,37 @@
       c.quadraticCurveTo(cx, yMid, cx - mirror * 8.5, yIn);
       c.stroke();
     }
-    if (f.expr === 'angry') { brow(52, 1, 105, 103.5, 111.5); brow(76, -1, 105, 103.5, 111.5); }
-    else if (f.expr === 'surprised') { brow(52, 1, 106, 98.5, 105); brow(76, -1, 106, 98.5, 105); }
-    else { brow(52, 1, 109.5, 101.5, 108.5); brow(76, -1, 109.5, 101.5, 108.5); }
+    if (expr === 'angry') { brow(50.5, 1, 105, 103.5, 111.5); brow(77.5, -1, 105, 103.5, 111.5); }
+    else if (expr === 'surprised') { brow(50.5, 1, 106, 98.5, 105); brow(77.5, -1, 106, 98.5, 105); }
+    else if (expr === 'serious') { brow(50.5, 1, 107.5, 105.5, 108); brow(77.5, -1, 107.5, 105.5, 108); }
+    else if (expr === 'smile') { brow(50.5, 1, 110, 100.5, 108); brow(77.5, -1, 110, 100.5, 108); }
+    else { brow(50.5, 1, 109.5, 101.5, 108.5); brow(77.5, -1, 109.5, 101.5, 108.5); }
     c.globalAlpha = 1;
     // ---- eyes: drawn ovals, white + iris + highlight ------------
     // soft shadow just above (under-brow) and below each eye
     c.fillStyle = 'rgba(70,38,20,0.08)';
-    c.beginPath(); c.ellipse(52, 112.5, 9, 2.4, 0, 0, 7); c.ellipse(76, 112.5, 9, 2.4, 0, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(50.5, 112.5, 9, 2.4, 0, 0, 7); c.ellipse(77.5, 112.5, 9, 2.4, 0, 0, 7); c.fill();
     c.fillStyle = 'rgba(70,38,20,0.10)';
-    c.beginPath(); c.ellipse(52, 128.5, 8, 2.0, 0, 0, 7); c.ellipse(76, 128.5, 8, 2.0, 0, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(50.5, 128.5, 8, 2.0, 0, 0, 7); c.ellipse(77.5, 128.5, 8, 2.0, 0, 0, 7); c.fill();
     function eye(cx) {
-      var ry = f.eyes === 'narrow' ? 3.7 : f.eyes === 'sleepy' ? 4.2 : f.expr === 'surprised' ? 5.9 : 5.0;
+      var ry = f.eyes === 'narrow' ? 3.9 : f.eyes === 'sleepy' ? 4.4 : expr === 'surprised' ? 6.4 : 5.4;
       c.fillStyle = '#f2ede4';
-      c.beginPath(); c.ellipse(cx, 121, 6.8, ry, 0, 0, 7); c.fill();
+      c.beginPath(); c.ellipse(cx, 121, 7.4, ry, 0, 0, 7); c.fill();
       var iy = f.eyes === 'sleepy' ? 121.8 : 121;
       c.fillStyle = '#2e1a0c';
-      c.beginPath(); c.arc(cx, iy, 4.0, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx, iy, 4.3, 0, 7); c.fill();
       c.fillStyle = '#0d0603';
-      c.beginPath(); c.arc(cx, iy, 2.1, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx, iy, 2.3, 0, 7); c.fill();
       c.fillStyle = '#ffffff';
-      c.beginPath(); c.arc(cx - 1.5, iy - 1.7, 1.3, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx - 1.6, iy - 1.8, 1.4, 0, 7); c.fill();
       if (f.eyes === 'sleepy') { // lid band over the top of the eye
-        c.fillStyle = css(skinHex); c.fillRect(cx - 7.2, 114.4, 14.4, 5.2);
+        c.fillStyle = css(skinHex); c.fillRect(cx - 7.8, 114.4, 15.6, 5.2);
       }
-      // lash line over the top edge
-      c.strokeStyle = 'rgba(43,24,15,0.90)'; c.lineWidth = 1.7; c.lineCap = 'round';
-      c.beginPath(); c.ellipse(cx, 121, 7.1, ry + 0.4, 0, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
+      // lash line over the top edge — firm upper lid (style lock)
+      c.strokeStyle = 'rgba(43,24,15,0.92)'; c.lineWidth = 1.9; c.lineCap = 'round';
+      c.beginPath(); c.ellipse(cx, 121, 7.7, ry + 0.4, 0, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
     }
-    eye(52); eye(76);
+    eye(50.5); eye(77.5);
     // nose: soft side shading ONLY (no 3D nose) — a slightly
     // stronger side shadow than round 1 (Iterasi 2 asks for it),
     // a soft shadow under the tip, and the two nostril dots
@@ -203,34 +280,34 @@
     c.beginPath(); c.ellipse(64, 146.5, 4.6, 1.7, 0, 0, 7); c.fill();
     c.fillStyle = 'rgba(50,26,12,0.38)';
     c.beginPath(); c.arc(60.5, 144, 1.15, 0, 7); c.arc(67.5, 144, 1.15, 0, 7); c.fill();
-    // mouth — strong enough to read as a mouth at 2 m; f.expr
-    // 'surprised' swaps in an open mouth instead
-    if (f.expr === 'surprised') {
+    // mouth — one simple line with a slight curve, driven by the
+    // resolved expression (strong enough to read at 2 m)
+    if (expr === 'surprised') {
       c.fillStyle = 'rgba(70,22,16,0.92)';
       c.beginPath(); c.ellipse(64, 157, 3.6, 4.8, 0, 0, 7); c.fill();
     } else {
       c.strokeStyle = 'rgba(94,34,24,0.95)'; c.lineWidth = 2.6; c.lineCap = 'round';
       c.beginPath();
-      if (f.mouth === 'grin') { c.arc(64, 150, 10, 0.25, Math.PI - 0.25); }
-      else if (f.mouth === 'flat') { c.moveTo(56.5, 157); c.lineTo(71.5, 157); }
-      else if (f.mouth === 'stern' || f.expr === 'angry') { c.arc(64, 164, 8, Math.PI + 0.5, -0.5); }
-      else { c.arc(64, 152, 8.5, 0.32, Math.PI - 0.32); }
+      if (expr === 'smile') { c.arc(64, 150, 10, 0.25, Math.PI - 0.25); }
+      else if (expr === 'serious') { c.moveTo(56.5, 157); c.lineTo(71.5, 157); }
+      else if (expr === 'angry') { c.arc(64, 164, 8, Math.PI + 0.5, -0.5); }
+      else { c.arc(64, 152, 7.5, 0.4, Math.PI - 0.4); }
       c.stroke();
-      if (f.mouth !== 'stern' && f.mouth !== 'flat' && f.expr !== 'angry') { // lower-lip hint
+      if (expr === 'smile' || expr === 'neutral') { // lower-lip hint
         c.strokeStyle = 'rgba(255,220,190,0.20)'; c.lineWidth = 1.4;
         c.beginPath(); c.arc(64, 154.5, 6.0, 0.55, Math.PI - 0.55); c.stroke();
       }
     }
-    if (f.blush) {
-      // round 2: radial-gradient blush at HALF the old alpha —
-      // round 1's flat 0.20 ellipses read as pink stickers
-      var bl1 = c.createRadialGradient(40, 140, 1, 40, 140, 10);
-      bl1.addColorStop(0, 'rgba(232,110,90,0.10)'); bl1.addColorStop(1, 'rgba(232,110,90,0)');
-      c.fillStyle = bl1; c.beginPath(); c.arc(40, 140, 10, 0, 7); c.fill();
-      var bl2 = c.createRadialGradient(88, 140, 1, 88, 140, 10);
-      bl2.addColorStop(0, 'rgba(232,110,90,0.10)'); bl2.addColorStop(1, 'rgba(232,110,90,0)');
-      c.fillStyle = bl2; c.beginPath(); c.arc(88, 140, 10, 0, 7); c.fill();
-    }
+    // cheek warmth: EVERY face gets a whisper (0.05); f.blush
+    // archetypes (tourists, kids) get the fuller 0.10. Radial
+    // gradients only — flat ellipses read as pink stickers.
+    var blushA = f.blush ? 0.10 : 0.05;
+    var bl1 = c.createRadialGradient(38, 140, 1, 38, 140, 10);
+    bl1.addColorStop(0, 'rgba(232,110,90,' + blushA + ')'); bl1.addColorStop(1, 'rgba(232,110,90,0)');
+    c.fillStyle = bl1; c.beginPath(); c.arc(38, 140, 10, 0, 7); c.fill();
+    var bl2 = c.createRadialGradient(90, 140, 1, 90, 140, 10);
+    bl2.addColorStop(0, 'rgba(232,110,90,' + blushA + ')'); bl2.addColorStop(1, 'rgba(232,110,90,0)');
+    c.fillStyle = bl2; c.beginPath(); c.arc(90, 140, 10, 0, 7); c.fill();
     if (f.mustache) {
       c.fillStyle = 'rgba(30,20,14,0.82)';
       c.beginPath(); c.ellipse(64, 149, 10.5, 2.6, 0, 0, 7); c.fill();
@@ -278,6 +355,7 @@
     return Rig.tube(stations, boneIndex, 10, false, !!capEnd);
   }
 
+  var WHITE = [1, 1, 1];
   function buildClothes(p, boneIndex, wear, skinRGB) {
     var S = Rig.bodyStations(p), j = S.joints, H = p.H;
     var meshes = [];
@@ -346,7 +424,11 @@
       // wants the round collar SNUG at the neck.
       topSts[10].p[1] -= 0.011 * H; topSts[10].rx += 0.005 * H; topSts[10].rz += 0.005 * H;
       topSts[9].rx += 0.002 * H; topSts[9].rz += 0.002 * H;
-      var parts = [Rig.tube(topSts, boneIndex, 10, false, false)];
+      // APPEAL PASS fake AO on cloth: hem slightly shaded, the
+      // under-collar rings (local 9-10) darkest — the collar zone
+      // must read as a fold, not a flat tube top.
+      var parts = [Rig.shadePart(Rig.tube(topSts, boneIndex, 10, false, false), WHITE,
+        [0.97, 1, 1, 1, 1, 1, 1, 1, 1, 0.94, 0.90], 11)];
       // Iterasi 2 (user spec): a short sleeve follows the upper
       // arm at +1 cm and its hem hangs 2-3 cm ABOVE THE ELBOW —
       // arm station 3 sits at elbowY+0.012H (~2.1 cm), so the
@@ -392,7 +474,11 @@
         // torso tube, its exposed part patches the crease wedge
         // and crosses the torso wall transversally (a seam line,
         // not the near-parallel graze that streaks).
-        return Rig.tube(sts.concat(sub), boneIndex, 10, true, false);
+        // APPEAL PASS fake AO: armpit root darkest, elbow dip.
+        var slv = sts.concat(sub), slvF = [];
+        for (var fi = 0; fi < slv.length; fi++)
+          slvF.push(fi === 0 ? 0.85 : fi === 1 ? 0.93 : fi === Math.min(4, slv.length - 2) ? 0.94 : 1);
+        return Rig.shadePart(Rig.tube(slv, boneIndex, 10, true, false), WHITE, slvF, 11);
       }
       if (sleeveTo >= 0) {
         parts.push(sleeve(S.armL, 1, sleeveTo));
@@ -402,9 +488,13 @@
         // Round 10: radii widened (0.033/0.030 -> 0.040/0.036H) —
         // the thicker neck frustum (0.036H at its base) would
         // swallow the old collar tube whole.
+        // APPEAL PASS iteration 2: the collar rides HIGHER (+0.020H)
+        // and a touch wider — iteration 1 close-ups showed a bare
+        // skin ring between collar top and jaw; the taller collar
+        // covers most of that funnel.
         var colSt = [Rig.st(0, j.neckY - 0.026 * H, 0, 0.040 * H, 0.040 * H, 'neck'),
-                     Rig.st(0, j.neckY + 0.008 * H, 0, 0.036 * H, 0.036 * H, 'neck', 'head', 0.3)];
-        parts.push(tubePart(colSt, boneIndex));
+                     Rig.st(0, j.neckY + 0.020 * H, 0, 0.038 * H, 0.038 * H, 'neck', 'head', 0.3)];
+        parts.push(Rig.shadePart(tubePart(colSt, boneIndex), WHITE, [0.92, 0.96], 11));
       }
       meshes.push(clothMesh(parts, boneIndex, clothMat(top)));
     }
@@ -424,9 +514,9 @@
         Rig.st(0, j.pelvisY - 0.160 * H, 0, hipRxS + 0.085, hipRzS + 0.058, 'thighL', 'thighR', 0.5),
         Rig.st(0, j.pelvisY - 0.260 * H, 0, hipRxS + 0.125, hipRzS + 0.082, 'thighL', 'thighR', 0.5)
       ];
-      meshes.push(clothMesh([tubePart(sk, boneIndex)], boneIndex, clothMat(bottom)));
-      meshes.push(clothMesh([tubePart(subStations(S.legL, 4, 6, 0.004), boneIndex),
-                             tubePart(subStations(S.legR, 4, 6, 0.004), boneIndex)], boneIndex, mat(0x333333, 0.8)));
+      meshes.push(clothMesh([Rig.shadePart(tubePart(sk, boneIndex), WHITE, [0.96, 1, 1, 1, 1], 11)], boneIndex, clothMat(bottom)));
+      meshes.push(clothMesh([Rig.paintPart(tubePart(subStations(S.legL, 4, 6, 0.004), boneIndex), WHITE),
+                             Rig.paintPart(tubePart(subStations(S.legR, 4, 6, 0.004), boneIndex), WHITE)], boneIndex, mat(0x333333, 0.8)));
     } else if (bottom && bottom.type !== 'none') {
       var legTo = bottom.type === 'shorts' ? 4 : 7;
       var pantsL = subStations(S.legL, 0, legTo, 0.011);
@@ -448,10 +538,13 @@
         pp[0].rx *= 0.96; pp[0].rz *= 0.96;
         if (pp[1]) { pp[1].rx *= 0.98; pp[1].rz *= 0.98; }
       });
+      // APPEAL PASS fake AO: waistband shaded under the shirt hem,
+      // knee dip on the leg tubes (station 3).
+      var pantsF = [0.96, 1, 1, 0.93, 0.95, 1, 1, 1];
       meshes.push(clothMesh([
-        tubePart(subStations(S.torso, 0, 2, 0.009), boneIndex),
-        tubePart(pantsL, boneIndex),
-        tubePart(pantsR, boneIndex)], boneIndex, clothMat(bottom)));
+        Rig.shadePart(tubePart(subStations(S.torso, 0, 2, 0.009), boneIndex), WHITE, [0.95, 0.97, 1], 11),
+        Rig.shadePart(tubePart(pantsL, boneIndex), WHITE, pantsF, 11),
+        Rig.shadePart(tubePart(pantsR, boneIndex), WHITE, pantsF, 11)], boneIndex, clothMat(bottom)));
       // Thin belt band sealing the shirt/pants junction (the
       // spec's optional seam cover): a closed ring a few mm proud
       // of BOTH shells at the waistband line. Iterasi 2 fix: the
@@ -468,7 +561,7 @@
         Rig.st(0, j.pelvisY + 0.004 * H, 0, beltRx, beltRz, 'pelvis'),
         Rig.st(0, j.pelvisY + 0.030 * H, 0, beltRx * 0.995, beltRz * 0.995, 'pelvis')
       ];
-      meshes.push(clothMesh([Rig.tube(belt, boneIndex, 10, false, false)], boneIndex, mat(0x2a2019, 0.7)));
+      meshes.push(clothMesh([Rig.paintPart(Rig.tube(belt, boneIndex, 10, false, false), WHITE)], boneIndex, mat(0x2a2019, 0.7)));
     }
     // Shoes — Iterasi 2 SNEAKER: a flat white SOLE (its own mesh)
     // that the coloured upper sits INTO. The old single loft
@@ -492,23 +585,25 @@
       // rz x1.35, centre only -0.004H (tops clear the skin by
       // ~10 mm everywhere; bottoms still sink into the sole top).
       var sts = subStations(legStations, 7, 9, 0.007);
-      for (var ui = 0; ui < sts.length; ui++) { sts[ui].p[1] -= 0.004 * H; sts[ui].rz *= 1.35; }
+      for (var ui = 0; ui < sts.length; ui++) { sts[ui].p[1] -= 0.004 * H; sts[ui].rz *= 1.40; }
       sts[2].rz *= 1.10; sts[2].rx *= 0.92; sts[2].p[1] += 0.002 * H; // toe box: clear of the skin toe, inside the sole outline
       var toe = sts[2];
-      sts.push(Rig.st(toe.p[0], toe.p[1] + 0.001 * H, toe.p[2] + 0.008 * H,
+      sts.push(Rig.st(toe.p[0], toe.p[1] + 0.001 * H, toe.p[2] + 0.011 * H,
         toe.rx * 0.62, toe.rz * 0.66, 'toe' + side)); // rounded tip, flush with the sole front
-      return Rig.tube(sts, boneIndex, 9, false, true);
+      return Rig.paintPart(Rig.tube(sts, boneIndex, 9, false, true), WHITE);
     }
     function shoeSole(legStations, side) {
+      // APPEAL PASS: shoes read slightly OVERSIZED (style lock) —
+      // sole ~8% longer and ~10% wider than the Iterasi-2 sneaker.
       var fx = legStations[7].p[0];
       var sts = [
-        Rig.st(fx, 0.0220, -0.012 * H, 0.026 * H, 0.0165, 'foot' + side),
-        Rig.st(fx, 0.0160, 0.030 * H, 0.030 * H, 0.0145, 'foot' + side),
-        Rig.st(fx, 0.0135, 0.085 * H, 0.035 * H, 0.0140, 'foot' + side, 'toe' + side, 0.35),
-        Rig.st(fx, 0.0135, 0.128 * H, 0.033 * H, 0.0140, 'toe' + side),
-        Rig.st(fx, 0.0150, 0.146 * H, 0.021 * H, 0.0125, 'toe' + side)
+        Rig.st(fx, 0.0220, -0.014 * H, 0.0285 * H, 0.0165, 'foot' + side),
+        Rig.st(fx, 0.0160, 0.030 * H, 0.0330 * H, 0.0145, 'foot' + side),
+        Rig.st(fx, 0.0135, 0.088 * H, 0.0385 * H, 0.0140, 'foot' + side, 'toe' + side, 0.35),
+        Rig.st(fx, 0.0135, 0.136 * H, 0.0360 * H, 0.0140, 'toe' + side),
+        Rig.st(fx, 0.0150, 0.156 * H, 0.0230 * H, 0.0125, 'toe' + side)
       ];
-      return Rig.tube(sts, boneIndex, 9, true, true);
+      return Rig.paintPart(Rig.tube(sts, boneIndex, 9, true, true), WHITE);
     }
     meshes.push(clothMesh([shoeUpper(S.legL, 'L'), shoeUpper(S.legR, 'R')], boneIndex, shoeMat));
     meshes.push(clothMesh([shoeSole(S.legL, 'L'), shoeSole(S.legR, 'R')], boneIndex, soleMat));
@@ -516,12 +611,47 @@
   }
 
   // ---- accessories (bone-attached) ------------------------------------------
+  // Every character material is vertexColors:true (APPEAL PASS);
+  // plain accessory geometry gets a white colour fill so it shades
+  // with its material colour unchanged.
+  function fillWhite(geo) {
+    if (geo.attributes.color) return geo;
+    var n = geo.attributes.position.count, col = new Float32Array(n * 3);
+    for (var i = 0; i < n * 3; i++) col[i] = 1;
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return geo;
+  }
   function attach(bone, geo, material, x, y, z, rx, ry, rz) {
-    var m = new THREE.Mesh(geo, material);
+    var m = new THREE.Mesh(fillWhite(geo), material);
     m.position.set(x || 0, y || 0, z || 0);
     m.rotation.set(rx || 0, ry || 0, rz || 0);
     m.frustumCulled = false;
     bone.add(m); return m;
+  }
+
+  // APPEAL PASS hair colour: bake TWO tones + the soft highlight
+  // BAND into the hair vertices. geo is head-bone local (or pivot
+  // local for swing parts — pivot converts back to head space).
+  // The band is one curved lighter stripe over the crown; the rim
+  // sits slightly darker than the base. Never a specular streak.
+  function paintHair(geo, colorHex, p, pivot) {
+    var hd = Rig.headDims(p), cy = hd.cy, r0 = hd.r0;
+    var base = new THREE.Color(colorHex);
+    var light = base.clone().lerp(new THREE.Color(0x9a7c52), 0.38);
+    light.r = Math.min(1, light.r * 1.15); light.g = Math.min(1, light.g * 1.15); light.b = Math.min(1, light.b * 1.15);
+    var pa = geo.attributes.position, n = pa.count, col = new Float32Array(n * 3);
+    var ox = pivot ? pivot[0] : 0, oy = pivot ? pivot[1] : 0;
+    for (var i = 0; i < n; i++) {
+      var ny = (pa.getY(i) + oy - cy) / r0;
+      var band = Math.exp(-Math.pow((ny - 0.42) / 0.30, 2)) * (0.35 + 0.65 * Math.max(0, Math.min(1, (ny + 0.3) / 1.0)));
+      var shade = 0.88 + 0.14 * Math.max(0, Math.min(1, (ny + 0.4) / 1.2));
+      var f = Math.min(0.6, band * 0.55);
+      col[i * 3] = (base.r * shade) * (1 - f) + light.r * f;
+      col[i * 3 + 1] = (base.g * shade) * (1 - f) + light.g * f;
+      col[i * 3 + 2] = (base.b * shade) * (1 - f) + light.b * f;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return geo;
   }
   function textPatch(text, fg, bg) {
     var cv = document.createElement('canvas'); cv.width = 128; cv.height = 32;
@@ -728,6 +858,26 @@
     }
   }
 
+  // ---- APPEAL PASS shared fx: blob shadow + outline material ----
+  var blobGeo = new THREE.PlaneGeometry(0.84, 0.84);
+  var blobMat = (function () {
+    var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    var c = cv.getContext('2d');
+    var g = c.createRadialGradient(64, 64, 6, 64, 64, 62);
+    g.addColorStop(0, 'rgba(8,6,4,0.50)'); g.addColorStop(0.7, 'rgba(8,6,4,0.28)'); g.addColorStop(1, 'rgba(8,6,4,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+    return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false });
+  })();
+  var outlineMat = (function () {
+    var m = new THREE.MeshBasicMaterial({ color: 0x2e1c11, side: THREE.BackSide });
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uOut = { value: 0.0038 };
+      sh.vertexShader = 'uniform float uOut;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+        '#include <begin_vertex>\ntransformed += normal * uOut;');
+    };
+    return m;
+  })();
+
   // ---- LOD2 silhouette --------------------------------------------------------
   var farGeo = null, farMesh = null, FAR_CAP = 64;
   function buildFar() {
@@ -775,7 +925,7 @@
     var p = Rig.baseParams({
       H: bp.H || (arch.heightRange ? arch.heightRange[0] + r() * (arch.heightRange[1] - arch.heightRange[0]) : 1.75),
       legFrac: bp.legFrac, shoulder: bp.shoulder, waist: bp.waist, hips: bp.hips,
-      belly: bp.belly, thigh: bp.thigh, headScale: bp.headScale, handScale: bp.handScale || 1.02, neckR: bp.neckR
+      belly: bp.belly, thigh: bp.thigh, headScale: bp.headScale, handScale: bp.handScale || 1.14, neckR: bp.neckR
     });
     var skinHex = bp.skin != null ? SKIN_TONES[bp.skin % 8] : pick(r, SKIN_TONES);
     var skinRGB = rgb(skinHex);
@@ -798,7 +948,7 @@
     var faceSpec = Object.assign({ eyes: 'round', mouth: 'smile' }, arch.face || {});
     if (faceSpec.randomEyes) faceSpec.eyes = pick(r, ['round', 'narrow', 'sleepy']);
     faceSpec.browColor = hairColor;
-    var headMat = new THREE.MeshStandardMaterial({ map: faceTexture(faceSpec, skinHex), roughness: 0.55 });
+    var headMat = new THREE.MeshToonMaterial({ map: faceTexture(faceSpec, skinHex), gradientMap: RAMP });
     var head0 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index), headMat);
     head0.frustumCulled = false; bind(head0);
     var wear = resolveWear(arch, r);
@@ -807,7 +957,12 @@
     var char = { group: group, bones: sk.bones, skeleton: sk.skeleton, params: p, archetype: arch, seed: seed, wear: wear, inUse: true, lod: 0, key: key };
     var hairGeo = Rig.hairGeometry(hairStyle, p);
     if (hairGeo) {
-      var hairMesh = new THREE.Mesh(hairGeo, hairStyle === 'hijab' ? clothMat({ color: (arch.hair && arch.hair.clothColors) ? pick(r, arch.hair.clothColors) : (arch.hair && arch.hair.clothColor) || 0x7a4a8a }) : hairMat(hairColor));
+      // APPEAL PASS: hair colour is baked into the vertices (two
+      // tones + crown band); the hijab is CLOTH — it keeps its
+      // material colour and just needs the white colour fill.
+      var hairMesh = new THREE.Mesh(
+        hairStyle === 'hijab' ? fillWhite(hairGeo) : paintHair(hairGeo, hairColor, p, null),
+        hairStyle === 'hijab' ? clothMat({ color: (arch.hair && arch.hair.clothColors) ? pick(r, arch.hair.clothColors) : (arch.hair && arch.hair.clothColor) || 0x7a4a8a }) : hairMatShared);
       hairMesh.frustumCulled = false; sk.bones.head.add(hairMesh); char.hairMesh = hairMesh;
     }
     // HEAD PASS: swinging hair parts (ponytail / long back strips)
@@ -817,7 +972,7 @@
     if (swing) {
       var swGrp = new THREE.Group();
       swGrp.position.set(swing.pivot[0], swing.pivot[1], swing.pivot[2]);
-      var swMesh = new THREE.Mesh(swing.geo, hairMat(hairColor));
+      var swMesh = new THREE.Mesh(paintHair(swing.geo, hairColor, p, swing.pivot), hairMatShared);
       swMesh.frustumCulled = false;
       swGrp.add(swMesh);
       sk.bones.head.add(swGrp);
@@ -825,13 +980,38 @@
       char.swing = { t: 0, vel: 0, ang: 0, speed: 0, lastPos: null };
     }
     buildAccessories(char, wear, r);
+    // APPEAL PASS: soft contact blob shadow — nobody floats.
+    var blob = new THREE.Mesh(blobGeo, blobMat);
+    blob.scale.setScalar(p.H / 1.75);
+    blob.rotation.x = -Math.PI / 2; blob.position.y = 0.015;
+    blob.renderOrder = 2; blob.name = 'blob';
+    group.add(blob);
+    // APPEAL PASS: thin warm-dark inverted-hull outline for the
+    // leads (protagonist + story cast) — consistent thickness,
+    // warm dark brown, never pure black.
+    char.outlines = [];
+    if (arch.lead) {
+      [body0, head0].concat(clothes0).forEach(function (src) {
+        var om = new THREE.SkinnedMesh(src.geometry, outlineMat);
+        om.frustumCulled = false; om.userData.isOutline = true;
+        om.bind(sk.skeleton); group.add(om); char.outlines.push(om);
+      });
+    }
+    // APPEAL PASS: 5-expression swap (neutral/smile/serious/
+    // angry/surprised) — regenerates the face texture in place.
+    char.faceSpec = faceSpec; char.skinHex = skinHex; char.expr = faceSpec.expr || null;
+    char.setExpression = function (name) {
+      var fs = Object.assign({}, char.faceSpec, { expr: name });
+      headMat.map = faceTexture(fs, char.skinHex);
+      headMat.needsUpdate = true; char.expr = name;
+    };
     // LOD1: no fingers, no small accessories (hair + clothes stay)
     var body1 = new THREE.SkinnedMesh(Rig.buildBody(p, sk.index, skinRGB, false, true), bodyMat);
     body1.frustumCulled = false; body1.bind(sk.skeleton); body1.visible = false; group.add(body1);
     // LOD1 head: plain skin material, NO face texture — the spec
     // drops face detail at 15-40 m (Stage D iteration 1).
     var head1 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index),
-      new THREE.MeshStandardMaterial({ color: skinHex, roughness: 0.55 }));
+      new THREE.MeshToonMaterial({ color: skinHex, gradientMap: RAMP }));
     head1.frustumCulled = false; head1.bind(sk.skeleton); head1.visible = false; group.add(head1);
     var clothes1 = buildClothes(p, sk.index, wear, skinRGB);
     for (var q = 0; q < clothes1.length; q++) { clothes1[q].bind(sk.skeleton); clothes1[q].visible = false; group.add(clothes1[q]); }
@@ -844,6 +1024,7 @@
       for (var a = 0; a < P.clothes0.length; a++) P.clothes0[a].visible = level === 0;
       P.body1.visible = P.head1.visible = level === 1;
       for (var b = 0; b < P.clothes1.length; b++) P.clothes1[b].visible = level === 1;
+      if (char.outlines) for (var o = 0; o < char.outlines.length; o++) char.outlines[o].visible = level === 0;
       char.group.visible = level < 2;
       // accessories hang on bones; visibility is level-aware:
       setDecoVisible(char, level);

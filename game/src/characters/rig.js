@@ -3,8 +3,8 @@
 // game (player, pedestrians, police, enemies, story cast). No external
 // models: the body is a set of elliptical loft tubes built in bind-pose
 // world space, smooth-skinned across two bones near every joint.
-// Proportions: Loomis canon, 7.5 heads. Elbow at waist height, wrist at
-// crotch height, knee mid-leg, hand as long as the face.
+// Proportions: APPEAL PASS stylized, +-6 heads (see HEAD_RF). Elbow at
+// waist height, wrist at crotch height, knee mid-leg.
 // Public API: SH.CharRig { buildSkeleton, bodyStations, tube, mergeParts,
 //   buildBody, buildHead, hairGeometry, prim }
 (function (SH) {
@@ -54,8 +54,12 @@
       // reference figures. (Through round 9 the head perched on a
       // 0.041H neck segment — a straight column the a9 front shot
       // reads as a peg, however clean its seams were.)
-      neckY: pelvisY + H * 0.335,
-      headY: pelvisY + H * 0.346,
+      // APPEAL PASS: headY/neckY drop a further 0.010H — the head
+      // grew (HEAD_RF 0.57 -> 0.65, ~6-head stylized proportions),
+      // and the crown must still land at ~1.00H. The neck segment
+      // keeps its round-10 compressed length (headY-neckY 0.011H).
+      neckY: pelvisY + H * 0.325,
+      headY: pelvisY + H * 0.336,
       shoulderY: pelvisY + H * 0.318,
       // Round 8: the arm PIVOT (glenohumeral joint) sits at ARMPIT
       // height, 0.050H BELOW the clavicle/shoulder line — as in the
@@ -377,6 +381,24 @@
     part.col = col; return part;
   }
 
+  // APPEAL PASS fake AO: like paintPart, but each loft RING is scaled
+  // by factors[ring] (values < 1 darken). tube() emits ring-major
+  // vertices (ringVerts per ring), then cap-centre vertices — caps
+  // take the nearest end ring's factor. Used to bake soft occlusion
+  // into armpits, elbow/knee creases, under-chin and under-collar
+  // zones so forms read "expensive" without any shadow pass.
+  function shadePart(part, rgb, factors, ringVerts) {
+    var n = part.pos.length / 3, col = [];
+    var rings = Math.floor(n / ringVerts);
+    for (var i = 0; i < n; i++) {
+      var ring = Math.min(Math.floor(i / ringVerts), factors.length - 1);
+      if (i >= rings * ringVerts) ring = (i - rings * ringVerts) === 0 ? 0 : factors.length - 1;
+      var f = factors[ring];
+      col.push(rgb[0] * f, rgb[1] * f, rgb[2] * f);
+    }
+    part.col = col; return part;
+  }
+
   // Mitten hand for one hand (LOD0): Iterasi 2 replaces the five
   // separate finger tubes with ONE tapered mitten (continuing the
   // palm stations of arm()) + a separate thumb — the spec's own
@@ -422,21 +444,29 @@
     // radii and skin weights are untouched, so silhouettes and
     // cloth margins are unaffected.
     var radT = coarse ? 8 : 12, radL = coarse ? 7 : 9;
+    // APPEAL PASS fake AO (ring factors, station order): torso
+    // darkens into the neck/under-chin zone (stations 10-13) and a
+    // touch at the pelvis underside; arms darkest at the armpit
+    // root (0) with an elbow-crease dip (3-4); legs dip at the hip
+    // crease (0) and knee (3-4). Subtle — 0.80 worst case.
+    var aoTorso = [0.94, 1, 1, 1, 1, 1, 1, 0.99, 0.98, 0.97, 0.94, 0.92, 0.90, 0.88];
+    var aoArm = [0.80, 0.90, 0.97, 0.93, 0.95, 1, 1, 1, 1];
+    var aoLeg = [0.92, 0.97, 1, 0.93, 0.95, 1, 1, 1, 1, 1];
     var parts = [
       // torso capped at BOTH ends: the top cap seals the neck tube
       // under the head's neck funnel, so no camera angle can see
       // through the annulus between the jaw and the neck ring
-      paintPart(tube(S.torso, boneIndex, radT, true, true), skinRGB),
+      shadePart(tube(S.torso, boneIndex, radT, true, true), skinRGB, aoTorso, radT + 1),
       // arm tubes capped at the shoulder: with the trapezius slope
       // the arm's open top ring sits exposed beside the slope for
       // sleeveless tops — the cap seals it as a deltoid top (it
       // stays hidden inside the torso/sleeve volume otherwise)
       // Iterasi 2 poly trim: arm/leg tubes radial 10 -> 9 (thin
       // parts; the silhouette is carried by the station radii)
-      paintPart(tube(S.armL, boneIndex, radL, true, false), skinRGB),
-      paintPart(tube(S.armR, boneIndex, radL, true, false), skinRGB),
-      paintPart(tube(S.legL, boneIndex, radL, false, true), skinRGB),
-      paintPart(tube(S.legR, boneIndex, radL, false, true), skinRGB)
+      shadePart(tube(S.armL, boneIndex, radL, true, false), skinRGB, aoArm, radL + 1),
+      shadePart(tube(S.armR, boneIndex, radL, true, false), skinRGB, aoArm, radL + 1),
+      shadePart(tube(S.legL, boneIndex, radL, false, true), skinRGB, aoLeg, radL + 1),
+      shadePart(tube(S.legR, boneIndex, radL, false, true), skinRGB, aoLeg, radL + 1)
     ];
     if (withFingers) {
       parts.push(paintPart(mittenPart(p, boneIndex, 1), skinRGB));
@@ -537,7 +567,12 @@
   // so shading stays continuous.
   // Size: height ~0.262 m at H=1.75 (~1/7 body), height:width
   // ~1.25:1. UVs are the sphere's own: face centre at u = 0.25.
-  var HEAD_RF = 0.57; // head radius factor (was 0.52: the head reads ~10% larger)
+  // APPEAL PASS (user style lock 2026-11-19): proportions are now
+  // STYLIZED +-6 HEADS (supersedes the 7.5-head Loomis canon of the
+  // 12:27 spec). Head height = 2 * r0 * sy = 2 * 0.65u * 0.96 =
+  // 1.248u -> H / headH = 7.5 / 1.248 = 6.01 heads. Bigger head,
+  // hands and shoes carry the read at game-camera distance.
+  var HEAD_RF = 0.65; // head radius factor (was 0.57 in the 7-head era)
   // HEAD PASS round 2: jaw taper STRENGTHENED (0.17 -> 0.26, ramp
   // starting right under the cheek line) — round 1 measured
   // jaw/cheek = 0.90 at the jaw-angle ring, a single smooth curve
@@ -1020,7 +1055,7 @@
   function hairGeometry(style, p) {
     p = baseParams(p);
     var hd = headDims(p), r = hd.r0, cy = hd.cy;
-    var cap = hairShell(p, { teeth: 0.10, teethSeed: 1 });
+    var cap = hairShell(p, { teeth: 0.14, teethSeed: 1 }); // APPEAL iter 2: deeper fringe teeth (iter-1 close-ups read the fringe as one straight helmet line)
     var layer2 = hairShell(p, { padA: 0.15, rimF: 1.08, peak: 0.34, front: 0.42, temple: 0.34,
       side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.07, teethSeed: 2, jit: 0.045 });
     var fringe = hairShell(p, { padA: 0.085, rimF: 1.06, peak: 0.26, front: 0.30, temple: 0.26,
@@ -1056,9 +1091,12 @@
         parts.push(prim(new THREE.SphereGeometry(r * 0.42, 10, 8), 0, cy + r * 0.80, -r * 0.42, 1, 0.9, 1, 0));
         break;
       case 'afro': // stepped shells, bigger mass + stronger steps + teeth + clump lobes
-        parts.push(hairShell(p, { peak: 0.22, front: 0.32, temple: 0.30, side: 0.06, back: -0.06,
+        // APPEAL iter 2: back rim reaches LOWER (-0.30 / -0.16) —
+        // iter-1's high nape line let skin slivers show between
+        // the lobes at the back of the neck.
+        parts.push(hairShell(p, { peak: 0.22, front: 0.32, temple: 0.30, side: 0.06, back: -0.30,
           padA: 0.10, jit: 0.05, rimF: 1.09, teeth: 0.11, teethSeed: 5, lobe: 0.045, levels: [[0.38, 1.14], [0.64, 1.03], [0.85, 0.84], [0.97, 0.46]] }));
-        parts.push(hairShell(p, { peak: 0.28, front: 0.36, temple: 0.32, side: 0.18, back: 0.04,
+        parts.push(hairShell(p, { peak: 0.28, front: 0.36, temple: 0.32, side: 0.18, back: -0.16,
           padA: 0.17, jit: 0.06, rimF: 1.14, teeth: 0.09, teethSeed: 6, lobe: 0.04, levels: [[0.50, 1.10], [0.80, 0.90], [0.97, 0.50]] }));
         break;
       case 'hijab': // cloth shell with a cut face window + neck drape
@@ -1126,7 +1164,7 @@
   SH.CharRig = {
     baseParams: baseParams, joints: joints, BONE_NAMES: BONE_NAMES,
     buildSkeleton: buildSkeleton, bodyStations: bodyStations, st: st,
-    tube: tube, mergeParts: mergeParts, paintPart: paintPart,
+    tube: tube, mergeParts: mergeParts, paintPart: paintPart, shadePart: shadePart,
     buildBody: buildBody, buildHead: buildHead,
     hairGeometry: hairGeometry, hairSwing: hairSwing,
     headDims: headDims, headCross: headCross,

@@ -155,8 +155,11 @@
   ], true);
 
   // gaits (refSpeed computed from stride geometry)
-  gait('walk', { swing: 23, knee: 44, arm: 27, elbow: 15, lean: 5, bob: 0.013, drop: 0.020, dur: 0.90 });
-  gait('run', { swing: 37, knee: 62, arm: 38, elbow: 52, lean: 9, bob: 0.028, drop: 0.026, dur: 0.66 });
+  // APPEAL PASS: pelvis bob deepened (walk .013->.016, run
+  // .028->.032) — weight you can SEE. Bob is dy-only, so the
+  // Stage D stride calibration (XZ) is untouched.
+  gait('walk', { swing: 23, knee: 44, arm: 27, elbow: 15, lean: 5, bob: 0.016, drop: 0.020, dur: 0.90 });
+  gait('run', { swing: 37, knee: 62, arm: 38, elbow: 52, lean: 9, bob: 0.032, drop: 0.028, dur: 0.66 });
   gait('sprint', { swing: 46, knee: 76, arm: 46, elbow: 62, lean: 13, bob: 0.034, drop: 0.030, dur: 0.58 });
   gait('panic', { swing: 40, knee: 64, arm: 12, elbow: 68, lean: 10, bob: 0.030, drop: 0.028, dur: 0.62 });
   gait('walk_old', { swing: 15, knee: 24, arm: 10, elbow: 16, lean: 9, bob: 0.008, drop: 0.016, dur: 1.05 });
@@ -184,10 +187,12 @@
     { t: 0, p: { uArmR: [-78, 0, -6], fArmR: [-20, 0, 0], uArmL: [-70, -12, 6], fArmL: [-40, 0, 10], spine2: [3, -11, 0], head: [4, 5, 0] } },
     { t: 1.6, p: { uArmR: [-78, 0, -6], fArmR: [-20, 0, 0], uArmL: [-70, -12, 6], fArmL: [-40, 0, 10], spine2: [3, -11, 0], head: [4, 5, 0] } }
   ], true);
-  def('shoot_pistol', 0.24, [
-    { t: 0, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], spine2: [2, -9, 0] } },
-    { t: 0.05, p: { uArmR: [-97, 0, -3], fArmR: [-3, 0, 0], spine2: [-1, -10, 0], head: [-3, 4, 0] } },
-    { t: 0.24, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], spine2: [2, -9, 0], head: [0, 4, 0] } }
+  def('shoot_pistol', 0.30, [
+    // APPEAL PASS anticipation: a 60 ms dip (arm settles low, spine
+    // coils) BEFORE the recoil snap — motion reads as intent.
+    { t: 0, p: { uArmR: [-76, 0, -3], fArmR: [-11, 0, 0], spine2: [3.5, -8, 0], head: [1, 4, 0] } },
+    { t: 0.06, p: { uArmR: [-97, 0, -3], fArmR: [-3, 0, 0], spine2: [-1, -10, 0], head: [-3, 4, 0] } },
+    { t: 0.30, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], spine2: [2, -9, 0], head: [0, 4, 0] } }
   ], false);
   def('reload', 1.15, [
     { t: 0, p: { uArmR: [-60, 0, -4], fArmR: [-38, 0, 0], head: [13, 0, 0], spine2: [6, -4, 0] } },
@@ -333,14 +338,28 @@
       },
       setPosture: function (p) { ctl.posture = p || {}; },
       update: function (dt) {
+        // APPEAL PASS bug fix: the posture layer below MULTIPLIES
+        // bone quaternions, but the mixer does not re-pose every
+        // bone on every update (an update(0) leaves bones as-is,
+        // and some tracks are not re-applied per frame) — so the
+        // deltas ACCUMULATED frame over frame and slowly twisted
+        // posture characters' heads/spines off (patrol's head
+        // reached -94 deg during a few seconds of lab playback).
+        // Undo last frame's deltas BEFORE the mixer runs, then
+        // apply them fresh after it: identical visuals when the
+        // mixer re-poses, idempotent when it does not.
+        var prev = ctl._deltas;
+        if (prev) for (var pi = 0; pi < prev.length; pi++) prev[pi][0].quaternion.multiply(prev[pi][1]);
         mixer.update(dt);
         // procedural layer: posture + head look, applied after the mixer
         var P = ctl.posture, b = char.bones;
         var q = new THREE.Quaternion(), e = new THREE.Euler();
+        var deltas = [];
         function add(bone, x, y, z) {
           if (!bone || (!x && !y && !z)) return;
           q.setFromEuler(e.set(x * D, y * D, z * D));
           bone.quaternion.multiply(q);
+          deltas.push([bone, q.clone().invert()]);
         }
         if (P.hunch) { add(b.spine1, P.hunch * 10, 0, 0); add(b.head, P.hunch * 7, 0, 0); }
         if (P.slouch) { add(b.uArmL, 0, 0, 3); add(b.uArmR, 0, 0, -3); add(b.spine2, P.slouch * 5, 0, 0); }
@@ -349,6 +368,7 @@
           add(b.neck, ctl.lookPitch * 0.45, ctl.lookYaw * 0.45, 0);
           add(b.head, ctl.lookPitch * 0.55, ctl.lookYaw * 0.55, 0);
         }
+        ctl._deltas = deltas;
       }
     };
     if (opts.idle) char.idleName = opts.idle;

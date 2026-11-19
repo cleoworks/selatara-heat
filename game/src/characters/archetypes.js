@@ -27,13 +27,16 @@
 //          = a different person, never a clone.
 //   idle:  preferred idle clip, gait: locomotion clip override,
 //   walkSpeed: m/s flavour for Stage E, line: one optional bark.
+//   lead:  true = inverted-hull outline (APPEAL PASS, story cast).
+//   posture: CharAnim posture { hunch, slouch, stiff } — the
+//          personality layer (kakek hunches, aparat stand stiff).
 (function (SH) {
   'use strict';
 
   var LIST = [
     // ================= STORY CAST (fixed people, fixed look) ============
     {
-      id: 'raka', label: 'Raka Pramudya (protagonis)', kind: 'story',
+      id: 'raka', label: 'Raka Pramudya (protagonis)', kind: 'story', lead: true,
       body: { H: 1.75, shoulder: 1.05, skin: 3 },
       face: { eyes: 'narrow', mouth: 'flat' },
       hair: { style: 'short', color: 0x17130f },
@@ -46,7 +49,7 @@
       line: 'Satu antar terakhir. Habis itu gue berhenti. Mungkin.'
     },
     {
-      id: 'mami', label: 'Mami Ratna (fixer)', kind: 'story',
+      id: 'mami', label: 'Mami Ratna (fixer)', kind: 'story', lead: true,
       body: { H: 1.62, hips: 1.12, waist: 0.92, skin: 2 },
       face: { wrinkles: true, mouth: 'smile' },
       hair: { style: 'bun', color: 0xb8b0a4 },
@@ -59,8 +62,9 @@
       line: 'Di Selatara, semua orang punya harga. Kamu diskon.'
     },
     {
-      id: 'varga', label: 'Komisaris Varga (polisi korup)', kind: 'story',
+      id: 'varga', label: 'Komisaris Varga (polisi korup)', kind: 'story', lead: true,
       body: { H: 1.82, shoulder: 1.16, waist: 1.05, belly: 0.5, skin: 4 },
+      posture: { stiff: 1 },
       face: { mustache: true, mouth: 'stern' },
       hair: { style: 'short', color: 0x2b2b2e },
       wear: {
@@ -73,10 +77,10 @@
       line: 'Hukum itu punya saya. Kamu cuma numpang lewat.'
     },
     {
-      id: 'dario', label: 'Dario "Kapten" Latu (bos sindikat)', kind: 'story',
+      id: 'dario', label: 'Dario "Kapten" Latu (bos sindikat)', kind: 'story', lead: true,
       body: { H: 1.78, shoulder: 1.08, waist: 1.02, skin: 1 },
       face: { eyes: 'narrow', mouth: 'grin' },
-      hair: { style: 'short', color: 0x101010 },
+      hair: { style: 'short', color: 0x1b1e28 },
       wear: {
         top: { type: 'blazer', sleeve: 'long', color: 0xe9e2d0 },
         bottom: { type: 'long', color: 0xd9d0ba },
@@ -90,7 +94,7 @@
     // ================= POLICE (original uniform, fictional badge) ======
     {
       id: 'patrol', label: 'Polisi — Patrol', kind: 'police',
-      body: {}, heightRange: [1.70, 1.82],
+      body: {}, heightRange: [1.70, 1.82], posture: { stiff: 0.8 },
       face: { randomEyes: true },
       hair: { style: 'short', colors: [0x17130f, 0x101010, 0x2b1d12, 0x241a12] },
       wear: {
@@ -115,7 +119,7 @@
     },
     {
       id: 'swat', label: 'Polisi — SWAT', kind: 'police',
-      body: { H: 1.84, shoulder: 1.18, waist: 1.02 },
+      body: { H: 1.84, shoulder: 1.18, waist: 1.02 }, posture: { stiff: 1 },
       face: {},
       hair: { style: 'short', color: 0x14161a },
       wear: {
@@ -183,7 +187,7 @@
       face: { randomEyes: true },
       hair: { styles: ['cap', 'short'] },
       wear: {
-        top: { type: 'jacket', sleeve: 'long', colors: [0xd84a2c, 0x2c6ad8, 0xe8a13a] },
+        top: { type: 'jacket', sleeve: 'long', colors: [0xc84a30, 0x3868b8, 0xd8942e] },
         bottom: { type: 'long', colors: [0x23242c, 0x2c2f36] },
         shoes: [0x22242a, 0x1c1c20], accessories: ['bag']
       },
@@ -229,7 +233,7 @@
     },
     {
       id: 'sekolah', label: 'Pejalan — Anak sekolah', kind: 'ped',
-      body: {}, heightRange: [1.34, 1.46],
+      body: { headScale: 1.12 }, heightRange: [1.34, 1.46],
       face: { randomEyes: true },
       hair: { styles: ['short', 'ponytail'] },
       wear: {
@@ -265,7 +269,7 @@
     },
     {
       id: 'warung', label: 'Pejalan — Pemilik warung', kind: 'ped',
-      body: { waist: 1.08, belly: 0.35 }, heightRange: [1.58, 1.72],
+      body: { waist: 1.08, belly: 0.35 }, heightRange: [1.58, 1.72], posture: { hunch: 0.3 },
       face: { wrinkles: true, randomEyes: true },
       hair: { styles: ['bun', 'short'] },
       wear: {
@@ -305,7 +309,7 @@
       face: { randomEyes: true },
       hair: { styles: ['ponytail', 'short'] },
       wear: {
-        top: { type: 'tee', colors: [0xe84a6a, 0x3ac8d8, 0xf2e13c, 0x7ad84a] },
+        top: { type: 'tee', colors: [0xd84a5a, 0x3aa8b8, 0xd8b13c, 0x6ab84a] },
         bottom: { type: 'shorts', colors: [0x23242c, 0x2c4a6e, 0x6e2a3a] },
         shoes: [0xf0ede6, 0xe84a6a, 0x3ac8d8]
       },
@@ -325,7 +329,7 @@
     },
     {
       id: 'kakek', label: 'Pejalan — Kakek bertongkat', kind: 'ped',
-      body: {}, heightRange: [1.62, 1.72],
+      body: { belly: 0.22, shoulder: 0.95 }, heightRange: [1.62, 1.72], posture: { hunch: 0.55 },
       face: { wrinkles: true, mouth: 'flat' },
       hair: { styles: ['bald', 'short'], color: 0xd8d3c8 },
       wear: {
@@ -341,7 +345,7 @@
       face: { mouth: 'grin', randomEyes: true },
       hair: { styles: ['afro', 'quiff', 'long'] },
       wear: {
-        top: { type: 'tee', pattern: 'stripes', colors: [0xe8e3d8, 0xd84a3a, 0x3ac8d8], colors2: [0x2c4a7a, 0x2e7d32, 0x6e2a3a] },
+        top: { type: 'tee', pattern: 'stripes', colors: [0xe8e3d8, 0xd84a3a, 0x3aa8b8], colors2: [0x2c4a7a, 0x2e7d32, 0x6e2a3a] },
         bottom: { type: 'long', colors: [0x2c2f36, 0x4a3a2c] },
         shoes: [0x54443a, 0x22242a], accessories: ['guitar']
       },

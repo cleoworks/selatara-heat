@@ -18,6 +18,10 @@
   <div><b>CHARACTER LAB</b></div>
   <div>Archetype <select id="selArch"></select></div>
   <div>Animation <select id="selAnim"></select></div>
+  <div>Expression <select id="selExpr">
+    <option value="">(archetype)</option><option>neutral</option><option>smile</option>
+    <option>serious</option><option>angry</option><option>surprised</option>
+  </select></div>
   <div>
     <button id="btnSheet">Contact sheet</button>
     <button id="btnCrowd">Crowd 30</button>
@@ -75,7 +79,9 @@
 
   scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3428, 0.95));
   var key = new THREE.DirectionalLight(0xfff1dd, 1.6); key.position.set(3.5, 5, 4); scene.add(key);
-  var rim = new THREE.DirectionalLight(0xbcd4ff, 0.7); rim.position.set(-4, 3, -3.5); scene.add(rim);
+  // APPEAL PASS: the character rim light is WARM (style lock —
+  // no blue highlights on people), from back-side.
+  var rim = new THREE.DirectionalLight(0xffc890, 1.05); rim.position.set(-4, 2.6, -4); scene.add(rim);
   var ground = new THREE.Mesh(new THREE.CircleGeometry(30, 40),
     new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; scene.add(ground);
@@ -112,8 +118,13 @@
     stage.add(char.group); chars.push(char);
     return char;
   }
-  function addCtl(char, startClip) {
-    var ctl = SH.CharAnim.create(char, { start: startClip || 'idle' });
+  function addCtl(char, startClip, arch) {
+    // APPEAL PASS: archetype personality flows into the controller
+    // (idle variant, gait override, posture layer).
+    var ctl = SH.CharAnim.create(char, {
+      start: startClip || 'idle',
+      idle: arch && arch.idle, gait: arch && arch.gait, posture: arch && arch.posture
+    });
     ctls.push(ctl); return ctl;
   }
 
@@ -161,8 +172,9 @@
     var tot = 0, spacing = 0.62;
     sheetList.forEach(function (a, i) {
       var c = SH.CharFactory.create(a, 7 + i * 3);
-      place(c, (i - (sheetList.length - 1) / 2) * spacing, 0, view === 'side' ? Math.PI / 2 : 0);
-      var ctl = addCtl(c, a.idle || 'idle');
+      var ry = view === 'side' ? Math.PI / 2 : view === 'back' ? Math.PI : view === '34' ? -0.55 : 0;
+      place(c, (i - (sheetList.length - 1) / 2) * spacing, 0, ry);
+      var ctl = addCtl(c, a.idle || 'idle', a);
       var act = ctl.action(); if (act) act.time = (i * 0.53) % 3.6;
       tot += lod0Report(c).total;
     });
@@ -186,7 +198,7 @@
       var col = ci % 6, row = Math.floor(ci / 6);
       var jx = Math.sin(ci * 37.7) * 0.22, jr = Math.sin(ci * 13.3) * 0.55;
       place(cc, (col - 2.5) * 1.45 + jx, -1.4 - row * 1.45, jr);
-      var ctl2 = addCtl(cc, a2.idle || starts[ci % starts.length]);
+      var ctl2 = addCtl(cc, a2.idle || starts[ci % starts.length], a2);
       var act2 = ctl2.action(); if (act2) act2.time = (ci * 0.41) % 3.0;
       totC += lod0Report(cc).total;
     }
@@ -197,8 +209,9 @@
     var arch = qs.arch ? archById(qs.arch) : (qs.test != null ? ARCH[parseInt(qs.test, 10) % ARCH.length] : ARCH[0]);
     var c = SH.CharFactory.create(arch, parseInt(qs.seed || '7', 10));
     place(c, 0, 0, parseFloat(qs.ry || '0'));
+    if (qs.expr) c.setExpression(qs.expr); // APPEAL PASS expression swap
     var startClip = clipFor(qs.anim || 'idle');
-    addCtl(c, startClip);
+    addCtl(c, startClip, arch);
     var rep = lod0Report(c);
     var headH = addHeadGrid(c);
     infoLines.push(arch.id + '  seed=' + (qs.seed || '7') + '  anim=' + startClip);
@@ -206,6 +219,24 @@
     infoLines.push('H=' + c.params.H.toFixed(2) + ' m  head=' + headH.toFixed(3) + ' m  scene tris=' + rep.total);
     frameSingle(c);
   }
+
+  // ---- APPEAL PASS test modes ------------------------------------------------
+  if (qs.silhouette) {
+    // pure black figures on white: the silhouette test. Outlines
+    // and blob shadows hide (they would fake the outline).
+    var silMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    stage.traverse(function (o) {
+      if (o.isMesh) {
+        if (o.userData.isOutline || o.name === 'blob') o.visible = false;
+        else o.material = silMat;
+      }
+      if (o.isLine) o.visible = false;
+    });
+    ground.visible = false; grid.visible = false;
+    scene.background = new THREE.Color(0xffffff);
+    infoLines.push('SILHOUETTE TEST — black on white');
+  }
+  if (qs.gray) renderer.domElement.style.filter = 'grayscale(1) contrast(1.03)';
 
   // ---- dropdowns + buttons -------------------------------------------------
   var selArch = document.getElementById('selArch');
@@ -218,6 +249,13 @@
     var o = document.createElement('option'); o.value = a.id; o.textContent = a.id; selAnim.appendChild(o);
   });
   selAnim.value = qs.anim || 'idle';
+  var selExpr = document.getElementById('selExpr');
+  selExpr.value = qs.expr || '';
+  selExpr.addEventListener('change', function () {
+    var p = { mode: 'single', arch: selArch.value, anim: selAnim.value, seed: qs.seed || '7' };
+    if (selExpr.value) p.expr = selExpr.value;
+    nav(p);
+  });
   function nav(params) {
     var parts = [];
     for (var k in params) parts.push(k + '=' + encodeURIComponent(params[k]));
@@ -240,7 +278,13 @@
     var now = performance.now();
     var dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
     if (qs.spin) stage.rotation.y += 0.0035;
-    for (var i = 0; i < ctls.length; i++) ctls[i].update(window.__freezeAnim ? 0 : dt);
+    // APPEAL PASS fix: while frozen, do NOT call ctl.update(0) —
+    // CharAnim's posture layer MULTIPLIES bone quaternions per
+    // call and relies on the mixer re-posing first; with dt=0 the
+    // mixer does not re-pose, so the multiply ACCUMULATED every
+    // tick and twisted posture characters (patrol) apart over the
+    // screenshot wait. setPhase already applied update(0) once.
+    for (var i = 0; i < ctls.length; i++) if (!window.__freezeAnim) ctls[i].update(dt);
     if (bendAmt && chars.length) {
       // forward bend for the waist-junction check, applied AFTER
       // the mixers so it holds for screenshots
