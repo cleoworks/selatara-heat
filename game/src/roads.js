@@ -107,27 +107,31 @@
     var g = c.getContext('2d');
     g.fillStyle = '#cfc4b4'; g.fillRect(0, 0, 128, 128);
     var rng = SH.World.makeRng(97);
-    // Four paving slabs per tile, each with its own tint, a bevel highlight
-    // on the top-left and grout lines between.
-    for (var sy = 0; sy < 2; sy++) {
-      for (var sx = 0; sx < 2; sx++) {
-        var tint = (rng() - 0.5) * 0.14;
+    // Sixteen paving modules per tile (junction-cleanup pass: the
+    // old 2x2 read as giant ceramic tiles) — each module carries
+    // its own tint, a soft bevel and grout at every quarter, so
+    // the pavement reads as small sett paving, not floor tiles.
+    for (var sy = 0; sy < 4; sy++) {
+      for (var sx = 0; sx < 4; sx++) {
+        var tint = (rng() - 0.5) * 0.16;
         g.fillStyle = tint > 0 ? 'rgba(255,250,235,' + tint + ')' : 'rgba(40,30,20,' + (-tint) + ')';
-        g.fillRect(sx * 64 + 2, sy * 64 + 2, 60, 60);
-        g.fillStyle = 'rgba(255,255,255,0.20)';
-        g.fillRect(sx * 64 + 2, sy * 64 + 2, 60, 3);
-        g.fillRect(sx * 64 + 2, sy * 64 + 2, 3, 60);
-        g.fillStyle = 'rgba(50,40,30,0.25)';
-        g.fillRect(sx * 64 + 2, sy * 64 + 59, 60, 3);
+        g.fillRect(sx * 32 + 1, sy * 32 + 1, 30, 30);
+        g.fillStyle = 'rgba(255,255,255,0.10)';
+        g.fillRect(sx * 32 + 1, sy * 32 + 1, 30, 2);
+        g.fillRect(sx * 32 + 1, sy * 32 + 1, 2, 30);
+        g.fillStyle = 'rgba(50,40,30,0.18)';
+        g.fillRect(sx * 32 + 1, sy * 32 + 29, 30, 2);
       }
     }
     for (var i = 0; i < 900; i++) {
       g.fillStyle = rng() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
       g.fillRect(rng() * 128, rng() * 128, 1.6, 1.6);
     }
-    g.strokeStyle = 'rgba(60,50,40,0.6)'; g.lineWidth = 2.4;
+    g.strokeStyle = 'rgba(60,50,40,0.55)'; g.lineWidth = 2;
     g.strokeRect(1, 1, 126, 126);
-    g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.moveTo(0, 64); g.lineTo(128, 64); g.stroke();
+    g.beginPath();
+    for (var gl = 32; gl < 128; gl += 32) { g.moveTo(gl, 0); g.lineTo(gl, 128); g.moveTo(0, gl); g.lineTo(128, gl); }
+    g.stroke();
     var t = new THREE.CanvasTexture(c);
     if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -300,6 +304,102 @@
         roadGeos.push(geo);
       }
 
+      // ---- Junction cleanup (city-wide audit pass) ------------------
+      // The audit found the same defects at every junction type:
+      // ribbon ends overlapping with mismatched texture phase (the
+      // bright wedges and tone patches), centre dashes running
+      // through the junction field, and sidewalk slabs crossing
+      // carriageway mouths at T / diagonal / coast junctions. The
+      // fix is structural: ribbons stop at the node, ONE cap fan per
+      // node (same asphalt, dash-free UV window, +12 mm only as an
+      // anti-z-fight epsilon) paves the whole field, and slabs stop
+      // at the field edge wherever they would cross another leg.
+      var nodeInc = nodes.map(function () { return []; });
+      for (var ei0 = 0; ei0 < edges.length; ei0++) {
+        var e0 = edges[ei0], na0 = nodes[e0.a], nb0 = nodes[e0.b];
+        var ddx = nb0.x - na0.x, ddz = nb0.z - na0.z, ll0 = Math.hypot(ddx, ddz) || 1;
+        nodeInc[e0.a].push({ e: ei0, dx: ddx / ll0, dz: ddz / ll0, kind: e0.kind || 'grid' });
+        nodeInc[e0.b].push({ e: ei0, dx: -ddx / ll0, dz: -ddz / ll0, kind: e0.kind || 'grid' });
+      }
+      function halfW(kind) { return kind === 'alley' ? 1.8 : kind === 'bridge' ? 4.8 : kind === 'ring' ? cfg.roadHalf + 1.2 : cfg.roadHalf; }
+      var nodeR = nodes.map(function (n, ni) {
+        var r = 0;
+        for (var q = 0; q < nodeInc[ni].length; q++) r = Math.max(r, halfW(nodeInc[ni][q].kind));
+        return r + 0.35;
+      });
+      function slabInset(ni, ei) {
+        var inc = nodeInc[ni], mine = null, hasCont = false, crossLeg = false;
+        for (var q = 0; q < inc.length; q++) if (inc[q].e === ei) mine = inc[q];
+        if (!mine) return false;
+        for (var q2 = 0; q2 < inc.length; q2++) {
+          if (inc[q2].e === ei) continue;
+          var dot = inc[q2].dx * mine.dx + inc[q2].dz * mine.dz;
+          if (dot < -0.82) hasCont = true;                              // continuation (bend <= ~35 deg)
+          else if ((dot > 0.30 && dot < 0.90) || (dot > -0.82 && dot < -0.30)) crossLeg = true;
+        }
+        return !hasCont || crossLeg;
+      }
+      // Per-side clear test: at an acute junction (avenue meeting the
+      // ring at ~36 deg, diagonal crossing a grid leg) a slab that
+      // stops nodeR before the node can still land ON the other leg's
+      // carriageway, because the slab runs offset toward that leg.
+      // Walk the slab-end point back along its own edge until it
+      // clears every other leg's carriageway strip (half width +
+      // slab half + margin). Returns the required inset.
+      function clearInset(ni, ei, ox, oz, offx, offz, baseT, len) {
+        var inc = nodeInc[ni], t = baseT;
+        for (var q = 0; q < inc.length; q++) {
+          if (inc[q].e === ei) continue;
+          var d = inc[q], lim = halfW(d.kind) + cfg.sidewalk / 2 + 0.25;
+          var B = d.dx * oz - d.dz * ox;                    // cross(d, o)
+          var c0 = d.dx * offz - d.dz * offx;               // cross(d, off)
+          var p0 = d.dx * offx + d.dz * offz;               // dot(d, off)
+          var pd = d.dx * ox + d.dz * oz;                   // dot(d, o)
+          var c = c0 + B * t, pr = p0 + pd * t;
+          if (Math.abs(c) < lim && pr > -1) {
+            if (Math.abs(B) < 0.05) continue;               // parallel: shortening cannot clear it
+            var dt = (c * B > 0) ? (lim - Math.abs(c)) / Math.abs(B) : (Math.abs(c) + lim) / Math.abs(B);
+            t = Math.max(t, t + dt);
+          }
+        }
+        return Math.min(t, len * 0.45);
+      }
+      function capGeo(x, z, R, tintHex, cu, cv) {
+        // UV window sits in a marking-free lane band of the asphalt
+        // texture (dash column at u 0.47-0.53, edge lines at u<0.05
+        // and u>0.95) at radius 0.15 — wide enough that the speckle
+        // and repair-patch detail survives, so the field reads as
+        // the same asphalt as the ribbons, not a smooth disc.
+        var seg = 14, pos = [], uv = [], col = [], nor = [], idx = [];
+        var cc = new THREE.Color(tintHex);
+        pos.push(x, 0.012, z); uv.push(cu, cv); nor.push(0, 1, 0); col.push(cc.r, cc.g, cc.b);
+        for (var s2 = 0; s2 <= seg; s2++) {
+          var an = s2 / seg * Math.PI * 2, ca = Math.cos(an), sa = Math.sin(an);
+          pos.push(x + ca * R, 0.012, z + sa * R);
+          uv.push(cu + ca * 0.15, cv + sa * 0.15);
+          nor.push(0, 1, 0); col.push(cc.r, cc.g, cc.b);
+        }
+        for (var s3 = 1; s3 <= seg; s3++) idx.push(0, s3 + 1, s3);
+        var g2 = new THREE.BufferGeometry();
+        g2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g2.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        g2.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+        g2.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        g2.setIndex(idx);
+        return g2;
+      }
+      for (var ni2 = 0; ni2 < nodes.length; ni2++) {
+        var inc2 = nodeInc[ni2];
+        if (inc2.length < 2) continue;
+        if (inc2.every(function (q) { return q.kind === 'bridge'; })) continue;
+        if (inc2.length === 2 && inc2[0].kind === inc2[1].kind &&
+            inc2[0].dx * inc2[1].dx + inc2[0].dz * inc2[1].dz < -0.98) continue; // straight pass-through point
+        var allAlley = inc2.every(function (q) { return q.kind === 'alley'; });
+        var crng = SH.World.makeRng(5000 + ni2 * 13);
+        var cu = 0.26 + (crng() > 0.5 ? 0.48 : 0), cv = 0.20 + crng() * 0.48;
+        roadGeos.push(capGeo(nodes[ni2].x, nodes[ni2].z, nodeR[ni2], allAlley ? 0x9a9186 : 0xffffff, cu, cv));
+      }
+
       for (var i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].a], b = nodes[edges[i].b];
         var dx = b.x - a.x, dz = b.z - a.z;
@@ -348,7 +448,7 @@
           continue;
         }
 
-        var road = new THREE.Mesh(new THREE.PlaneGeometry(wRoad, len + wRoad), mat);
+        var road = new THREE.Mesh(new THREE.PlaneGeometry(wRoad, len + 1.2), mat);
         if (axis) {
           road.rotation.x = -Math.PI / 2;
           if (!edges[i].vertical) road.rotation.z = Math.PI / 2;
@@ -387,20 +487,36 @@
         // Rev 6: sidewalks are raised kerb slabs (top at 0.14 m), not
         // flat planes — the step reads from street level and the air.
         if (kind === 'grid' || kind === 'diag' || kind === 'coast') {
+          // Slab ends stop at the junction field edge wherever the
+          // audit rule says they would cross another leg (T stems,
+          // diagonal/coast/island mouths); elsewhere they keep the
+          // old full extension that frames grid corners. Insets are
+          // PER SIDE: at acute mouths the clear test walks the
+          // offset side's end back until it leaves the other leg's
+          // carriageway (a shared inset cannot express that).
+          var wOff = cfg.roadHalf + cfg.sidewalk / 2;
+          var inAok = slabInset(edges[i].a, i), inBok = slabInset(edges[i].b, i);
           for (var s = -1; s <= 1; s += 2) {
-            var walk = new THREE.Mesh(slabGeo(cfg.sidewalk, len + wRoad, 0.14, Math.max(1, Math.round((len + wRoad) / 3))), walkMat);
-            var wOff = cfg.roadHalf + cfg.sidewalk / 2;
+            // Offset vector exactly as the placement below applies
+            // it (the axis branch ignores the edge's direction sign,
+            // the general branch works through the perpendicular).
+            var offx = axis ? (edges[i].vertical ? s * wOff : 0) : px * s * wOff;
+            var offz = axis ? (edges[i].vertical ? 0 : s * wOff) : pz * s * wOff;
+            var inA = inAok ? clearInset(edges[i].a, i, -ux, -uz, offx, offz, nodeR[edges[i].a] - 0.2, len) : -wRoad / 2;
+            var inB = inBok ? clearInset(edges[i].b, i, ux, uz, offx, offz, nodeR[edges[i].b] - 0.2, len) : -wRoad / 2;
+            var slabLen = len - inA - inB, slabShift = (inA - inB) / 2;
+            var walk = new THREE.Mesh(slabGeo(cfg.sidewalk, slabLen, 0.14, Math.max(1, Math.round(slabLen / 2.6))), walkMat);
             if (axis) {
               walk.rotation.x = -Math.PI / 2;
               if (!edges[i].vertical) walk.rotation.z = Math.PI / 2;
               walk.position.set(
-                mx + (edges[i].vertical ? s * wOff : 0), 0,
-                mz + (edges[i].vertical ? 0 : s * wOff));
+                mx + (edges[i].vertical ? s * wOff : 0) + ux * slabShift, 0,
+                mz + (edges[i].vertical ? 0 : s * wOff) + uz * slabShift);
             } else {
               walk.rotation.order = 'YXZ';
               walk.rotation.y = Math.atan2(-dx, -dz);
               walk.rotation.x = -Math.PI / 2;
-              walk.position.set(mx + px * s * wOff, 0, mz + pz * s * wOff);
+              walk.position.set(mx + px * s * wOff + ux * slabShift, 0, mz + pz * s * wOff + uz * slabShift);
             }
             walk.receiveShadow = true;
             walk.updateMatrix();
@@ -444,27 +560,37 @@
         var medTopMesh = new THREE.Mesh(SH.World.mergeGeos(medianTopGeos), medTopMat);
         scene.add(medTopMesh);
       }
-      // Zebra crossings at the six corner-plaza intersections (Rev 6):
-      // white bars as real geometry, merged into a single mesh. Bars
-      // run parallel to the traffic flow they cross.
+      // Stop lines + zebra crossings at every big junction
+      // (junction-cleanup pass, generalising the Rev 6 corner-plaza
+      // standard): each approach leg gets a stop bar at the field
+      // edge and five zebra bars just past it, rotated to the leg's
+      // real heading — diagonal and island legs included. The six
+      // original plaza sites are kept via the legacy list.
       var zebraGeos = [];
-      var zebraAt = [[0, -60], [-120, -180], [120, -300], [-360, 60], [240, 60], [360, -180]];
-      var zq = new THREE.Quaternion(), zm = new THREE.Matrix4(), zv = new THREE.Vector3(), zs2 = new THREE.Vector3(1, 1, 1);
-      function zebra(x, z, alongZ) {
-        var geo = new THREE.BoxGeometry(alongZ ? 0.9 : 2.6, 0.03, alongZ ? 2.6 : 0.9);
-        zv.set(x, 0.02, z);
-        zm.compose(zv, zq, zs2);
-        geo.applyMatrix4(zm);
+      var zq2 = new THREE.Quaternion(), ze2 = new THREE.Euler(), zm2 = new THREE.Matrix4(), zscl = new THREE.Vector3(1, 1, 1);
+      function barAt(x, z, heading, wdt, lng) {
+        var geo = new THREE.BoxGeometry(wdt, 0.03, lng);
+        ze2.set(0, heading, 0); zq2.setFromEuler(ze2);
+        zm2.compose(new THREE.Vector3(x, 0.02, z), zq2, zscl);
+        geo.applyMatrix4(zm2);
         zebraGeos.push(geo);
       }
-      for (var zi = 0; zi < zebraAt.length; zi++) {
-        var zx = zebraAt[zi][0], zz = zebraAt[zi][1];
-        for (var zs3 = 0; zs3 < 5; zs3++) {
-          var off = -3.6 + zs3 * 1.8;
-          zebra(zx + off, zz - cfg.roadHalf - 2.4, true);
-          zebra(zx + off, zz + cfg.roadHalf + 2.4, true);
-          zebra(zx - cfg.roadHalf - 2.4, zz + off, false);
-          zebra(zx + cfg.roadHalf + 2.4, zz + off, false);
+      var legacyZ = [[0, -60], [-120, -180], [120, -300], [-360, 60], [240, 60], [360, -180]];
+      for (var ni3 = 0; ni3 < nodes.length; ni3++) {
+        var inc3 = nodeInc[ni3];
+        if (inc3.length < 3) continue;
+        if (inc3.some(function (q) { return q.kind === 'ring' || q.kind === 'bridge'; })) continue;
+        var roadLegs = inc3.filter(function (q) { return q.kind === 'grid' || q.kind === 'diag' || q.kind === 'coast'; });
+        var legacy = legacyZ.some(function (lz) { return Math.hypot(nodes[ni3].x - lz[0], nodes[ni3].z - lz[1]) < 16; });
+        if ((inc3.length < 4 || roadLegs.length < 3) && !legacy) continue;
+        for (var li = 0; li < roadLegs.length; li++) {
+          var q3 = roadLegs[li], hd3 = Math.atan2(q3.dx, q3.dz);
+          var px3 = q3.dz, pz3 = -q3.dx, RR = nodeR[ni3];
+          barAt(nodes[ni3].x + q3.dx * (RR + 1.05), nodes[ni3].z + q3.dz * (RR + 1.05), hd3, halfW(q3.kind) * 2 - 1.6, 0.5);
+          for (var zb = 0; zb < 5; zb++) {
+            var off3 = -3.6 + zb * 1.8;
+            barAt(nodes[ni3].x + q3.dx * (RR + 2.45) + px3 * off3, nodes[ni3].z + q3.dz * (RR + 2.45) + pz3 * off3, hd3, 0.9, 2.6);
+          }
         }
       }
       if (zebraGeos.length) {
