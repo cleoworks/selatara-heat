@@ -772,16 +772,36 @@
     }
     // Stations: platform + canopy + ground access shaft.
     function station(cx, cz, side, name) {
-      var px = cx + side * 5.9, sx2 = cx + side * 8.6;
+      var px = cx + side * 5.9;
+      // Ground access shaft (audit fix, 2026-11-19): the fixed
+      // side*8.6 spot put all three shafts on a carriageway — the
+      // Ruko shaft in avenue x=-360's east lane, the Pelita and
+      // Taman shafts in the mouths of the z=-180 / z=60 streets.
+      // Walk the offset out, then along the platform, then to the
+      // other side, until the shaft's footprint clears every road
+      // corridor by the same 8.4 m standard the pillars use.
+      var sx2 = cx + side * 8.6, sz2 = cz, shaftDone = false;
+      var offs = [8.6, 11.5, 14.5], slides = [0, 13, -13, 26, -26];
+      for (var sd2 = 0; sd2 < 2 && !shaftDone; sd2++) {
+        var sgn2 = sd2 === 0 ? side : -side;
+        for (var oi = 0; oi < offs.length && !shaftDone; oi++) {
+          for (var si3 = 0; si3 < slides.length && !shaftDone; si3++) {
+            var tx2 = cx + sgn2 * offs[oi], tz2 = cz + slides[si3];
+            if (!SH.World.isLand(tx2, tz2) || SH.World.inWater(tx2, tz2)) continue;
+            if (distToGraph(tx2, tz2) < 8.4) continue;
+            sx2 = tx2; sz2 = tz2; shaftDone = true;
+          }
+        }
+      }
       box(timber, 0xd6d3cc, px, 9.0, cz, 4.6, 0.8, 20);
       box(glow, 0xffd76a, cx + side * 3.75, 9.43, cz, 0.3, 0.06, 20);
       box(timber, 0x3f6d7a, px, 12.6, cz, 5.4, 0.25, 20);
       var postOff = [[-2.2, -8.5], [2.2, -8.5], [-2.2, 8.5], [2.2, 8.5]];
       for (var po = 0; po < 4; po++) box(timber, 0x8f9296, px + postOff[po][0], 11.0, cz + postOff[po][1], 0.18, 3.2, 0.18);
       box(glow, 0x53e0d4, cx + side * 3.3, 11.9, cz, 0.15, 0.7, 6);
-      box(timber, 0xcac7c0, sx2, 4.7, cz, 3.2, 9.4, 3.2);
-      box(timber, 0x2c3136, sx2 - side * 1.62, 1.1, cz, 0.08, 2.2, 1.2);
-      SH.World.colliders.push({ x: sx2, z: cz, hx: 1.7, hz: 1.7 });
+      box(timber, 0xcac7c0, sx2, 4.7, sz2, 3.2, 9.4, 3.2);
+      box(timber, 0x2c3136, sx2 + (cx > sx2 ? 1.62 : -1.62), 1.1, sz2, 0.08, 2.2, 1.2);
+      SH.World.colliders.push({ x: sx2, z: sz2, hx: 1.7, hz: 1.7 });
       return { x: cx, z: cz, name: name };
     }
     var stations = [station(120, -180, 1, 'Pelita'), station(120, 60, 1, 'Taman Arus'), station(-360, 60, 1, 'Ruko Senja')];

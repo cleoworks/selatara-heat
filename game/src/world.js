@@ -205,10 +205,23 @@
       });
       addEdge(prev, b, vertical, 'grid');
     }
+    // Road-surgery removals (city-wide graph audit, 2026-11-19): the
+    // audit sampled every edge's corridor against the shared city
+    // data and found spans running through open water or along the
+    // outflow canal. Those spans are simply never built. Avenue x=0
+    // stops at the z=-60 street: south of it the avenue crossed
+    // Danau Cermin (94 m of wet centreline) and then ran on top of
+    // the outflow canal for two more spans. The z=60 street stops
+    // at the park gates (avenues x=+-120): its bowed spans crossed
+    // the lake's south half end to end. Taman Arus keeps its
+    // perimeter streets, and the lakeside arc is the through-route.
+    var skipV = { '0,-60': 1, '0,60': 1, '0,180': 1 }; // 'avenueX,streetZ start'
+    var skipH = { '60,-120': 1, '60,0': 1 };           // 'streetZ,avenueX start'
     // Vertical avenue edges (with the Ruko alley split at z=124 on the
     // three western avenues, between the z=60 and z=180 streets).
     for (i = 0; i < xs.length; i++) {
       for (j = 0; j + 1 < zs.length; j++) {
+        if (skipV[xs[i] + ',' + zs[j]]) continue;
         if ((xs[i] === -480 || xs[i] === -360 || xs[i] === -240) && zs[j] === 60) {
           var mid = addNode(xs[i], 124);
           addEdge(gridNode(i, j), mid, true);
@@ -227,6 +240,7 @@
     // centreline is the same curve as before — only denser.
     for (j = 0; j < zs.length; j++) {
       for (i = 0; i + 1 < xs.length; i++) {
+        if (j !== lastRow && skipH[zs[j] + ',' + xs[i]]) continue;
         if (j === lastRow) {
           var prevC = gridNode(i, j);
           for (var sub = 1; sub <= 3; sub++) {
@@ -267,28 +281,34 @@
       { cell: '0,0', a: [-480, -300], b: [-360, -420] },
       // District pass: a steep cut landing mid-block on the split
       // z=-60 street (60 wide, 120 deep — nothing like the 45-degree
-      // cuts), and a zig-zag continuation east of the existing chain.
-      { cell: '0,2', a: [-420, -60], b: [-360, -180] },
-      { cell: '2,2', a: [-120, -60], b: [-240, -180] }
+      // cuts). (The '2,2' cut that once continued the zig-zag east
+      // duplicated the boulevard leg [-240,-180] -> [-120,-60] node
+      // for node — two ribbons on one line — and both crossed Menara
+      // Pelita; the audit removed the pair, see diagPairs below.)
+      { cell: '0,2', a: [-420, -60], b: [-360, -180] }
     ];
     for (i = 0; i < alleyCuts.length; i++) {
       addEdge(gridNodeAt(alleyCuts[i].a[0], alleyCuts[i].a[1]), gridNodeAt(alleyCuts[i].b[0], alleyCuts[i].b[1]), false, 'alley');
       diagCells[alleyCuts[i].cell] = true;
     }
 
-    // Diagonal boulevard: corner-to-corner edges cutting eight blocks.
-    // Each crossed cell is recorded so buildings.js leaves it a plaza.
+    // Diagonal boulevard: corner-to-corner edges cutting city
+    // blocks. Each crossed cell is recorded so buildings.js leaves
+    // it a plaza. Audit removals (2026-11-19): the leg
+    // [-240,-180] -> [-120,-60] drove straight through Menara
+    // Pelita's tower (the lot is a plaza cell, but the tower stands
+    // on it), and the three legs converging on (0, 60) — from
+    // [-120,-60], out to [120,180], and the long Taman connector
+    // from [-240,180] — all ended in Danau Cermin, their shared
+    // junction node standing in open water.
     var diagPairs = [
       [[-480, -420], [-360, -300]], [[-360, -300], [-240, -180]],
-      [[-240, -180], [-120, -60]], [[-120, -60], [0, 60]],
-      [[0, 60], [120, 180]], [[120, 180], [240, beachRoadZ(240)]],
+      [[120, 180], [240, beachRoadZ(240)]],
       [[480, -180], [360, -60]], [[360, 60], [480, 180]],
       [[240, -420], [360, -300]], // Rev 5C: angled contour lane in Bukit Mawar
-      // District pass: two long interior connectors crossing district
-      // seams — Ruko/Taman west (through the park's west block) and
-      // Pelita/Karat (through the port's north blocks). Each spans two
-      // cells; both crossed cells are registered underneath.
-      [[-240, 180], [0, 60]],
+      // District pass: one long interior connector crossing the
+      // Pelita/Karat seam (through the port's north blocks); it
+      // spans two cells, both registered underneath.
       [[120, -60], [360, 60]]
     ];
     for (i = 0; i < diagPairs.length; i++) {
@@ -298,8 +318,12 @@
       var zi = zs.indexOf(Math.min(pa[1], pb[1]));
       if (ci >= 0 && zi >= 0) diagCells[ci + ',' + zi] = true;
     }
-    diagCells['3,4'] = true; // second cell crossed by the Taman connector
     diagCells['6,3'] = true; // second cell crossed by the Karat connector
+    // The Menara Pelita lot (cell 2,1) stays registered open — the
+    // tower stands there. The boulevard leg that used to register
+    // this cell ran straight through the tower; the audit removed
+    // the leg, so the registration is kept explicitly.
+    diagCells['2,1'] = true;
 
     // Bukit Mawar crescents: two curved residential arcs — short
     // chained 'grid' segments bowing through their blocks (the cells
@@ -337,8 +361,12 @@
     // Cermin's south shore (W1 reroute — the lake fills the park's
     // north half, so the arc swung south to hug its shoreline) and
     // crossing the outflow canal on its way (the z=180 street sets
-    // the precedent).
-    var parkArc = [[-120, 60], [-98, 102], [-44, 126], [22, 140], [72, 158], [120, 180]];
+    // the precedent). Audit nudge (2026-11-19): the two middle
+    // points moved ~3 m north — the arc's south edge grazed the
+    // amphitheater stage's collider (z=135.5) by ~1 m; it now
+    // clears the stage by ~3 m and still crosses the outflow
+    // inside its registered bridge span.
+    var parkArc = [[-120, 60], [-98, 102], [-44, 123.5], [22, 137], [72, 158], [120, 180]];
     var prevPk = gridNodeAt(parkArc[0][0], parkArc[0][1]);
     for (i = 1; i < parkArc.length; i++) {
       var pkn = (i === parkArc.length - 1) ? gridNodeAt(parkArc[i][0], parkArc[i][1]) : addNode(parkArc[i][0], parkArc[i][1]);
@@ -399,6 +427,82 @@
     addEdge(islW, islC, false); addEdge(islC, islE, false);
     addEdge(islN, islE, false); addEdge(islE, islS, true);
     addEdge(islS, islW, false); addEdge(islW, islN, true);
+
+    // Road-surgery junction pass (audit, 2026-11-19): wherever two
+    // road ribbons cross away from a node — grid avenues passing
+    // under the ring spline's bulged corners, the Karat connector
+    // crossing avenue x=240 mid-span, the Ruko alley/diagonal
+    // X-crossings, the coast drive crossing the ring — insert a
+    // real junction node and split both edges there, so every
+    // crossing in the city is a junction traffic can actually use
+    // (and the renderer caps) instead of two ribbons overlapping
+    // with no connection. Crossings within 2.5 m of an endpoint
+    // are near-touches, not junctions, and are left alone.
+    function splitEdgeAt(ei, x, z) {
+      var e = edges[ei], b = e.b;
+      var n = addNode(x, z);
+      if (n === e.a || n === b) return n;
+      e.b = n;
+      nodes[n].edges.push(ei);
+      var id2 = edges.length;
+      edges.push({ a: n, b: b, vertical: e.vertical, kind: e.kind });
+      nodes[n].edges.push(id2);
+      var bl = nodes[b].edges, bi = bl.indexOf(ei);
+      if (bi >= 0) bl[bi] = id2; else bl.push(id2);
+      return n;
+    }
+    function segCross(p, p2, q, q2) {
+      var d1x = p2.x - p.x, d1z = p2.z - p.z, d2x = q2.x - q.x, d2z = q2.z - q.z;
+      var den = d1x * d2z - d1z * d2x;
+      if (Math.abs(den) < 1e-9) return null;
+      var t = ((q.x - p.x) * d2z - (q.z - p.z) * d2x) / den;
+      var u = ((q.x - p.x) * d1z - (q.z - p.z) * d1x) / den;
+      if (t > 0 && t < 1 && u > 0 && u < 1) return { x: p.x + d1x * t, z: p.z + d1z * t };
+      return null;
+    }
+    for (var guard = 0; guard < 60; guard++) {
+      var found = null;
+      for (var ci2 = 0; ci2 < edges.length && !found; ci2++) {
+        for (var cj = ci2 + 1; cj < edges.length; cj++) {
+          var f1 = edges[ci2], f2 = edges[cj];
+          if (f1.a === f2.a || f1.a === f2.b || f1.b === f2.a || f1.b === f2.b) continue;
+          var hit = segCross(nodes[f1.a], nodes[f1.b], nodes[f2.a], nodes[f2.b]);
+          if (!hit) continue;
+          var dEnd = Math.min(
+            Math.hypot(hit.x - nodes[f1.a].x, hit.z - nodes[f1.a].z),
+            Math.hypot(hit.x - nodes[f1.b].x, hit.z - nodes[f1.b].z),
+            Math.hypot(hit.x - nodes[f2.a].x, hit.z - nodes[f2.a].z),
+            Math.hypot(hit.x - nodes[f2.b].x, hit.z - nodes[f2.b].z));
+          if (dEnd <= 2.5) continue;
+          found = { e1: ci2, e2: cj, x: hit.x, z: hit.z };
+          break;
+        }
+      }
+      if (!found) break;
+      splitEdgeAt(found.e1, found.x, found.z);
+      splitEdgeAt(found.e2, found.x, found.z); // addNode returns the same junction node
+    }
+
+    // Prune orphaned nodes and reindex: the (0,60) junction stood
+    // in the lake and the removed z=60 spans leave their bow
+    // midpoints behind — all edgeless after the surgery. A dead
+    // node left in the arrays could still win nearestNode and
+    // strand pathfinding, so edgeless nodes are dropped here.
+    var remap = {}, keptNodes = [];
+    for (var qi = 0; qi < nodes.length; qi++) {
+      if (nodes[qi].edges.length) { remap[qi] = keptNodes.length; keptNodes.push(nodes[qi]); }
+    }
+    if (keptNodes.length !== nodes.length) {
+      nodes.length = 0;
+      for (var qj = 0; qj < keptNodes.length; qj++) { keptNodes[qj].edges = []; nodes.push(keptNodes[qj]); }
+      for (var qk = 0; qk < edges.length; qk++) {
+        edges[qk].a = remap[edges[qk].a]; edges[qk].b = remap[edges[qk].b];
+        nodes[edges[qk].a].edges.push(qk);
+        nodes[edges[qk].b].edges.push(qk);
+      }
+      nodeIndex = {};
+      for (var ql = 0; ql < nodes.length; ql++) nodeIndex[nodes[ql].x + ',' + nodes[ql].z] = ql;
+    }
   })();
 
   function nearestNode(x, z) {
@@ -530,7 +634,8 @@
     { x1: 0, z1: 126, x2: 0, z2: 148, hw: 9.5 },     // lakeside arc over the outflow
     { x1: 0, z1: 169, x2: 0, z2: 191, hw: 9.5 },     // z=180 street over the outflow
     { x1: 0, z1: 224, x2: 0, z2: 246, hw: 9.5 },     // coast road over the outflow
-    { x1: -21, z1: 99, x2: -19, z2: 37, hw: 2.8 },   // footbridge to the lake island
+    { x1: 0, z1: 272, x2: 0, z2: 296, hw: 10 },      // ring highway over the outflow (audit 2026-11-19: the ring's south node stood in the canal unregistered)
+    { x1: -21, z1: 110, x2: -19, z2: 37, hw: 2.8 },  // footbridge to the lake island
     { x1: -58, z1: 13, x2: -36, z2: 23, hw: 3.2 },   // footbridge over Kali Arus
     { x1: 0, z1: 99, x2: 0, z2: 117, hw: 4.2 },      // jogging path over the outflow
     { x1: 6, z1: 106, x2: 6, z2: 87, hw: 2.2 },      // the lake pier
