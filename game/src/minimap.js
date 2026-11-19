@@ -141,6 +141,32 @@
         }
       }
     }
+    // District Pilot park zones from the shared city data: plazas
+    // read as pale stone, gardens as planted green, the running
+    // circuit as a rust band around Danau Cermin.
+    var parkZones = (SH.CityData && SH.CityData.parks) || [];
+    function parkPath(pts) {
+      g.beginPath();
+      for (var pp = 0; pp < pts.length; pp++) {
+        if (pp === 0) g.moveTo(w2mx(pts[pp][0]), w2my(pts[pp][1])); else g.lineTo(w2mx(pts[pp][0]), w2my(pts[pp][1]));
+      }
+      g.closePath();
+    }
+    for (i = 0; i < parkZones.length; i++) {
+      var pz2 = parkZones[i];
+      g.fillStyle = pz2.kind === 'track' ? 'rgba(168,95,54,0.85)' : pz2.kind === 'garden' ? 'rgba(110,160,80,0.55)' : 'rgba(226,214,178,0.9)';
+      if (pz2.circle) {
+        g.beginPath();
+        g.ellipse(w2mx(pz2.circle[0]), w2my(pz2.circle[1]), pz2.circle[2] / WORLD_W * MAP, pz2.circle[2] / WORLD_H * MAP, 0, 0, Math.PI * 2);
+        g.fill();
+      } else if (pz2.rect) {
+        g.fillRect(w2mx(pz2.rect[0]), w2my(pz2.rect[1]), (pz2.rect[2] - pz2.rect[0]) / WORLD_W * MAP, (pz2.rect[3] - pz2.rect[1]) / WORLD_H * MAP);
+      } else if (pz2.poly) {
+        parkPath(pz2.poly); g.fill();
+      } else if (pz2.band) {
+        parkPath(pz2.band[0]); parkPath(pz2.band[1]); g.fill('evenodd');
+      }
+    }
     // Buildings from the Rev 8 city data model: the same footprint
     // polygons the 3D generator placed (rects, L annexes, drums as
     // 10-gons, polygon lots with cut corners / courtyards), drawn as
@@ -203,6 +229,34 @@
     roadPath('casing');
     roadPath('fill');
     roadPath('ringmark');
+    // District Pilot: the elevated monorail, drawn from the same
+    // CityData.mono the 3D build produced — a dark casing under a
+    // teal core, with white station squares. Drawn over the road net
+    // so the loop reads at a glance on both maps.
+    var mono = (SH.CityData && SH.CityData.mono) || null;
+    if (mono && mono.pts && mono.pts.length > 2) {
+      var monoPass = [[5.2, '#1d2b33'], [2.8, '#3fd2c5']];
+      for (var mpi = 0; mpi < monoPass.length; mpi++) {
+        g.strokeStyle = monoPass[mpi][1];
+        g.lineWidth = monoPass[mpi][0];
+        g.lineJoin = 'round';
+        g.beginPath();
+        for (var mq = 0; mq <= mono.pts.length; mq++) {
+          var mpt = mono.pts[mq % mono.pts.length];
+          if (mq === 0) g.moveTo(w2mx(mpt[0]), w2my(mpt[1])); else g.lineTo(w2mx(mpt[0]), w2my(mpt[1]));
+        }
+        g.stroke();
+      }
+      for (var msi = 0; msi < mono.stations.length; msi++) {
+        var stn = mono.stations[msi];
+        var stx = w2mx(stn.x), sty = w2my(stn.z);
+        g.fillStyle = '#ffffff';
+        g.fillRect(stx - 4, sty - 4, 8, 8);
+        g.strokeStyle = '#1d2b33';
+        g.lineWidth = 1.6;
+        g.strokeRect(stx - 4, sty - 4, 8, 8);
+      }
+    }
     // Foam lines: a bright waterline right on the shore, a fainter
     // second line seaward, and a foam ring around Pulau Seberang.
     function foamPath(offM, alpha, wPx) {
@@ -447,6 +501,17 @@
       g.fillText('Danau Cermin', px(-12), pz(30));
       g.strokeText('Kali Arus', px(-62), pz(-6));
       g.fillText('Kali Arus', px(-62), pz(-6));
+      // Monorail station names beside their squares (full map only).
+      if (SH.CityData && SH.CityData.mono) {
+        g.font = 'bold 10px sans-serif';
+        g.lineWidth = 3; g.strokeStyle = 'rgba(8,20,32,0.7)';
+        g.fillStyle = '#c8f4ee';
+        for (i = 0; i < SH.CityData.mono.stations.length; i++) {
+          var stn2 = SH.CityData.mono.stations[i];
+          g.strokeText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 15);
+          g.fillText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 15);
+        }
+      }
       // Expose the transform so menus can map clicks back to world coords.
       canvas._mapTransform = { s: s, ox: ox, oy: oy };
     },

@@ -501,11 +501,13 @@
     }
     return pts;
   }
-  // Danau Cermin: ~200 m long axis filling Taman Arus' north half,
-  // clamped clear of the z=-60 street, the x=+-120 avenues and the
-  // rerouted lakeside arc.
-  var lakePoly = organicLoop(-12, 30, 92, 68, 77031, 0.13, -108, 104, -44, 112);
-  var lakeIslandPoly = organicLoop(-18, 28, 15, 10.5, 77032, 0.12, -60, 24, -10, 66);
+  // Danau Cermin: District Pilot enlargement — the organic loop now
+  // spans ~205 x ~152 m (was 189 x 126 m bbox / 19,342 m2, measured
+  // from this polygon) centred in the spec's 180-240 m band, clamped
+  // clear of the z=-60 street, the x=+-120 avenues and the rerouted
+  // lakeside arc.
+  var lakePoly = organicLoop(-6, 34, 100, 75, 77031, 0.13, -112, 110, -48, 110);
+  var lakeIslandPoly = organicLoop(-16, 30, 17, 12, 77032, 0.12, -64, 28, -14, 68);
   // Kali Arus: rises at a culvert pool under the z=-60 street and
   // winds south into the lake's west shore.
   var riverPts = [[-34, -47], [-44, -16], [-36, 10], [-50, 26]];

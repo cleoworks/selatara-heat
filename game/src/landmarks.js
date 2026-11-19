@@ -116,6 +116,19 @@
   function scaledPts(pts, c, s) {
     return pts.map(function (p) { return [c[0] + (p[0] - c[0]) * s, c[1] + (p[1] - c[1]) * s]; });
   }
+  // Anisotropic scale of a loop around a centre (District Pilot).
+  function scaleXY(pts, c, sx, sz) {
+    return pts.map(function (p) { return [c[0] + (p[0] - c[0]) * sx, c[1] + (p[1] - c[1]) * sz]; });
+  }
+  function clampLoop(pts, minX, maxX, minZ, maxZ) {
+    return pts.map(function (p) { return [Math.max(minX, Math.min(maxX, p[0])), Math.max(minZ, Math.min(maxZ, p[1]))]; });
+  }
+  // Register a park zone in the shared city data: the 2D map draws
+  // these and the fill audit counts them (District Pilot).
+  function parkReg(zone) {
+    var parks = SH.CityData.parks || (SH.CityData.parks = []);
+    parks.push(zone);
+  }
   function centroid(pts) {
     var x = 0, z = 0;
     for (var i = 0; i < pts.length; i++) { x += pts[i][0]; z += pts[i][1]; }
@@ -246,8 +259,24 @@
       return lerpHex(0x175263, 0x77a88d, Math.pow(d, 0.65)).getHex();
     }));
     water.push(fanGeo(lake, 0.02));
-    dress.push(ringGeo(scaledPts(lake, lc, 1.05), scaledPts(lake, lc, 1.005), -0.02, 0xc9b489));
-    dress.push(ringGeo(scaledPts(lake, lc, 1.115), scaledPts(lake, lc, 1.05), -0.005, 0xb3a284));
+    // District Pilot: the old jogging path becomes a proper running
+    // circuit — a wide rust-red track ring with two pale lane lines,
+    // registered in CityData.parks so the map draws it and the fill
+    // audit counts it. The outer loop is clamped off the x=+-120
+    // avenue corridors.
+    var trackIn = scaleXY(lake, lc, 1.035, 1.05);
+    var trackOut = clampLoop(scaleXY(lake, lc, 1.10, 1.14), -113, 113, -52, 118);
+    dress.push(ringGeo(trackIn, scaledPts(lake, lc, 1.005), -0.018, 0xc9b489));
+    dress.push(ringGeo(trackOut, trackIn, -0.005, 0x9e4f30));
+    dress.push(ringGeo(scaleXY(lake, lc, 1.062, 1.082), scaleXY(lake, lc, 1.055, 1.074), -0.002, 0xe9dfc9));
+    dress.push(ringGeo(scaleXY(lake, lc, 1.088, 1.112), scaleXY(lake, lc, 1.081, 1.104), -0.002, 0xe9dfc9));
+    parkReg({ band: [trackOut, trackIn], kind: 'track' });
+    // Benches on the track's outer edge, facing the water.
+    for (var bi = 1; bi < 28; bi += 4) {
+      var bp = trackOut[bi], bq = trackOut[(bi + 1) % 28];
+      var bang = Math.atan2(bq[0] - bp[0], bq[1] - bp[1]);
+      box(timber, 0x7d5f3c, bp[0], 0.28, bp[1], 1.9, 0.5, 0.55, bang);
+    }
 
     // The island: sand rim, grass top, gazebo, two palms.
     dress.push(fanGeo(scaledPts(island, ic, 1.22), 0.03, 0xd8c49a));
@@ -268,14 +297,15 @@
 
     // Footbridges: to the island, over Kali Arus (jogging path), and
     // over the outflow where the path ring crosses it.
-    footbridge(timber, -20.5, 103, -19, 39.5, 0.6);
+    footbridge(timber, -20.5, 110, -19, 39.5, 0.6);
     footbridge(timber, -56, 14.5, -38, 22.5, 0.32);
     footbridge(timber, 0, 116, 0, 100, 0.3);
 
     // Lake pier on the south shore + the moored rowboat beside it.
-    box(timber, 0x8a6844, 6, 0.1, 96, 2.4, 0.12, 17);
-    box(timber, 0x7d5f3c, 6, 0.12, 88.2, 3.6, 0.12, 3.6);
-    [[4.9, 103], [7.1, 103], [4.9, 89], [7.1, 89]].forEach(function (pp) {
+    // (Pilot: lengthened to still cross the enlarged lake's shore.)
+    box(timber, 0x8a6844, 6, 0.1, 100, 2.4, 0.12, 26);
+    box(timber, 0x7d5f3c, 6, 0.12, 89.5, 3.6, 0.12, 3.6);
+    [[4.9, 110], [7.1, 110], [4.9, 92], [7.1, 92]].forEach(function (pp) {
       part(timber, new THREE.CylinderGeometry(0.09, 0.09, 0.7, 5), 0x6e5133, pp[0], -0.2, pp[1], 0, 0, 0);
     });
 
@@ -312,7 +342,7 @@
     box(boatParts, 0x8a5a38, -1.14, 0.32, 0, 0.12, 0.32, 0.9);
     box(boatParts, 0xa8794e, 0, 0.3, 0, 0.34, 0.06, 0.9);
     var boat = new THREE.Mesh(SH.World.mergeGeos(boatParts), mats.timber);
-    boat.position.set(10.5, 0.04, 93);
+    boat.position.set(10.5, 0.04, 99);
     boat.rotation.y = 0.7;
     scene.add(boat);
     anim.boat = boat;
@@ -344,6 +374,110 @@
     birdMesh.name = 'w1-birds';
     birdMesh.frustumCulled = false;
     scene.add(birdMesh);
+  }
+
+  // ---------- District Pilot: Taman Arus park furniture --------------
+  // Everything the W2 list promised the park, placed in the dry
+  // pockets the road graph leaves (the lakeside arc and the z=180
+  // street are the bounds — the x=0 avenue and the SE diagonal
+  // that once crossed the park were removed by the road audit): a
+  // tiered fountain and an amphitheater in the south-west pocket,
+  // flower beds, tree groves, a lookout deck on the east shore and
+  // a small car park. All statics merge into the shared dress/timber/glow
+  // lists (no new draw calls) and every zone registers in
+  // CityData.parks so the map and the fill audit see the same park.
+  function parkTree(dress, x, z, s) {
+    var greens = [0x4da653, 0x57b85e, 0x439148];
+    part(dress, new THREE.CylinderGeometry(0.13 * s, 0.2 * s, 1.7 * s, 5), 0x6e5133, x, 0.85 * s, z, 0, 0, 0);
+    part(dress, new THREE.IcosahedronGeometry(1.55 * s, 0), greens[(x * 7 + z * 13) % 3 < 0 ? 0 : ((x * 7 + z * 13) | 0) % 3], x, 2.5 * s, z, 0, x, 0);
+    part(dress, new THREE.IcosahedronGeometry(1.0 * s, 0), 0x57b85e, x + 0.7 * s, 3.1 * s, z + 0.4 * s, 0, z, 0);
+  }
+  function grove(shared, x0, z0, x1, z1, n, seed) {
+    var r = SH.World.makeRng(seed);
+    for (var i = 0; i < n; i++) parkTree(shared.dress, x0 + r() * (x1 - x0), z0 + r() * (z1 - z0), 0.9 + r() * 0.5);
+    parkReg({ rect: [x0, z0, x1, z1], kind: 'garden' });
+  }
+  function flowerBed(shared, cx, cz, rx, rz, rot, cA, cB) {
+    var outer = ellipsePts(cx, cz, rx, rz, rot, 16);
+    shared.dress.push(fanGeo(outer, 0.012, 0x4d7d3a));
+    shared.dress.push(fanGeo(scaledPts(outer, [cx, cz], 0.8), 0.02, cA));
+    shared.dress.push(fanGeo(scaledPts(outer, [cx, cz], 0.48), 0.028, cB));
+    parkReg({ poly: outer, kind: 'garden' });
+  }
+
+  function buildTamanPilot(shared) {
+    var dress = shared.dress, timber = shared.timber, glow = shared.glow;
+
+    // --- The big fountain, south-west pocket ---
+    var FX = -80, FZ = 150;
+    dress.push(fanGeo(ellipsePts(FX, FZ, 13.5, 13.5, 0, 24), 0.012, 0xbfb198));
+    part(timber, new THREE.CylinderGeometry(10.2, 10.6, 0.55, 22), 0x9a8f7c, FX, 0.27, FZ, 0, 0, 0);
+    dress.push(fanGeo(ellipsePts(FX, FZ, 9.6, 9.6, 0, 22), 0.56, 0x46a8cc));
+    part(timber, new THREE.CylinderGeometry(0.85, 1.15, 1.5, 10), 0x8f8574, FX, 1.3, FZ, 0, 0, 0);
+    part(timber, new THREE.CylinderGeometry(2.7, 1.9, 0.4, 12), 0x9a8f7c, FX, 2.2, FZ, 0, 0, 0);
+    part(glow, new THREE.ConeGeometry(0.55, 2.6, 8), 0xcfeef7, FX, 3.9, FZ, 0, 0, 0);
+    for (var fj = 0; fj < 6; fj++) {
+      var fa = fj / 6 * Math.PI * 2;
+      part(glow, new THREE.ConeGeometry(0.2, 1.1, 6), 0xbfe6f2, FX + Math.sin(fa) * 1.7, 1.85, FZ + Math.cos(fa) * 1.7, Math.cos(fa) * 0.55, 0, -Math.sin(fa) * 0.55);
+    }
+    for (var fb = 0; fb < 4; fb++) {
+      var ba = fb / 4 * Math.PI * 2 + 0.78;
+      box(timber, 0x7d5f3c, FX + Math.sin(ba) * 12, 0.3, FZ + Math.cos(ba) * 12, 1.9, 0.5, 0.55, -ba);
+    }
+    SH.World.colliders.push({ x: FX, z: FZ, hx: 10.4, hz: 10.4 });
+    parkReg({ circle: [FX, FZ, 13.5], kind: 'plaza' });
+
+    // --- Amphitheater, same pocket, stage to the north ---
+    var AX = -28, AZ = 142;
+    dress.push(fanGeo(ellipsePts(AX, 152, 16, 15, 0, 22), 0.01, 0xb0a58c));
+    box(timber, 0x6e5133, AX, 0.4, 139, 15, 0.8, 5);
+    box(timber, 0x4a3826, AX - 6.8, 2.4, 136.8, 0.35, 4.8, 0.35);
+    box(timber, 0x4a3826, AX + 6.8, 2.4, 136.8, 0.35, 4.8, 0.35);
+    box(timber, 0x8a4a30, AX, 4.9, 138, 15.5, 0.3, 6.5);
+    box(timber, 0x2c3136, AX - 8.6, 0.8, 141, 1.1, 1.6, 1.1);
+    box(timber, 0x2c3136, AX + 8.6, 0.8, 141, 1.1, 1.6, 1.1);
+    var seatR = [9.5, 12, 14.5];
+    for (var sr = 0; sr < seatR.length; sr++) {
+      for (var sa = -60; sa <= 60; sa += 15) {
+        var ar = sa * Math.PI / 180, rr = seatR[sr];
+        box(timber, sr % 2 ? 0xa89a80 : 0xbfb198, AX + Math.sin(ar) * rr, 0.18 + sr * 0.22, AZ + Math.cos(ar) * rr, 2.4, 0.36 + sr * 0.2, 1.0, -ar);
+      }
+    }
+    SH.World.colliders.push({ x: AX, z: 139, hx: 8, hz: 3.5 });
+    parkReg({ circle: [AX, 152, 16], kind: 'plaza' });
+
+    // --- Car park at the pocket's south-west corner ---
+    dress.push(fanGeo([[-112, 158], [-84, 158], [-84, 171], [-112, 171]], 0.008, 0x59544f));
+    for (var pk = 0; pk < 6; pk++) box(timber, 0xd8d8d8, -109 + pk * 4.4, 0.03, 161, 0.25, 0.03, 3.4);
+    parkReg({ rect: [-112, 158, -84, 171], kind: 'plaza' });
+
+    // --- Flower beds (two-tone, from the same ellipse data) ---
+    flowerBed(shared, -52, 164, 11, 5, -0.3, 0xe2543e, 0xffd23f);
+    flowerBed(shared, 28, 166, 12, 5, 0.3, 0xff7a9e, 0xffe9f2);
+    flowerBed(shared, 98, 128, 11, 5, -0.4, 0x9a6ac9, 0xffd23f);
+    flowerBed(shared, -106, 138, 9, 4.5, 0.3, 0xff8c42, 0xfff3e0);
+    flowerBed(shared, 88, -38, 10, 5, 0.2, 0xff7a9e, 0xffffff);
+
+    // --- Tree groves: north-east meadow, east shore, south-east ---
+    grove(shared, 76, -44, 104, -16, 6, 5150);
+    grove(shared, 88, 84, 108, 106, 4, 5151);
+    grove(shared, 74, 110, 96, 130, 4, 5152);
+    parkTree(dress, -95, 138, 1.1); parkTree(dress, -64, 139, 0.95); parkTree(dress, -93, 165, 1.0);
+    parkTree(dress, -45, 146, 1.05); parkTree(dress, -11, 147, 0.9); parkTree(dress, -28, 170, 1.1);
+
+    // --- Lookout deck on the east shore ---
+    dress.push(fanGeo(ellipsePts(95, 105, 7, 5.5, 0, 14), 0.03, 0x8a6844));
+    for (var dp2 = 0; dp2 < 5; dp2++) {
+      var da = dp2 / 5 * Math.PI * 2;
+      part(timber, new THREE.CylinderGeometry(0.07, 0.07, 0.9, 5), 0x6e5133, 95 + Math.cos(da) * 6.2, 0.45, 105 + Math.sin(da) * 4.8, 0, 0, 0);
+    }
+    parkReg({ circle: [95, 105, 7], kind: 'plaza' });
+
+    // --- Path spurs: track -> fountain, track -> amphitheater, and
+    // the garden link between the two plazas ---
+    dress.push(stripGeo([[-80, 110], [-80, 136]], 1.6, 0.006, 0xb3a284));
+    dress.push(stripGeo([[-28, 119], [-28, 138]], 1.6, 0.006, 0xb3a284));
+    dress.push(stripGeo([[-66, 152], [-44, 152]], 1.8, 0.006, 0xb3a284));
   }
 
   // ---------- Feature 2: Kanal Ruko Senja ------------------------------
@@ -700,6 +834,7 @@
       mats = makeMats();
       var shared = { water: [], dress: [], timber: [], glow: [] };
       buildTaman(scene, shared);
+      buildTamanPilot(shared);
       buildRuko(scene, shared);
       buildMercusuar(scene, shared);
       buildMenara(scene, shared);
