@@ -1,0 +1,96 @@
+name: Render + Functest
+
+# Manual lane for visual verification of the game build: renders the ?shot=
+# staging scenes and runs the two functional test suites in headless Chromium
+# (SwiftShader), then uploads every photo + test result as an artifact.
+# Primary compute lane for this project (GitHub Actions > Kaggle > Instabox >
+# local VM). Lives outside game/ on purpose: nothing here ships in the entry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: 'Shot names, comma separated (?shot= staging)'
+        type: string
+        default: 'cover,lake,canal,map'
+      wait_ms:
+        description: 'Per-shot staging wait (ms)'
+        type: string
+        default: '9000'
+      run_functests:
+        description: 'Run functest.cjs + functest2.cjs'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Render shots + functional tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install CI tooling deps
+        working-directory: ci
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium headless shell
+        working-directory: ci
+        run: npx playwright-core install --only-shell chromium
+
+      - name: Render shots
+        run: node ci/render.cjs "$GITHUB_WORKSPACE/game/index.html" "$GITHUB_WORKSPACE/render-out" "${{ inputs.shots }}" "${{ inputs.wait_ms }}"
+
+      - name: Functest 1 (slices d/e/f)
+        if: ${{ inputs.run_functests }}
+        continue-on-error: true
+        run: node ci/functest.cjs | tee ft1.json
+
+      - name: Functest 2 (slice g)
+        if: ${{ inputs.run_functests }}
+        continue-on-error: true
+        run: node ci/functest2.cjs | tee ft2.json
+
+      - name: Verify test results
+        if: ${{ inputs.run_functests }}
+        run: |
+          jq -e '.errorCount == 0 and ([.results[].ok] | all)' ft1.json > /dev/null
+          jq -e '.errorCount == 0 and ([.results[].ok] | all)' ft2.json > /dev/null
+          echo "functest 1: $(jq -r '"\(.results | map(select(.ok)) | length)/\(.results | length) passed, errorCount=\(.errorCount)"' ft1.json)"
+          echo "functest 2: $(jq -r '"\(.results | map(select(.ok)) | length)/\(.results | length) passed, errorCount=\(.errorCount)"' ft2.json)"
+
+      - name: Render summary
+        if: always()
+        run: |
+          if [ -f render-out/render-results.json ]; then
+            {
+              echo '## Render results'
+              echo ''
+              echo '| shot | fps | console errors | total ms | bytes |'
+              echo '| --- | --- | --- | --- | --- |'
+              jq -r '.shots[] | "| \(.name) | \(.fps) | \(.errorCount) | \(.totalMs) | \(.bytes) |"' render-out/render-results.json
+              echo ''
+              echo "WebGL renderer: $(jq -r '.webgl.renderer // "unknown"' render-out/render-results.json)"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selatara-render-${{ github.run_number }}
+          path: |
+            render-out/
+            ft1.json
+            ft2.json
+          if-no-files-found: warn
+          retention-days: 30

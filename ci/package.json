@@ -1,0 +1,1 @@
+{"dependencies":{"playwright-core":"1.65.1"},"description":"CI tooling for SELATARA HEAT: headless render shots + functional tests (GitHub Actions). Not part of the game entry package.","name":"selatara-heat-ci","private":true,"version":"1.0.0"}
