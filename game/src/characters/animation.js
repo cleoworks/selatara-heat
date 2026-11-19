@@ -112,7 +112,11 @@
     o.dur = o.dur || 0.84;
     var clip = buildClip(name, o.dur, gaitKeys(o), true);
     var stepLen = 2 * 0.91 * Math.sin(o.swing * D);
-    clip.userData.refSpeed = (2 * stepLen) / o.dur;
+    // Stage D calibration (probe-stride, measured on the built clips):
+    // the straight-leg formula overstates the real step by ~28% —
+    // knee bend at contact + ankle offset eat the rest. Measured
+    // implied/ref ratios were 0.755-0.790 across all five gaits.
+    clip.userData.refSpeed = 0.78 * (2 * stepLen) / o.dur;
     CLIPS[name] = clip;
   }
 
@@ -212,10 +216,13 @@
       { t: 0.42, p: { spine1: [1, 0, 0], head: [0, 0, 0], uArmL: [0, 0, 6], uArmR: [0, 0, -6] }, dy: 0 }
     ], false);
   }
-  hitClip('hit_front', [-15, 0, 0], [-12, 0, 0]);
-  hitClip('hit_back', [16, 0, 0], [13, 0, 0]);
-  hitClip('hit_left', [0, 0, 13], [0, 0, 10]);
-  hitClip('hit_right', [0, 0, -13], [0, 0, -10]);
+  // Stage D iteration 3: hit reactions read too weak at game
+  // distance (spine 15 deg / head 12 deg at the t=0 peak) — scale
+  // the authored peak ~1.4x; the decay shape is unchanged.
+  hitClip('hit_front', [-21, 0, 0], [-17, 0, 0]);
+  hitClip('hit_back', [22, 0, 0], [18, 0, 0]);
+  hitClip('hit_left', [0, 0, 18], [0, 0, 14]);
+  hitClip('hit_right', [0, 0, -18], [0, 0, -14]);
   def('stagger', 0.85, [
     { t: 0, p: { pelvis: [0, 0, 7], thighL: [-8, 0, 7], thighR: [6, 0, -7], uArmL: [-14, 0, 32], uArmR: [-10, 0, -30], head: [4, 0, 6], spine1: [4, 0, 4] }, dy: -0.03 },
     { t: 0.42, p: { pelvis: [0, 0, -6], thighL: [5, 0, 6], thighR: [-9, 0, -6], uArmL: [-8, 0, 26], uArmR: [-16, 0, -24], head: [3, 0, -5] }, dy: -0.045 },

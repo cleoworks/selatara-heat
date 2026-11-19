@@ -414,24 +414,29 @@
   }
 
   // ---- body ---------------------------------------------------------------
-  function buildBody(p, boneIndex, skinRGB, withFingers) {
+  function buildBody(p, boneIndex, skinRGB, withFingers, coarse) {
     p = baseParams(p);
     var S = bodyStations(p);
+    // Stage D iteration 3: the LOD1 body drops ring resolution
+    // (torso 12 -> 8, limbs 9 -> 7). Segment count only — station
+    // radii and skin weights are untouched, so silhouettes and
+    // cloth margins are unaffected.
+    var radT = coarse ? 8 : 12, radL = coarse ? 7 : 9;
     var parts = [
       // torso capped at BOTH ends: the top cap seals the neck tube
       // under the head's neck funnel, so no camera angle can see
       // through the annulus between the jaw and the neck ring
-      paintPart(tube(S.torso, boneIndex, 12, true, true), skinRGB),
+      paintPart(tube(S.torso, boneIndex, radT, true, true), skinRGB),
       // arm tubes capped at the shoulder: with the trapezius slope
       // the arm's open top ring sits exposed beside the slope for
       // sleeveless tops — the cap seals it as a deltoid top (it
       // stays hidden inside the torso/sleeve volume otherwise)
       // Iterasi 2 poly trim: arm/leg tubes radial 10 -> 9 (thin
       // parts; the silhouette is carried by the station radii)
-      paintPart(tube(S.armL, boneIndex, 9, true, false), skinRGB),
-      paintPart(tube(S.armR, boneIndex, 9, true, false), skinRGB),
-      paintPart(tube(S.legL, boneIndex, 9, false, true), skinRGB),
-      paintPart(tube(S.legR, boneIndex, 9, false, true), skinRGB)
+      paintPart(tube(S.armL, boneIndex, radL, true, false), skinRGB),
+      paintPart(tube(S.armR, boneIndex, radL, true, false), skinRGB),
+      paintPart(tube(S.legL, boneIndex, radL, false, true), skinRGB),
+      paintPart(tube(S.legR, boneIndex, radL, false, true), skinRGB)
     ];
     if (withFingers) {
       parts.push(paintPart(mittenPart(p, boneIndex, 1), skinRGB));
@@ -693,14 +698,17 @@
 
   // Drop triangles whose centroid falls inside the face window, so a
   // cloth shell (hijab) can wrap the head yet leave the face open.
-  function cutFaceWindow(geo, r, cy) {
+  // `win` overrides the window box {z, x, top, bot} in units of r
+  // (Stage D iteration 1: the drape reuses this with a chin-line cut).
+  function cutFaceWindow(geo, r, cy, win) {
+    win = win || { z: 0.52, x: 0.68, top: 0.52, bot: -0.85 };
     var g = geo.index ? geo.toNonIndexed() : geo;
     var pa = g.attributes.position, keep = [];
     for (var i = 0; i < pa.count; i += 3) {
       var cx = (pa.getX(i) + pa.getX(i + 1) + pa.getX(i + 2)) / 3;
       var cyy = (pa.getY(i) + pa.getY(i + 1) + pa.getY(i + 2)) / 3;
       var cz = (pa.getZ(i) + pa.getZ(i + 1) + pa.getZ(i + 2)) / 3;
-      var inWindow = cz > r * 0.52 && Math.abs(cx) < r * 0.68 && cyy < cy + r * 0.52 && cyy > cy - r * 0.85;
+      var inWindow = cz > r * win.z && Math.abs(cx) < r * win.x && cyy < cy + r * win.top && cyy > cy + r * win.bot;
       if (!inWindow) keep.push(i);
     }
     var pos = [], nor = [], uvA = [], idx = [];
@@ -708,6 +716,36 @@
     for (var q = 0; q < keep.length; q++) {
       for (var k = 0; k < 3; k++) {
         var vi = keep[q] + k;
+        pos.push(pa.getX(vi), pa.getY(vi), pa.getZ(vi));
+        nor.push(na ? na.getX(vi) : 0, na ? na.getY(vi) : 1, na ? na.getZ(vi) : 0);
+        uvA.push(ua ? ua.getX(vi) : 0, ua ? ua.getY(vi) : 0);
+        idx.push(pos.length / 3 - 1);
+      }
+    }
+    var out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    out.setAttribute('uv', new THREE.Float32BufferAttribute(uvA, 2));
+    out.setIndex(idx);
+    return out;
+  }
+
+  // Stage D iteration 3: drop the pointed cloth flaps that hang
+  // beside the jaw on the hijab shell — triangles in the front-side
+  // sector below the cheek line. The drape behind them still covers
+  // the neck, so the cut opens no hole.
+  function trimJawFlaps(geo, r, cy) {
+    var g = geo.index ? geo.toNonIndexed() : geo;
+    var pa = g.attributes.position, na = g.attributes.normal, ua = g.attributes.uv;
+    var pos = [], nor = [], uvA = [], idx = [];
+    for (var i = 0; i < pa.count; i += 3) {
+      var cx = (pa.getX(i) + pa.getX(i + 1) + pa.getX(i + 2)) / 3;
+      var cyy = (pa.getY(i) + pa.getY(i + 1) + pa.getY(i + 2)) / 3;
+      var cz = (pa.getZ(i) + pa.getZ(i + 1) + pa.getZ(i + 2)) / 3;
+      var flap = cz > r * 0.26 && Math.abs(cx) > r * 0.58 && cyy < cy - r * 0.50 && cyy > cy - r * 1.35;
+      if (flap) continue;
+      for (var k = 0; k < 3; k++) {
+        var vi = i + k;
         pos.push(pa.getX(vi), pa.getY(vi), pa.getZ(vi));
         nor.push(na ? na.getX(vi) : 0, na ? na.getY(vi) : 1, na ? na.getZ(vi) : 0);
         uvA.push(ua ? ua.getX(vi) : 0, ua ? ua.getY(vi) : 0);
@@ -1024,9 +1062,15 @@
           padA: 0.17, jit: 0.06, rimF: 1.14, teeth: 0.09, teethSeed: 6, lobe: 0.04, levels: [[0.50, 1.10], [0.80, 0.90], [0.97, 0.50]] }));
         break;
       case 'hijab': // cloth shell with a cut face window + neck drape
-        var shell = prim(new THREE.SphereGeometry(r * 1.14, 16, 12), 0, cy + r * 0.05, -r * 0.06, 0.86, 1.03, 0.97);
-        parts.push(cutFaceWindow(shell, r, cy));
-        parts.push(prim(new THREE.CylinderGeometry(r * 1.02, r * 1.24, r * 1.15, 12, 1, true), 0, cy - r * 0.70, -r * 0.05, 0.88, 1, 1, 0));
+        // Stage D iteration 1: finer shell (28x20) so the window rim
+        // stops stepping in spikes; window widened + lowered so nose
+        // and mouth stay open; the drape gets its own front cut at
+        // the chin line — it wraps the neck, never the lower face
+        // (the full tube read as a niqab).
+        var shell = prim(new THREE.SphereGeometry(r * 1.14, 28, 20), 0, cy + r * 0.05, -r * 0.06, 0.86, 1.03, 0.97);
+        parts.push(trimJawFlaps(cutFaceWindow(shell, r, cy, { z: 0.50, x: 0.74, top: 0.56, bot: -1.06 }), r, cy));
+        var drape = prim(new THREE.CylinderGeometry(r * 1.02, r * 1.24, r * 1.15, 16, 1, true), 0, cy - r * 0.70, -r * 0.05, 0.88, 1, 1, 0);
+        parts.push(cutFaceWindow(drape, r, cy, { z: 0.42, x: 0.95, top: 0.60, bot: -1.04 }));
         break;
       case 'peci': // sits DOWN over the crown (top must clear the new head top 0.985r)
         parts.push(prim(new THREE.CylinderGeometry(r * 0.80, r * 0.88, r * 0.55, 14), 0, cy + r * 0.72, 0, 1, 1, 1, 0));

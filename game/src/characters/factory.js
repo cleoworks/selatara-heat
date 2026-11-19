@@ -658,16 +658,23 @@
       var pg = Rig.mergePlain([
         Rig.prim(new THREE.BoxGeometry(0.026, 0.045, 0.030), 0, -0.028, 0.004, 1, 1, 1, 0),
         Rig.prim(new THREE.BoxGeometry(0.020, 0.024, 0.115), 0, 0.004, 0.045, 1, 1, 1, 0)]);
-      attach(b.handR, pg, darkMat, 0, -0.052, 0.012);
+      // Stage D iteration 3: a gripped barrel follows the hand's -Y
+      // (the finger line). Built along +Z it pointed at the sky
+      // whenever the arm raised to aim (hand frame pitches with the
+      // arm); rotated +90 deg X it tracks the aim line and hangs
+      // naturally when the arm is down.
+      var pm = attach(b.handR, pg, darkMat, 0, -0.052, 0.012);
+      pm.rotation.x = Math.PI / 2;
     }
     if (has('rifle')) {
+      var barrelGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6);
+      barrelGeo.rotateX(Math.PI / 2); // cylinder axis Y -> Z (barrel line)
       var rg = Rig.mergePlain([
         Rig.prim(new THREE.BoxGeometry(0.030, 0.055, 0.34), 0, -0.01, 0.10, 1, 1, 1, 0),
-        Rig.prim(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), 0, 0.012, 0.33, 1, 1, 1, 0),
+        Rig.prim(barrelGeo, 0, 0.012, 0.33, 1, 1, 1, 0),
         Rig.prim(new THREE.BoxGeometry(0.024, 0.075, 0.035), 0, -0.055, 0.10, 1, 1, 1, 0)]);
-      // rotate barrel from z to forward: cylinder is Y-axis; tilt via rotation on attach
       var rm = attach(b.handR, rg, darkMat, 0, -0.05, 0.03);
-      rm.rotation.x = 0; // barrel built along +Z already except cylinder; acceptable silhouette
+      rm.rotation.x = Math.PI / 2; // barrel onto the hand's -Y aim line
     }
     if (has('mask')) {
       attach(b.head, new THREE.SphereGeometry(headR * 1.04, 12, 10), mat(0x181818, 0.85), 0, headCY, -headR * 0.03);
@@ -724,10 +731,13 @@
   // ---- LOD2 silhouette --------------------------------------------------------
   var farGeo = null, farMesh = null, FAR_CAP = 64;
   function buildFar() {
-    var cyl = new THREE.CylinderGeometry(0.16, 0.20, 1.52, 8);
-    cyl.translate(0, 0.76, 0);
-    var head = new THREE.SphereGeometry(0.115, 8, 6); head.translate(0, 1.66, 0);
-    farGeo = Rig.mergePlain([cyl.index ? cyl.toNonIndexed() : cyl, head.index ? head.toNonIndexed() : head]);
+    // Stage D iteration 1: the old r 0.16/0.20 cylinder read as a thin
+    // bollard at 45 m. A capsule of r 0.235 spans a person's shoulder
+    // width; total stays under the 200-tri LOD2 budget.
+    var body = new THREE.CapsuleGeometry(0.225, 1.06, 3, 8);
+    body.translate(0, 0.78, 0);
+    var head = new THREE.SphereGeometry(0.135, 7, 5); head.translate(0, 1.70, 0);
+    farGeo = Rig.mergePlain([body.index ? body.toNonIndexed() : body, head.index ? head.toNonIndexed() : head]);
     farMesh = new THREE.InstancedMesh(farGeo, new THREE.MeshStandardMaterial({ roughness: 0.85 }), FAR_CAP);
     farMesh.frustumCulled = false; farMesh.count = 0;
     farMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -816,9 +826,12 @@
     }
     buildAccessories(char, wear, r);
     // LOD1: no fingers, no small accessories (hair + clothes stay)
-    var body1 = new THREE.SkinnedMesh(Rig.buildBody(p, sk.index, skinRGB, false), bodyMat);
+    var body1 = new THREE.SkinnedMesh(Rig.buildBody(p, sk.index, skinRGB, false, true), bodyMat);
     body1.frustumCulled = false; body1.bind(sk.skeleton); body1.visible = false; group.add(body1);
-    var head1 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index), headMat);
+    // LOD1 head: plain skin material, NO face texture — the spec
+    // drops face detail at 15-40 m (Stage D iteration 1).
+    var head1 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index),
+      new THREE.MeshStandardMaterial({ color: skinHex, roughness: 0.55 }));
     head1.frustumCulled = false; head1.bind(sk.skeleton); head1.visible = false; group.add(head1);
     var clothes1 = buildClothes(p, sk.index, wear, skinRGB);
     for (var q = 0; q < clothes1.length; q++) { clothes1[q].bind(sk.skeleton); clothes1[q].visible = false; group.add(clothes1[q]); }
@@ -832,8 +845,8 @@
       P.body1.visible = P.head1.visible = level === 1;
       for (var b = 0; b < P.clothes1.length; b++) P.clothes1[b].visible = level === 1;
       char.group.visible = level < 2;
-      // accessories hang on bones; hide them beyond LOD0:
-      setDecoVisible(char, level === 0);
+      // accessories hang on bones; visibility is level-aware:
+      setDecoVisible(char, level);
     };
     pool[key] = char; active.push(char);
     return char;
@@ -841,18 +854,24 @@
 
   // Accessories/hair are bone children; toggling them per LOD walks the
   // bone subtrees once per switch (cheap, switches are rare).
-  function setDecoVisible(char, vis) {
+  // Stage D iteration 1: LOD1 must keep the SILHOUETTE gear — hair,
+  // swing parts and every head-bone deco (hats, helmets, glasses,
+  // visors) — the spec only drops fingers + face detail at 15-40 m.
+  // Small body deco (badges, radios, jewellery, ink, hand props)
+  // is LOD0-only. LOD2 hides the whole group anyway.
+  function setDecoVisible(char, level) {
+    var headGear = level <= 1, bodyDeco = level === 0;
     var names = ['head', 'spine2', 'pelvis', 'neck', 'handL', 'handR'];
     for (var i = 0; i < names.length; i++) {
       var bone = char.bones[names[i]]; if (!bone) continue;
+      var vis = names[i] === 'head' ? headGear : bodyDeco;
       for (var q = 0; q < bone.children.length; q++) {
         var ch = bone.children[q];
         if (ch.isMesh) ch.visible = vis;
       }
     }
-    if (char.hairMesh) char.hairMesh.visible = vis;
-    if (char.faceGearGroup) char.faceGearGroup.visible = vis;
-    if (char.hairSwingGroup) char.hairSwingGroup.visible = vis;
+    if (char.hairMesh) char.hairMesh.visible = headGear;
+    if (char.hairSwingGroup) char.hairSwingGroup.visible = headGear;
   }
 
   var tmpM = null, tmpQ = null, tmpS = null, tmpP = null, lastUpdT = 0;
