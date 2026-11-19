@@ -11,7 +11,7 @@
   'use strict';
 
   var W = null; // SH.World.waterData, bound in build()
-  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null };
+  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null, beam: null };
   var envTex = null;
   var mats = null;
   function makeMats() {
@@ -441,6 +441,60 @@
     }
   }
 
+  // ---------- Feature 3: Mercusuar Pantai Kencana ----------------------
+  function glowTexture() {
+    var c = document.createElement('canvas');
+    c.width = c.height = 64;
+    var g = c.getContext('2d');
+    var gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,240,200,1)');
+    gr.addColorStop(0.35, 'rgba(255,200,110,0.55)');
+    gr.addColorStop(1, 'rgba(255,160,60,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function buildMercusuar(scene, shared) {
+    var timber = shared.timber, glow = shared.glow;
+    var X = 74, Z = 398;
+    // Rock the tower stands on, just east of the pier end — clear of
+    // the mission speedboat's berth at (60, 394).
+    part(timber, new THREE.CylinderGeometry(8.5, 10, 1.8, 9), 0x5a5f66, X, -0.4, Z, 0, 0.5, 0);
+    part(timber, new THREE.CylinderGeometry(5, 5.6, 0.9, 12), 0x9a8f7c, X, 0.45, Z, 0, 0, 0);
+    // Five red/white bands, tapering as they climb.
+    var bandCols = [0xd8402f, 0xf2ede2, 0xd8402f, 0xf2ede2, 0xd8402f];
+    for (var bi = 0; bi < 5; bi++) {
+      var rB = 2.7 - bi * 0.14, rT = 2.7 - (bi + 1) * 0.14;
+      part(timber, new THREE.CylinderGeometry(rT, rB, 3.3, 14), bandCols[bi], X, 0.9 + bi * 3.3 + 1.65, Z, 0, 0, 0);
+    }
+    // Gallery, lamp room, cap.
+    part(timber, new THREE.CylinderGeometry(2.75, 2.75, 0.45, 14), 0x333a42, X, 17.6, Z, 0, 0, 0);
+    part(timber, new THREE.CylinderGeometry(1.45, 1.45, 2.1, 10), 0xbfd9de, X, 18.85, Z, 0, 0, 0);
+    part(glow, new THREE.SphereGeometry(0.85, 8, 6), 0xffd9a0, X, 18.85, Z, 0, 0, 0);
+    part(timber, new THREE.ConeGeometry(2.05, 1.6, 12), 0xd8402f, X, 20.7, Z, 0, 0, 0);
+    part(glow, new THREE.SphereGeometry(0.22, 6, 5), 0xff5340, X, 21.7, Z, 0, 0, 0);
+    SH.CityData.addDrum(X, Z, 5.5, 21);
+
+    // The rotating beam: two additive cones + a glow sprite at the
+    // lamp. Fake light only — no dynamic light is added.
+    var beamGeo = new THREE.ConeGeometry(4.4, 37, 12, 1, true);
+    beamGeo.rotateZ(Math.PI / 2);
+    beamGeo.translate(18.5, 0, 0);
+    var beamMat = new THREE.MeshBasicMaterial({ color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    var beamGroup = new THREE.Group();
+    var beam1 = new THREE.Mesh(beamGeo, beamMat);
+    var beam2 = new THREE.Mesh(beamGeo, beamMat);
+    beam2.rotation.y = Math.PI;
+    beamGroup.add(beam1); beamGroup.add(beam2);
+    var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffd9a0, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sprite.scale.set(8, 8, 1);
+    beamGroup.add(sprite);
+    beamGroup.position.set(X, 18.85, Z);
+    scene.add(beamGroup);
+    anim.beam = { group: beamGroup, mat: beamMat, sprite: sprite.material };
+  }
+
   var Landmarks = {
     build: function (scene) {
       W = SH.World.waterData;
@@ -448,6 +502,7 @@
       var shared = { water: [], dress: [], timber: [], glow: [] };
       buildTaman(scene, shared);
       buildRuko(scene, shared);
+      buildMercusuar(scene, shared);
       var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
       waterMesh.name = 'w1-water';
       scene.add(waterMesh);
@@ -481,6 +536,13 @@
         anim.sampan.position.set(smx, 0.02 + Math.sin(t * 1.4) * 0.02, canalZAt(smx));
         anim.sampan.rotation.y = (smDir > 0 ? 0 : Math.PI) - Math.atan(smSlope) * smDir;
         anim.sampan.rotation.z = Math.sin(t * 1.1) * 0.02;
+      }
+      if (anim.beam) {
+        anim.beam.group.rotation.y = t * 0.45;
+        var bh = SH.State.hour;
+        var bAmt = (bh >= 17.6 || bh <= 5.4) ? 1 : (bh > 16.6 && bh < 17.6 ? bh - 16.6 : (bh > 5.4 && bh < 6.4 ? 6.4 - bh : 0));
+        anim.beam.mat.opacity = 0.14 * bAmt;
+        anim.beam.sprite.opacity = 0.25 + 0.65 * bAmt;
       }
       if (anim.birdGeo && anim.birds.length) {
         var arr = anim.birdGeo.attributes.position.array, tpl = anim.birdTpl;

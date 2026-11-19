@@ -218,6 +218,17 @@
         st.cash = 2210;
         st.objective = { title: 'FREE ROAM', text: 'Kanal Senja, Ruko Senja', x: -316, z: 122 };
         stagePeds([[-338, 132], [-298, 117], [-322, 133.5]]);
+      } else if (name === 'lighthouse') {
+        // W1 proof: Mercusuar Pantai Kencana at sunset, from the pier —
+        // striped tower on its rock, beam starting to sweep.
+        SH.Main.setHour(18.05);
+        st.player.x = 60; st.player.z = 366;
+        st.player.heading = 0.47;
+        st.camYaw = -2.67; st.camPitch = 0.06;
+        snapCamera();
+        st.cash = 1980;
+        st.objective = { title: 'FREE ROAM', text: 'Mercusuar Pantai Kencana', x: 74, z: 398 };
+        stagePeds([[56, 350], [64, 382]]);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
         st.mode = 'map';

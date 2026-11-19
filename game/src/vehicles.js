@@ -888,6 +888,16 @@
           v.x = islB.x + bx2 / bl;
           v.z = islB.z + bz2 / bl;
         }
+        // Sea obstacles (W1): the Mercusuar rock and the outer islet
+        // push a hull back out, same rim rule as the island.
+        var obs = (SH.World.waterData && SH.World.waterData.seaObstacles) || [];
+        for (var oi = 0; oi < obs.length; oi++) {
+          var odx = v.x - obs[oi].x, odz = v.z - obs[oi].z, od = Math.hypot(odx, odz);
+          if (od < obs[oi].r && od > 0.001) {
+            v.x = obs[oi].x + odx / od * obs[oi].r;
+            v.z = obs[oi].z + odz / od * obs[oi].r;
+          }
+        }
         return;
       }
       v.x = Math.max(-cfg.halfX - 20, Math.min(cfg.halfX + 20, v.x));

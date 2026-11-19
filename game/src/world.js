@@ -611,6 +611,7 @@
     river: riverPts, riverHalfW: riverHalfW, pool: riverPool,
     outflow: outflowPts, outflowHalfW: outflowHalfW,
     ruko: rukoPts, rukoHalfW: rukoHalfW,
+    seaObstacles: [{ x: 74, z: 398, r: 10.5 }], // Mercusuar rock (W1.3); boats push off these
     bridges: waterBridges
   };
   CityData.water = [

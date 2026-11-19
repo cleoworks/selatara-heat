@@ -225,14 +225,14 @@
 
   // Landmark icons: tiny dark glyphs, each drawn twice — a pale offset
   // pass as halo, then the dark glyph on top (crane, ferry pier, market
-  // tent, drum hotel, island lighthouse).
+  // tent, drum hotel, pier lighthouse).
   function drawLandmarks(g) {
     var spots = [
       { kind: 'crane', x: 505, z: 168 },
-      { kind: 'ferry', x: 60, z: 400 },
+      { kind: 'ferry', x: 48, z: 406 },
       { kind: 'tent', x: -306, z: 92 },
       { kind: 'hotel', x: -60, z: 176 },
-      { kind: 'faro', x: 334, z: 452 }
+      { kind: 'faro', x: 74, z: 398 }
     ];
     for (var i = 0; i < spots.length; i++) {
       var cx = w2mx(spots[i].x), cy = w2my(spots[i].z);
