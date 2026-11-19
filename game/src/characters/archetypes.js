@@ -269,7 +269,7 @@
     },
     {
       id: 'warung', label: 'Pejalan — Pemilik warung', kind: 'ped',
-      body: { waist: 1.08, belly: 0.35 }, heightRange: [1.58, 1.72], posture: { hunch: 0.3 },
+      body: { waist: 1.08, belly: 0.35 }, heightRange: [1.58, 1.72], posture: { hunch: 0.18 },
       face: { wrinkles: true, randomEyes: true },
       hair: { styles: ['bun', 'short'] },
       wear: {
@@ -329,7 +329,7 @@
     },
     {
       id: 'kakek', label: 'Pejalan — Kakek bertongkat', kind: 'ped',
-      body: { belly: 0.22, shoulder: 0.95 }, heightRange: [1.62, 1.72], posture: { hunch: 0.55 },
+      body: { belly: 0.22, shoulder: 0.95 }, heightRange: [1.62, 1.72], posture: { hunch: 0.34 },
       face: { wrinkles: true, mouth: 'flat' },
       hair: { styles: ['bald', 'short'], color: 0xd8d3c8 },
       wear: {

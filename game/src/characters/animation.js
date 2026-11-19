@@ -361,7 +361,12 @@
           bone.quaternion.multiply(q);
           deltas.push([bone, q.clone().invert()]);
         }
-        if (P.hunch) { add(b.spine1, P.hunch * 10, 0, 0); add(b.head, P.hunch * 7, 0, 0); }
+        // AP2 polish: the head term used to ADD hunch*7 of extra
+        // forward pitch, which drove elderly faces into the chest
+        // (head touching the body on the Appeal contact sheet).
+        // The head now COMPENSATES slightly (-4/hunch) so the face
+        // stays clear of the torso while the back still reads old.
+        if (P.hunch) { add(b.spine1, P.hunch * 10, 0, 0); add(b.head, -P.hunch * 4, 0, 0); }
         if (P.slouch) { add(b.uArmL, 0, 0, 3); add(b.uArmR, 0, 0, -3); add(b.spine2, P.slouch * 5, 0, 0); }
         if (P.stiff) { add(b.spine2, -2, 0, 0); add(b.head, -1, 0, 0); }
         if (ctl.lookYaw || ctl.lookPitch) {

@@ -85,9 +85,9 @@
   function patternMat(kind, c1, c2) {
     var key = kind + '|' + c1 + '|' + c2;
     if (patternCache[key]) return patternCache[key];
-    var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    var cv = document.createElement('canvas'); cv.width = cv.height = (kind === 'cloth') ? 256 : 128;
     var c = cv.getContext('2d');
-    c.fillStyle = css(c1); c.fillRect(0, 0, 128, 128);
+    c.fillStyle = css(c1); c.fillRect(0, 0, cv.width, cv.height);
     c.fillStyle = css(c2);
     var i, j;
     if (kind === 'stripes') { for (i = 0; i < 128; i += 16) c.fillRect(i, 0, 6, 128); }
@@ -139,35 +139,45 @@
         c.beginPath(); c.arc(i + 16, j + 16, 3.5, 0, 7); c.fill();
       }
     } else if (kind === 'cloth') {
-      // APPEAL PASS: solid cloth gets its selling details from the
-      // TEXTURE, never from extra meshes — soft chest light, hem
-      // shading, stitch dashes at the wrap seam, faint mottling.
-      // c2 = detail flag: 1 adds a button column + chest pocket
-      // (jackets/blazers). Loft UVs: u wraps the tube (front at
-      // u~0.75), v runs along the stations (0 = first station).
-      var grd = c.createLinearGradient(0, 128, 0, 0);
+      // AP2 polish (user order): the Appeal painter is redrawn at
+      // 256px with anisotropy — details were blurry because a 128px
+      // canvas wraps a ~1 m tube. The deterministic MOTTLE is
+      // REMOVED entirely (it read as dark blotches/dirt on chests)
+      // and the old stroke-only pocket (a floating weird box) is
+      // replaced by a filled pocket with a flap and a stitched
+      // border. Shapes are drawn NARROWER than target on purpose:
+      // the tube circumference (~1.0 m) vs garment height (~0.55 m)
+      // stretches u by ~1.5x, so pre-compensated shapes land at
+      // consistent real-world sizes. c2 = detail flag: 1 adds the
+      // button column + chest pocket (jackets/blazers). Loft UVs:
+      // u wraps the tube (front centre at u 0.75 -> x 192), canvas
+      // top = v 1 = collar end.
+      var S = 256;
+      var grd = c.createLinearGradient(0, S, 0, 0);
       grd.addColorStop(0, 'rgba(0,0,0,0.10)'); grd.addColorStop(0.10, 'rgba(0,0,0,0)');
       grd.addColorStop(0.55, 'rgba(255,255,255,0.05)'); grd.addColorStop(0.85, 'rgba(255,255,255,0)');
       grd.addColorStop(0.97, 'rgba(0,0,0,0.08)'); grd.addColorStop(1, 'rgba(0,0,0,0.10)');
-      c.fillStyle = grd; c.fillRect(0, 0, 128, 128);
-      c.fillStyle = 'rgba(0,0,0,0.16)';
-      for (j = 0; j < 128; j += 8) { c.fillRect(3, j, 1.4, 4); c.fillRect(123, j, 1.4, 4); } // stitch dashes
-      var seedN = 7; // deterministic mottle (iter 2: softened —
-      // alpha .05->.03, 260->180; iter-1 close-ups read as dirt)
-      c.fillStyle = 'rgba(0,0,0,0.03)';
-      for (i = 0; i < 180; i++) {
-        seedN = (seedN * 16807) % 2147483647;
-        var mx = seedN % 128; seedN = (seedN * 16807) % 2147483647;
-        c.fillRect(mx, seedN % 128, 1.6, 1.6);
-      }
+      c.fillStyle = grd; c.fillRect(0, 0, S, S);
+      c.fillStyle = 'rgba(0,0,0,0.15)';
+      for (j = 0; j < S; j += 16) { c.fillRect(5, j, 2.5, 8); c.fillRect(S - 8, j, 2.5, 8); } // seam stitch dashes
       if (c2 === 1) {
-        c.fillStyle = 'rgba(20,12,8,0.5)';
-        [84, 74, 64, 54].forEach(function (by) { c.beginPath(); c.arc(96, by, 1.9, 0, 7); c.fill(); });
-        c.strokeStyle = 'rgba(20,12,8,0.35)'; c.lineWidth = 1.2;
-        c.strokeRect(104, 36, 11, 15); c.beginPath(); c.moveTo(104, 41); c.lineTo(115, 41); c.stroke();
+        // button column: 4 identical buttons, even spacing
+        [86, 114, 142, 170].forEach(function (by) {
+          c.fillStyle = 'rgba(22,14,9,0.55)';
+          c.beginPath(); c.ellipse(192, by, 3.0, 4.6, 0, 0, 7); c.fill();
+          c.fillStyle = 'rgba(255,255,255,0.28)';
+          c.beginPath(); c.ellipse(192, by - 1.8, 1.4, 1.6, 0, 0, 7); c.fill();
+        });
+        // chest pocket (wearer's left): filled body + flap band +
+        // dashed stitch border, one consistent size
+        c.fillStyle = 'rgba(0,0,0,0.13)'; c.fillRect(209, 82, 17, 32);
+        c.fillStyle = 'rgba(0,0,0,0.20)'; c.fillRect(209, 82, 17, 8);
+        c.strokeStyle = 'rgba(0,0,0,0.28)'; c.lineWidth = 1.4; c.setLineDash([4, 3]);
+        c.strokeRect(210.5, 83.5, 14, 29); c.setLineDash([]);
       }
     }
     var tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = 8;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
     var m = new THREE.MeshToonMaterial({ map: tex, gradientMap: RAMP, vertexColors: true, side: THREE.DoubleSide });
     patternCache[key] = m; return m;
@@ -670,17 +680,37 @@
     // 1-2 cm LOWER onto the forehead than before (spec).
     var headCY = Rig.headDims(p).cy, headR = Rig.headDims(p).r0;
     function has(name) { return acc.indexOf(name) >= 0; }
+    // AP2 polish (user order): hats get REAL crown height and a
+    // curve that FOLLOWS the head, brim edges curl slightly UP at
+    // the sides instead of being a flat board, and the blurry
+    // cloth-texture stitch dashes are GONE from crowns (plain toon
+    // material — the old fedora was two raw cylinders wearing the
+    // shirt texture, which read as a blurry seam ring). One lathe
+    // profile builds crown + dome + brim in a single surface.
+    function latheHat(crownR, crownH, brimR, upturn) {
+      var pts = [];
+      pts.push(new THREE.Vector2(0.001, crownH));
+      pts.push(new THREE.Vector2(crownR * 0.52, crownH * 0.99));
+      pts.push(new THREE.Vector2(crownR * 0.85, crownH * 0.90));
+      pts.push(new THREE.Vector2(crownR * 0.97, crownH * 0.55));
+      pts.push(new THREE.Vector2(crownR, crownH * 0.16));
+      pts.push(new THREE.Vector2(crownR * 1.02, crownH * 0.05));
+      pts.push(new THREE.Vector2(brimR * 0.97, crownH * 0.02));
+      pts.push(new THREE.Vector2(brimR, upturn));
+      return new THREE.LatheGeometry(pts, 22);
+    }
     if (wear.hat === 'fedora') {
-      attach(b.head, new THREE.CylinderGeometry(headR * 1.28, headR * 1.30, headR * 0.10, 14), clothMat({ color: wear.hatColor || 0xe8e0cc }), 0, headCY + headR * 0.50, 0);
-      attach(b.head, new THREE.CylinderGeometry(headR * 0.78, headR * 0.84, headR * 0.62, 14), clothMat({ color: wear.hatColor || 0xe8e0cc }), 0, headCY + headR * 0.80, 0);
+      attach(b.head, latheHat(headR * 0.86, headR * 0.72, headR * 1.30, headR * 0.07), mat(wear.hatColor || 0xe8e0cc, 0.85), 0, headCY + headR * 0.40, 0);
     } else if (wear.hat === 'officer') {
-      attach(b.head, new THREE.CylinderGeometry(headR * 0.98, headR * 1.0, headR * 0.42, 14), mat(0x1d2f52, 0.6), 0, headCY + headR * 0.68, 0);
+      attach(b.head, new THREE.CylinderGeometry(headR * 0.99, headR * 1.01, headR * 0.50, 14), mat(0x1d2f52, 0.6), 0, headCY + headR * 0.70, 0);
+      var capDome = new THREE.SphereGeometry(headR * 0.99, 14, 8);
+      capDome.scale(1, 0.38, 1);
+      attach(b.head, capDome, mat(0x1d2f52, 0.6), 0, headCY + headR * 0.95, 0);
       attach(b.head, new THREE.BoxGeometry(headR * 0.95, headR * 0.07, headR * 0.55), darkMat, 0, headCY + headR * 0.50, headR * 0.85);
     } else if (wear.hat === 'helmet') {
       attach(b.head, new THREE.SphereGeometry(headR * 1.10, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), mat(wear.hatColor || 0x22262e, 0.35), 0, headCY + headR * 0.12, 0);
     } else if (wear.hat === 'sunhat') {
-      attach(b.head, new THREE.CylinderGeometry(headR * 1.75, headR * 1.85, headR * 0.08, 16), mat(0xe8d9a8, 0.9), 0, headCY + headR * 0.44, 0);
-      attach(b.head, new THREE.SphereGeometry(headR * 0.85, 12, 8), mat(0xe8d9a8, 0.9), 0, headCY + headR * 0.44, 0);
+      attach(b.head, latheHat(headR * 0.88, headR * 0.52, headR * 1.82, headR * 0.06), mat(0xe8d9a8, 0.9), 0, headCY + headR * 0.42, 0);
     } else if (wear.hat === 'ojekhelmet') {
       attach(b.head, new THREE.SphereGeometry(headR * 1.12, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), mat(0xcc3322, 0.3), 0, headCY + headR * 0.10, 0);
     }
@@ -877,6 +907,25 @@
     };
     return m;
   })();
+  // AP2 polish (user order): WARM RIM shell for the leads only —
+  // a BackSide hull slightly larger than the outline, additively
+  // blended, whose alpha is a view-angle fresnel: it lights the
+  // silhouette edge warm (0xffb36b) so a lead's shirt colour reads
+  // separated from dark night ground even when the key light is
+  // gone. Strength 1.25 (raised from the lab's ambient rim feel).
+  var rimShellMat = (function () {
+    var m = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uRimCol = { value: new THREE.Color(0xffb36b) };
+      sh.uniforms.uRimStr = { value: 1.25 };
+      sh.vertexShader = 'varying vec3 vNv; varying vec3 vVp;\n' + sh.vertexShader
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normal * 0.005;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvNv = normalize(transformedNormal);\nvVp = normalize(-mvPosition.xyz);');
+      sh.fragmentShader = ('uniform vec3 uRimCol; uniform float uRimStr; varying vec3 vNv; varying vec3 vVp;\n' + sh.fragmentShader)
+        .replace('#include <opaque_fragment>', 'float fres = pow(1.0 - abs(dot(normalize(vNv), normalize(vVp))), 2.0);\ngl_FragColor = vec4(uRimCol * fres * uRimStr, 1.0);');
+    };
+    return m;
+  })();
 
   // ---- LOD2 silhouette --------------------------------------------------------
   var farGeo = null, farMesh = null, FAR_CAP = 64;
@@ -990,11 +1039,15 @@
     // leads (protagonist + story cast) — consistent thickness,
     // warm dark brown, never pure black.
     char.outlines = [];
+    char.rims = [];
     if (arch.lead) {
       [body0, head0].concat(clothes0).forEach(function (src) {
         var om = new THREE.SkinnedMesh(src.geometry, outlineMat);
         om.frustumCulled = false; om.userData.isOutline = true;
         om.bind(sk.skeleton); group.add(om); char.outlines.push(om);
+        var rm = new THREE.SkinnedMesh(src.geometry, rimShellMat);
+        rm.frustumCulled = false; rm.userData.isRim = true; rm.renderOrder = 3;
+        rm.bind(sk.skeleton); group.add(rm); char.rims.push(rm);
       });
     }
     // APPEAL PASS: 5-expression swap (neutral/smile/serious/
@@ -1025,6 +1078,7 @@
       P.body1.visible = P.head1.visible = level === 1;
       for (var b = 0; b < P.clothes1.length; b++) P.clothes1[b].visible = level === 1;
       if (char.outlines) for (var o = 0; o < char.outlines.length; o++) char.outlines[o].visible = level === 0;
+      if (char.rims) for (var ri = 0; ri < char.rims.length; ri++) char.rims[ri].visible = level === 0;
       char.group.visible = level < 2;
       // accessories hang on bones; visibility is level-aware:
       setDecoVisible(char, level);
