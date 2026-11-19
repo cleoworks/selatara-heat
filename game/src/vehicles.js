@@ -5,6 +5,12 @@
 (function (SH) {
   'use strict';
 
+  // Stage E: NPC motor riders are factory characters. Motor meshes
+  // are built once per vehicle (traffic/parked pools), so a plain
+  // incrementing seed stays bounded — and a released rider's group
+  // must never be recycled while it is parented to a live bike.
+  var riderSeedCtr = 0;
+
   // Shared glow texture + materials for headlight cones and lamp glows.
   var glowTex = null;
   function getGlowTex() {
@@ -325,18 +331,22 @@
       var fenGeoR = new THREE.CylinderGeometry(0.375, 0.375, 0.14, 10, 1, true, Math.PI / 2 - 0.5, 1.0);
       fenGeoR.rotateZ(Math.PI / 2);
       var fenR = new THREE.Mesh(fenGeoR, fenderMat); fenR.position.set(0, 0.34, -0.80); g.add(fenR);
-      // Rider: a full figure from the shared builder, posed on the bike
-      // (thighs forward, arms reaching the bars, slight forward lean).
-      var rider = SH.Pedestrians.buildFigure({
-        skin: 0xa8763e, shirt: 0x2c3444, pants: 0x22242c,
-        hairStyle: 'hat', hatColor: 0xd8402e, sleeves: 'long', face: 1
-      });
-      rider.applySeated(); // rig pose: thighs forward, knees to the pegs, hands to the bars
-      rider.group.position.set(0, -0.22, -0.05);
-      rider.group.rotation.x = 0.15;
-      rider.group.visible = false;
-      g.add(rider.group);
-      g.userData.rider = rider.group;
+      // Rider (Stage E): a factory 'ojek' character in the shared
+      // 'drive' pose. He is released from the factory pool BEFORE
+      // parenting — the factory LOD pass measures scene-space
+      // distance and must not touch a bike-parented character — then
+      // posed once by his own controller and left static, exactly
+      // like the old rig's applySeated pose.
+      var riderChar = SH.CharFactory.create('ojek', 990100 + (riderSeedCtr++));
+      SH.CharFactory.release(riderChar);
+      var riderCtl = SH.CharAnim.create(riderChar, { start: 'drive', idle: 'idle' });
+      riderCtl.play('drive', 0, true);
+      riderCtl.update(0.5); // settle into the seated pose
+      riderChar.group.position.set(0, -0.22, -0.05);
+      riderChar.group.rotation.x = 0.15;
+      riderChar.group.visible = false;
+      g.add(riderChar.group);
+      g.userData.rider = riderChar.group;
     } else if (type === 'truck') {
       // Rev 9: the cab is a LOFT too (tapered nose, cambered cab roof,
       // windshield raked through the stations) and the cargo box became
@@ -986,14 +996,14 @@
       // tracking the bike exactly. Player.update never runs while driving,
       // so the pose lives here.
       if (SH.Player && SH.Player.mesh) {
-        if (v.type === 'motor' && SH.Player.fig) {
+        if (v.type === 'motor' && SH.Player.applySeated) {
           var pm = SH.Player.mesh;
           pm.visible = true;
           pm.rotation.order = 'YXZ';
           pm.position.set(v.x - Math.sin(v.heading) * 0.05, -0.22, v.z - Math.cos(v.heading) * 0.05);
           pm.rotation.y = v.heading;
           pm.rotation.x = 0.15;
-          SH.Player.fig.applySeated();
+          SH.Player.applySeated();
         } else {
           SH.Player.mesh.visible = false;
         }

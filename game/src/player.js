@@ -12,24 +12,27 @@
     onFoot: true,
 
     build: function (scene) {
-      // Raka is built by the shared figure builder (Art Pass 3): sphere
-      // head with a real face, trapezoid torso, cylinder limbs — in his
-      // signature outfit colours and dark cap from State.outfit.
-      var outfit = SH.State.outfit;
-      var built = SH.Pedestrians.buildFigure({
-        skin: 0xc98a5e,
-        shirt: outfit.shirt,
-        pants: outfit.pants,
-        hairStyle: 'hat',
-        hatColor: 0x22242c,
-        face: 0
-      });
+      // STAGE E: Raka is a factory character now — the ONE character
+      // system (archetype 'raka': maroon bomber, dark pants) animated
+      // by the shared SH.CharAnim controller. No second figure path.
+      var built = SH.CharFactory.create('raka', 1);
       this.fig = built;
-      this.parts = built; // legacy alias (fig carries shirtMat + bones)
+      this.char = built;
+      this.parts = built; // legacy alias
+      this.ctl = SH.CharAnim.create(built, { start: 'idle', idle: 'idle' });
       this.mesh = built.group;
       scene.add(built.group);
       var p = SH.State.player;
       built.group.position.set(p.x, 0, p.z);
+    },
+
+    // Vehicles poses the player on the motorbike once per frame while
+    // it drives the bike (Player.update does not run then): hold the
+    // shared 'drive' clip and advance it a fixed step.
+    applySeated: function () {
+      if (!this.ctl) return;
+      this.ctl.play('drive', 0.1);
+      this.ctl.update(1 / 60);
     },
 
     collide: function (p, radius) {
@@ -108,24 +111,45 @@
 
       this.collide(p, SH.Config.player.radius);
 
-      // Character animation (Rev 7): the bone rig runs the clips; the
-      // procedural layer aims the gun arm, turns the head toward the
-      // camera's look direction, and leans the body into movement.
+      // Character animation (Stage E): the shared CharAnim
+      // controller runs Raka — speed-synced gaits, aim clip while
+      // aiming, melee/land one-shots, and the head-look layer aimed
+      // by the camera. (The old rig's lean layer has no equivalent;
+      // the gait clips carry their own forward lean.)
       var spd = Math.hypot(p.vx, p.vz);
       this.mesh.position.set(p.x, p.y, p.z);
       this.mesh.rotation.y = p.heading;
-      this.fig.setSpeed(spd / 5.6);
-      this.fig.aimTarget = (st.aiming || (st.aimPulse || 0) > 0) ? 1 : 0;
-      if ((st.aimPulse || 0) > 0) st.aimPulse -= dt;
+      var ctl = this.ctl;
+      if (this._lockT > 0) {
+        this._lockT -= dt; // a one-shot (melee / land) owns the body
+      } else if ((st.meleePulse || 0) > 0) {
+        st.meleePulse = 0;
+        ctl.play('melee_r', 0.05, true);
+        this._lockT = 0.30;
+      } else if (p.y > 0.02) {
+        ctl.play(p.vy > -0.5 ? 'jump' : 'fall', 0.12);
+        this._wasAir = true;
+      } else if (this._wasAir) {
+        this._wasAir = false;
+        ctl.play('land', 0.05, true);
+        this._lockT = 0.22;
+      } else if (st.aiming && spd < 0.5) {
+        ctl.play('aim_pistol', 0.15);
+      } else {
+        ctl.setSpeed(spd);
+      }
+      if ((st.meleePulse || 0) > 0) st.meleePulse -= dt;
       // Head look is relative to where the CAMERA looks (camYaw + PI
       // is the view direction), so running straight reads as ~0.
       var lookYaw = st.camYaw + Math.PI - p.heading;
       while (lookYaw > Math.PI) lookYaw -= Math.PI * 2;
       while (lookYaw < -Math.PI) lookYaw += Math.PI * 2;
-      this.fig.lookYaw = Math.max(-0.8, Math.min(0.8, lookYaw));
-      this.fig.lookPitch = Math.max(-0.4, Math.min(0.4, (st.camPitch || 0) * 0.7));
-      this.fig.leanX = Math.min(0.14, spd / 5.6 * 0.14) * (moving ? 1 : 0);
-      this.fig.update(dt);
+      var R2D = 180 / Math.PI;
+      ctl.look(
+        Math.max(-46, Math.min(46, lookYaw * R2D)),
+        Math.max(-23, Math.min(23, (st.camPitch || 0) * 0.7 * R2D))
+      );
+      ctl.update(dt);
       st.speedKmh = Math.round(spd * 3.6);
     },
 

@@ -79,16 +79,15 @@
     return path;
   }
 
-  // Officers use the shared figure builder (Art Pass 3): navy uniform,
-  // dark trousers, peaked cap in uniform colour, stern face.
-  function buildOfficerMesh() {
-    return SH.Pedestrians.buildFigure({
-      skin: 0xb87a4e,
-      shirt: 0x2a3f8f,
-      pants: 0x1c2030,
-      hairStyle: 'hat',
-      hatColor: 0x2a3f8f,
-      face: 1
+  // STAGE E: officers are factory characters (patrol by default,
+  // SWAT at 4+ stars) on the shared CharAnim controller — the old
+  // figure builder call is retired. Seeds ring through a small pool
+  // so released officers get recycled instead of growing the pool.
+  var officerSeedCtr = 0;
+  function officerCtl(char) {
+    var arch = char.archetype;
+    return SH.CharAnim.create(char, {
+      start: arch.idle || 'idle', idle: arch.idle, gait: arch.gait, posture: arch.posture
     });
   }
 
@@ -214,18 +213,21 @@
     spawnOfficer: function (x, z, fromCar) {
       if (this.officers.length >= 6) return;
       var scene = this.ensureScene();
-      var built = buildOfficerMesh();
+      var archId = SH.State.wanted >= 4 ? 'swat' : 'patrol';
+      var built = SH.CharFactory.create(archId, 20000 + (officerSeedCtr++ % 24));
       built.group.position.set(x, 0, z);
       scene.add(built.group);
       this.officers.push({
-        mesh: built.group, parts: built, x: x, z: z, heading: 0, hp: 40,
+        mesh: built.group, char: built, ctl: officerCtl(built), parts: built, x: x, z: z, heading: 0, hp: 40,
         state: 'approach', fireTimer: 1 + Math.random(), cycle: Math.random() * 6,
-        coverX: x, coverZ: z, fromCar: fromCar || null, dead: false, deadTimer: 0
+        coverX: x, coverZ: z, fromCar: fromCar || null, dead: false, deadTimer: 0,
+        deadClip: false, reactT: 0, reactPlay: false
       });
     },
 
     removeOfficer: function (off) {
-      if (off.mesh.parent) off.mesh.parent.remove(off.mesh);
+      if (off.char) SH.CharFactory.release(off.char);
+      else if (off.mesh.parent) off.mesh.parent.remove(off.mesh);
       var i = this.officers.indexOf(off);
       if (i >= 0) this.officers.splice(i, 1);
     },
@@ -245,8 +247,22 @@
       var spot = new THREE.SpotLight(0xfff2b0, 2.2, 90, 0.3, 0.5, 0.6);
       spot.position.set(0, 0, 0); g.add(spot); g.add(spot.target);
       spot.target.position.set(0, -40, 0);
+      // STAGE E: the pilot is a factory 'pilotHeli' character in the
+      // drive pose, seated behind a tinted windshield. He is released
+      // from the factory pool BEFORE parenting (the factory LOD pass
+      // measures scene-space distance and must not touch a character
+      // parented to the heli), then driven by his own controller.
+      var windshield = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.85, 0.06),
+        new THREE.MeshLambertMaterial({ color: 0x2a3c50, transparent: true, opacity: 0.72 }));
+      windshield.position.set(0, 0.28, 2.83); g.add(windshield);
+      var pilot = SH.CharFactory.create('pilotHeli', 990002);
+      SH.CharFactory.release(pilot);
+      var pilotCtl = SH.CharAnim.create(pilot, { start: 'drive', idle: 'idle' });
+      pilotCtl.update(0.5); // settle into the seated pose once
+      pilot.group.position.set(0, -0.52, 1.95);
+      g.add(pilot.group);
       scene.add(g);
-      this.heli = { mesh: g, rotor: rotor, angle: 0, spot: spot };
+      this.heli = { mesh: g, rotor: rotor, angle: 0, spot: spot, pilotCtl: pilotCtl };
     },
 
     removeHeli: function () {
@@ -563,7 +579,9 @@
         var off = this.officers[o];
         if (off.dead) {
           off.deadTimer -= dt;
-          off.mesh.rotation.x = Math.min(Math.PI / 2, off.mesh.rotation.x + dt * 5);
+          // Stage E: the fall is the shared 'death' clip.
+          if (!off.deadClip) { off.ctl.play('death', 0.05, true); off.deadClip = true; }
+          off.ctl.update(dt);
           if (off.deadTimer <= 0) this.removeOfficer(off);
           continue;
         }
@@ -586,11 +604,18 @@
         var los = od < cfgP.copFireRange + 14 && !losBlocked(off.x, off.z, f.x, f.z);
         off.mesh.position.set(off.x, 0, off.z);
         off.mesh.rotation.y = Math.atan2(f.x - off.x, f.z - off.z);
-        // Rig animation (Rev 7): clips by speed; gun arm = procedural
-        // aim layer at 3+ stars with line of sight.
-        off.parts.aimTarget = st.wanted >= 3 && los ? 1 : 0;
-        off.parts.setSpeed(spd2 / 4.3);
-        off.parts.update(dt);
+        // Stage E animation: hit reactions own the body briefly;
+        // at 3+ stars with line of sight and feet planted the officer
+        // holds the shared aim clip; otherwise speed-synced gaits.
+        if (off.reactT > 0) {
+          if (off.reactPlay) { off.ctl.play('hit_front', 0.03, true); off.reactPlay = false; }
+          off.reactT -= dt;
+        } else if (st.wanted >= 3 && los && spd2 < 0.5) {
+          off.ctl.play(off.char.archetype.id === 'swat' ? 'aim_rifle' : 'aim_pistol', 0.15);
+        } else {
+          off.ctl.setSpeed(spd2);
+        }
+        off.ctl.update(dt);
         // Shooting at high stars.
         if (st.wanted >= 3 && los && od < cfgP.copFireRange) {
           off.fireTimer -= dt;
@@ -629,6 +654,7 @@
         var hx = h.cx + Math.cos(h.angle) * 34, hz = h.cz + Math.sin(h.angle) * 34;
         h.mesh.position.set(hx, 40, hz);
         h.mesh.lookAt(h.cx, 0, h.cz);
+        if (h.pilotCtl) h.pilotCtl.update(dt);
         h.rotor.rotation.y += dt * 28;
         h.spot.target.position.set(h.cx - hx, -40, h.cz - hz);
         h.spot.target.updateMatrixWorld();

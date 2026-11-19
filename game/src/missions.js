@@ -33,26 +33,24 @@
     clear: function () { this.queue = []; this.timer = 0; }
   };
 
-  // The courier uses the shared figure builder (Art Pass 3) plus his red
-  // parcel backpack, so he matches the rest of the cast.
+  // STAGE E: the courier is the factory 'kurir' archetype plus his
+  // red parcel, rigid on the spine2 bone so it rides the runner's
+  // back through every clip (the old figure builder is retired).
   function buildCourierMesh() {
-    var built = SH.Pedestrians.buildFigure({
-      skin: 0x8a5a34,
-      shirt: 0xffd23f,
-      pants: 0x30364a,
-      hairColor: 0x14100c,
-      hairStyle: 'cap',
-      face: 2
-    });
+    var built = SH.CharFactory.create('kurir', 9001);
     var pack = new THREE.Mesh(
       new THREE.BoxGeometry(0.4, 0.44, 0.18),
       new THREE.MeshLambertMaterial({ color: 0xc94f4f, flatShading: true })
     );
-    // Rigid attachment on the Chest bone (Rev 7): the parcel rides the
-    // runner's back through every clip, not just the group origin.
-    pack.position.set(0, 0, -0.24); pack.castShadow = true;
-    built.bones.Chest.add(pack);
+    pack.position.set(0, 0.10, -0.26); pack.castShadow = true;
+    built.bones.spine2.add(pack);
     return built;
+  }
+  function courierCtl(char) {
+    var arch = char.archetype;
+    return SH.CharAnim.create(char, {
+      start: arch.idle || 'idle', idle: arch.idle, gait: arch.gait, posture: arch.posture
+    });
   }
 
   // ---- mission definitions -----------------------------------------------------
@@ -573,13 +571,14 @@
         { x: -300, z: 60 }, { x: -352, z: 60 }, { x: -368, z: 96 }, { x: -330, z: 70 }
       ];
       this.courier = {
-        mesh: built.group, parts: built, x: -322, z: 76, heading: 0,
+        mesh: built.group, char: built, ctl: courierCtl(built), parts: built, x: -322, z: 76, heading: 0,
         route: route, wp: 1, cycle: 0, speed: 5.1
       };
     },
 
     removeCourier: function () {
-      if (this.courier && this.courier.mesh.parent) this.courier.mesh.parent.remove(this.courier.mesh);
+      if (this.courier && this.courier.char) SH.CharFactory.release(this.courier.char);
+      else if (this.courier && this.courier.mesh.parent) this.courier.mesh.parent.remove(this.courier.mesh);
       this.courier = null;
     },
 
@@ -598,9 +597,10 @@
       c.x += Math.sin(c.heading) * spd * dt;
       c.z += Math.cos(c.heading) * spd * dt;
       c.cycle += dt * spd * 2.8;
-      // Rig animation (Rev 7): the courier runs his route on clips.
-      c.parts.setSpeed(spd / 4.3);
-      c.parts.update(dt);
+      // Stage E: the courier runs his route on the shared clips,
+      // stride-synced to his real speed by CharAnim.
+      c.ctl.setSpeed(spd);
+      c.ctl.update(dt);
       c.mesh.position.set(c.x, 0, c.z);
       c.mesh.rotation.y = c.heading;
       // Keep the objective marker glued to the courier.

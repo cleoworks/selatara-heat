@@ -23,7 +23,7 @@
   };
   SH.State = State;
 
-  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight, rimLight;
+  var renderer, scene, camera, sun, hemi, skyMesh, ambLight, fillLight, rimLight, charRim;
   var accumulator = 0, lastTs = 0;
   var tmpColorA = new THREE.Color(), tmpColorB = new THREE.Color();
 
@@ -128,6 +128,22 @@
       rimLight.position.set(focus.x - Math.sin(State.camYaw) * 55, 34, focus.z - Math.cos(State.camYaw) * 55);
       rimLight.target.position.set(focus.x, 1.2, focus.z);
       rimLight.target.updateMatrixWorld();
+    }
+    if (charRim) {
+      // STAGE E: the character style's WARM rim (STYLE.md — the same
+      // 0xffc890 the lab uses), parked behind the focus against the
+      // camera so people keep a warm edge. It matters most after
+      // dark (ap2: leads must separate from dark ground at night),
+      // so its floor RISES with the night amount instead of falling.
+      var nAmt = nightAmount(State.hour);
+      charRim.intensity = 0.55 + nAmt * 0.75;
+      charRim.position.set(
+        focus.x - Math.sin(State.camYaw) * 30,
+        9,
+        focus.z - Math.cos(State.camYaw) * 30
+      );
+      charRim.target.position.set(focus.x, 1.1, focus.z);
+      charRim.target.updateMatrixWorld();
     }
     if (SH.Vehicles && SH.Vehicles.setLightLevel) SH.Vehicles.setLightLevel(lamp);
     updateSunSprite(pal, elev, sunAngle);
@@ -337,6 +353,13 @@
     // position are driven by applyLighting.
     rimLight = new THREE.DirectionalLight(0x9fc0ff, 0);
     scene.add(rimLight); scene.add(rimLight.target);
+
+    // Warm character rim (Stage E): one shadowless directional in
+    // the character style's warm tone; intensity/position are driven
+    // by applyLighting. The leads additionally carry the factory's
+    // own fresnel rim shells.
+    charRim = new THREE.DirectionalLight(0xffc890, 0);
+    scene.add(charRim); scene.add(charRim.target);
 
     SH.Roads.build(scene);
     SH.Buildings.build(scene);

@@ -42,16 +42,22 @@
     return best;
   }
 
-  // Fighters use the shared figure builder (Art Pass 3): same anatomy and
-  // part interface as everyone else, Syndicate colours, serious face.
-  function buildFighterMesh(shirtColor, pantsColor) {
-    return SH.Pedestrians.buildFigure({
-      skin: 0xa8763e,
-      shirt: shirtColor,
-      pants: pantsColor,
-      hairColor: 0x14100c,
-      hairStyle: 'cap',
-      face: 1
+  // STAGE E: fighters are factory characters on the shared CharAnim
+  // controller — the old figure builder call is retired. Legacy
+  // spawnEnemy colour calls (missions / shots) map to Stage C enemy
+  // archetypes by colour family; opts.arch wins when given.
+  var enemySeedCtr = 0;
+  function archForColor(color, name) {
+    if (name && name.indexOf('Varga') >= 0) return 'sindikatKulit';
+    if (color === 0x2a3f8f) return 'sindikatKulit';       // Varga navy
+    if (color === 0xc96f2a) return 'preman';              // dock orange
+    if (color === 0xc92a6a) return 'sindikatKulit';       // magenta crew
+    return 'sindikatHawaii';                              // teal crews + default
+  }
+  function enemyCtl(char) {
+    var arch = char.archetype;
+    return SH.CharAnim.create(char, {
+      start: arch.idle || 'idle', idle: arch.idle, gait: arch.gait, posture: arch.posture
     });
   }
 
@@ -132,14 +138,16 @@
     // ---- enemies ---------------------------------------------------------------
     spawnEnemy: function (x, z, opts) {
       opts = opts || {};
-      var built = buildFighterMesh(opts.color || 0x274b4f, 0x22242c);
+      var archId = opts.arch || archForColor(opts.color, opts.name);
+      var built = SH.CharFactory.create(archId, 30000 + (enemySeedCtr++ % 24));
       built.group.position.set(x, 0, z);
       this.scene().add(built.group);
       var e = {
-        mesh: built.group, parts: built, x: x, z: z, heading: Math.random() * 6.28,
+        mesh: built.group, char: built, ctl: enemyCtl(built), parts: built, x: x, z: z, heading: Math.random() * 6.28,
         hp: opts.hp || 45, maxHp: opts.hp || 45, state: 'patrol',
         anchorX: x, anchorZ: z, tx: x, tz: z, fireTimer: 1.4 + Math.random() * 1.4,
-        burst: 0, cycle: Math.random() * 6, alertTimer: 0, dead: false, deadTimer: 0,
+        burst: 0, cycle: Math.random() * 6, alertTimer: 0, dead: false, deadTimer: 0, deadClip: false,
+        reactT: 0, reactPlay: false,
         damage: opts.damage || 6, name: opts.name || 'Rival crew'
       };
       this.enemies.push(e);
@@ -150,8 +158,10 @@
       if (e.dead) return;
       e.hp -= dmg;
       e.state = 'attack'; e.alertTimer = 6;
-      e.parts.shirtMat.color.offsetHSL(0, 0, -0.06);
-      setTimeout(function () { e.parts.shirtMat.color.offsetHSL(0, 0, 0.06); }, 60);
+      // Stage E: no material flash (character materials are SHARED
+      // toon materials) — a hit reads as the stagger clip + a brief
+      // reaction lockout so the gait does not override it instantly.
+      e.reactT = 0.5; e.reactPlay = true;
       SH.Effects.blood(e.x, 1.2, e.z);
       if (SH.HUD) SH.HUD.hitmark();
       if (e.hp <= 0) {
@@ -162,7 +172,8 @@
 
     clearEnemies: function () {
       for (var i = 0; i < this.enemies.length; i++) {
-        if (this.enemies[i].mesh.parent) this.enemies[i].mesh.parent.remove(this.enemies[i].mesh);
+        if (this.enemies[i].char) SH.CharFactory.release(this.enemies[i].char);
+        else if (this.enemies[i].mesh.parent) this.enemies[i].mesh.parent.remove(this.enemies[i].mesh);
       }
       this.enemies = [];
     },
@@ -333,6 +344,7 @@
       if (hitKind === 'enemy') { this.hurtEnemy(hitRef, spec.damage); }
       else if (hitKind === 'officer') {
         hitRef.hp -= spec.damage;
+        hitRef.reactT = 0.45; hitRef.reactPlay = true; // Stage E hit reaction (police.js plays it)
         SH.Effects.blood(hitRef.x, 1.2, hitRef.z);
         if (SH.HUD) SH.HUD.hitmark();
         if (hitRef.hp <= 0 && !hitRef.dead) {
@@ -372,6 +384,7 @@
         var off = SH.Police.officers[i];
         if (!off.dead && inFront(off.x, off.z)) {
           off.hp -= SH.Config.weapons.fist.damage; hit = true;
+          off.reactT = 0.45; off.reactPlay = true;
           if (off.hp <= 0) { off.dead = true; off.deadTimer = 7; SH.Police.witnessCrime('killPolice', off.x, off.z); }
         }
       }
@@ -383,9 +396,10 @@
         }
       }
       if (hit && SH.Audio) SH.Audio.blip(160, 0.08, 'triangle', 0.12, 90);
-      // A landed punch keeps the arm raised briefly (procedural aim
-      // layer on the rig, Rev 7).
-      if (SH.State) SH.State.aimPulse = 0.35;
+      // Stage E: a swing plays the shared melee clip on the player
+      // (player.js consumes meleePulse; the old aimPulse arm layer
+      // belonged to the retired rig).
+      if (SH.State) SH.State.meleePulse = 0.35;
     },
 
     // ---- per-frame update --------------------------------------------------------------
@@ -436,9 +450,12 @@
         var e = this.enemies[i];
         if (e.dead) {
           e.deadTimer -= dt;
-          e.mesh.rotation.x = Math.min(Math.PI / 2, e.mesh.rotation.x + dt * 5);
+          // Stage E: the fall is the shared 'death' clip; the pooled
+          // character is released when the corpse timer ends.
+          if (!e.deadClip) { e.ctl.play('death', 0.05, true); e.deadClip = true; }
+          e.ctl.update(dt);
           if (e.deadTimer <= 0) {
-            if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
+            SH.CharFactory.release(e.char);
             this.enemies.splice(i, 1);
           }
           continue;
@@ -457,7 +474,7 @@
         if (e.state === 'flee') {
           mvx = (e.x - f.x) / (distP || 1); mvz = (e.z - f.z) / (distP || 1); spd = 5.4;
           if (distP > 70) { // escaped: despawn quietly
-            if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
+            SH.CharFactory.release(e.char);
             this.enemies.splice(i, 1);
             continue;
           }
@@ -479,7 +496,9 @@
                 e.burstTimer = 0.13;
                 e.burst--;
                 this.hostileFire(e.x, 1.45, e.z, f.x, f.z, e.damage, 0.52 - distP / 160);
-                e.parts.aimTarget = 1;
+                // Stage E: the first shot of a burst plays the shared
+                // shoot clip and holds the pose for the burst.
+                if (e.reactT <= 0) { e.ctl.play('shoot_pistol', 0.05, true); e.reactT = 0.3; }
               }
             }
           }
@@ -503,11 +522,18 @@
           e.heading = Math.atan2(mvx, mvz);
           e.cycle += dt * spd * 2.6;
         }
-        // Rig animation (Rev 7): clips by speed; the gun arm is a
-        // procedural aim layer while attacking.
-        if (e.state !== 'attack') e.parts.aimTarget = 0;
-        e.parts.setSpeed(spd / 4.3);
-        e.parts.update(dt);
+        // Stage E animation: hit/shoot reactions own the body
+        // briefly; a planted attacker holds the aim clip (rifle for
+        // the masked heist archetype); otherwise speed-synced gaits.
+        if (e.reactT > 0) {
+          if (e.reactPlay) { e.ctl.play('stagger', 0.03, true); e.reactPlay = false; }
+          e.reactT -= dt;
+        } else if (e.state === 'attack' && spd < 0.5 && distP < 42 && !blocked) {
+          e.ctl.play(e.char.archetype.id === 'timHeist' ? 'aim_rifle' : 'aim_pistol', 0.15);
+        } else {
+          e.ctl.setSpeed(spd);
+        }
+        e.ctl.update(dt);
         e.mesh.position.set(e.x, 0, e.z);
         e.mesh.rotation.y = e.state === 'attack' || e.state === 'alert' ? Math.atan2(f.x - e.x, f.z - e.z) : e.heading;
       }
