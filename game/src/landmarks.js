@@ -11,7 +11,7 @@
   'use strict';
 
   var W = null; // SH.World.waterData, bound in build()
-  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null, beam: null };
+  var anim = { t: 0, birds: [], birdGeo: null, birdTpl: null, boat: null, sampan: null, beam: null, ring: null };
   var envTex = null;
   var mats = null;
   function makeMats() {
@@ -495,6 +495,90 @@
     anim.beam = { group: beamGroup, mat: beamMat, sprite: sprite.material };
   }
 
+  // ---------- Feature 4: Menara Pelita ---------------------------------
+  function towerFacadeTexture() {
+    var c = document.createElement('canvas');
+    c.width = 128; c.height = 256;
+    var g = c.getContext('2d');
+    g.fillStyle = '#31465e';
+    g.fillRect(0, 0, 128, 256);
+    var r = SH.World.makeRng(4451);
+    for (var y = 0; y < 16; y++) {
+      for (var x = 0; x < 8; x++) {
+        var lit = r();
+        g.fillStyle = lit < 0.22 ? '#ffca7a' : (lit < 0.55 ? '#7d99b5' : '#48637e');
+        g.fillRect(6 + x * 15, 8 + y * 15, 10, 9);
+      }
+    }
+    var tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+  function helipadTexture() {
+    var c = document.createElement('canvas');
+    c.width = c.height = 128;
+    var g = c.getContext('2d');
+    g.fillStyle = '#2e3138';
+    g.fillRect(0, 0, 128, 128);
+    g.strokeStyle = '#f2ede2';
+    g.lineWidth = 5;
+    g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#f2ede2';
+    g.font = 'bold 62px sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('H', 64, 68);
+    var tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function buildMenara(scene, shared) {
+    var timber = shared.timber, glow = shared.glow;
+    var X = -180, Z = -120;
+    // Plaza + podium (buildings.js leaves the plaza-rolled block at
+    // (-180,-120) empty for this — see the note there).
+    box(timber, 0x9a8f7c, X, 0.07, Z, 56, 0.14, 56);
+    box(timber, 0x8f8a7c, X, 2.5, Z, 46, 5, 46);
+    box(timber, 0x7d7666, X, 4.6, Z + 24.6, 12, 0.35, 4.6);
+    [[-24, -24], [24, -24], [-24, 24], [24, 24]].forEach(function (pp) {
+      box(timber, 0x7a4a38, X + pp[0], 0.5, Z + pp[1], 2.6, 0.9, 2.6);
+      box(timber, 0x3f7d33, X + pp[0], 1.15, Z + pp[1], 2.9, 0.5, 2.9);
+    });
+    // The shaft: six terraced glass sections tapering 30 m -> 19.5 m,
+    // 5 m podium + 90 m of glass = the tallest structure in Selatara.
+    var shaftGeos = [];
+    for (var si = 0; si < 6; si++) {
+      var w = 30 - si * 2.1;
+      shaftGeos.push(SH.World.xformGeo(new THREE.BoxGeometry(w, 15, w), X, 5 + si * 15 + 7.5, Z, 0, 0, 0));
+      var hw = w / 2 + 0.06;
+      [[-hw, -hw], [hw, -hw], [-hw, hw], [hw, hw]].forEach(function (cp) {
+        part(glow, new THREE.BoxGeometry(0.17, 15, 0.17), 0x37e0ff, X + cp[0], 5 + si * 15 + 7.5, Z + cp[1], 0, 0, 0);
+      });
+    }
+    var shaftMat = new THREE.MeshStandardMaterial({ map: towerFacadeTexture(), roughness: 0.38, metalness: 0.4, envMapIntensity: 0.55 });
+    var shaft = new THREE.Mesh(SH.World.mergeGeos(shaftGeos), shaftMat);
+    shaft.name = 'w1-menara';
+    scene.add(shaft);
+    mats.menara = shaftMat;
+    // Crown terrace + helipad + mast with beacon.
+    part(timber, new THREE.CylinderGeometry(12.5, 13.5, 1.6, 18), 0x333a42, X, 95.8, Z, 0, 0, 0);
+    var pad = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshStandardMaterial({ map: helipadTexture(), roughness: 0.9, metalness: 0 }));
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(X, 96.65, Z);
+    scene.add(pad);
+    part(timber, new THREE.CylinderGeometry(0.16, 0.26, 13, 6), 0x9aa0a8, X + 8.5, 102.5, Z, 0, 0, 0);
+    part(glow, new THREE.SphereGeometry(0.32, 6, 5), 0xff4040, X + 8.5, 109.2, Z, 0, 0, 0);
+    // The neon crown ring, hue cycling slowly (update() drives it).
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0xff4fa3, fog: false });
+    var ring = new THREE.Mesh(new THREE.TorusGeometry(13.4, 0.32, 8, 44), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(X, 93.4, Z);
+    scene.add(ring);
+    anim.ring = ringMat;
+    SH.World.colliders.push({ x: X, z: Z, hx: 24, hz: 24 });
+    SH.CityData.addRect(X, Z, 46, 46, 96);
+  }
+
   var Landmarks = {
     build: function (scene) {
       W = SH.World.waterData;
@@ -503,6 +587,7 @@
       buildTaman(scene, shared);
       buildRuko(scene, shared);
       buildMercusuar(scene, shared);
+      buildMenara(scene, shared);
       var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
       waterMesh.name = 'w1-water';
       scene.add(waterMesh);
@@ -537,6 +622,7 @@
         anim.sampan.rotation.y = (smDir > 0 ? 0 : Math.PI) - Math.atan(smSlope) * smDir;
         anim.sampan.rotation.z = Math.sin(t * 1.1) * 0.02;
       }
+      if (anim.ring) anim.ring.color.setHSL((t * 0.025) % 1, 0.85, 0.6);
       if (anim.beam) {
         anim.beam.group.rotation.y = t * 0.45;
         var bh = SH.State.hour;

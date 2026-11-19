@@ -229,6 +229,17 @@
         st.cash = 1980;
         st.objective = { title: 'FREE ROAM', text: 'Mercusuar Pantai Kencana', x: 74, z: 398 };
         stagePeds([[56, 350], [64, 382]]);
+      } else if (name === 'menara') {
+        // W1 proof: Menara Pelita from the avenue corner at golden
+        // hour — terraced glass shaft, neon crown ring, helipad.
+        SH.Main.setHour(17.9);
+        st.player.x = -108; st.player.z = -52;
+        st.player.heading = -2.33;
+        st.camYaw = 0.82; st.camPitch = 0.34;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Menara Pelita, Pelita Heights', x: -180, z: -120 };
+        stagePeds([[-98, -66], [-132, -30]]);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
         st.mode = 'map';

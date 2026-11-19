@@ -331,6 +331,16 @@
         }
       }
 
+      // Menara Pelita's lot: the plaza-rolled block at (-180,-120)
+      // stays empty — landmarks.js raises the tower there. Only the
+      // plaza spot (its palms and tree) is dropped; the generator's
+      // rolls are untouched, so every other block in the city keeps
+      // the exact layout it was verified with. (Reserving a block by
+      // skipping its cell instead would shift the shared RNG stream
+      // and reshuffle the whole city — that broke Mission 7 once:
+      // a warehouse collider landed on its warehouse goTo point.)
+      plazaSpots = plazaSpots.filter(function (p) { return !(p.x === -180 && p.z === -120); });
+
       var box = new THREE.BoxGeometry(1, 1, 1);
       // Facade pools (Art Pass 2): every entry is a distinct generated skin.
       // Placements carry a sequential bucket, so neighbours never repeat.
