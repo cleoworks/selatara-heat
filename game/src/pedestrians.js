@@ -51,7 +51,7 @@
     // Soft spherical shading: light pooled at the face centre, gentle
     // darkening toward the wrap so the head reads round even unlit.
     var faceGlow = c.createRadialGradient(128, 245, 30, 128, 262, 190);
-    faceGlow.addColorStop(0, 'rgba(255,235,210,0.13)');
+    faceGlow.addColorStop(0, 'rgba(255,235,210,0.08)');
     faceGlow.addColorStop(0.55, 'rgba(255,235,210,0)');
     faceGlow.addColorStop(1, 'rgba(30,10,0,0.16)');
     c.fillStyle = faceGlow; c.fillRect(0, 0, 512, 512);
@@ -72,9 +72,11 @@
     }
     softDot(74, 330, 34, 'rgba(255,110,80,0.13)', 'rgba(255,110,80,0)');   // cheeks
     softDot(182, 330, 34, 'rgba(255,110,80,0.13)', 'rgba(255,110,80,0)');
-    c.strokeStyle = '#241a12'; c.lineCap = 'round'; c.lineWidth = 15;      // brows
-    c.beginPath(); c.moveTo(68, 204); c.quadraticCurveTo(92, 194, 114, 202); c.stroke();
-    c.beginPath(); c.moveTo(142, 202); c.quadraticCurveTo(164, 194, 188, 204); c.stroke();
+    // Brows (detail pass: the old 15 px near-black bars helped the
+    // simian read) — thinner, lighter brown, flatter arch.
+    c.strokeStyle = 'rgba(64,48,32,0.9)'; c.lineCap = 'round'; c.lineWidth = 8.5;
+    c.beginPath(); c.moveTo(68, 205); c.quadraticCurveTo(92, 197, 114, 203); c.stroke();
+    c.beginPath(); c.moveTo(142, 203); c.quadraticCurveTo(164, 197, 188, 205); c.stroke();
     // Eyes: a thin sclera crescent around a LARGE dark iris — at
     // gameplay distance the dark mass is what reads, not the white.
     // Rows follow the composite skull's anatomy (spherical UV
@@ -87,21 +89,22 @@
       ellipse(ex + 4.5, 222, 3.8, 3.8, 'rgba(255,255,255,0.92)');
       ellipse(ex - 4, 240, 2.2, 2.2, 'rgba(255,255,255,0.5)');
     });
-    c.strokeStyle = 'rgba(255,255,255,0.10)'; c.lineWidth = 11;            // nose bridge light
-    c.beginPath(); c.moveTo(128, 254); c.lineTo(127, 292); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.06)'; c.lineWidth = 8;             // nose bridge light
+    c.beginPath(); c.moveTo(128, 258); c.lineTo(127, 286); c.stroke();
     // (No painted nose shadow any more: the geometry nose shades
     // itself now, and the old dark stroke read as a carrot line.)
-    ellipse(115, 318, 5.5, 3.6, 'rgba(40,20,10,0.35)');
-    ellipse(141, 318, 5.5, 3.6, 'rgba(40,20,10,0.35)');
-    c.strokeStyle = '#6e3524'; c.lineWidth = 9.5; c.lineCap = 'round';
+    // Nose wedge smaller and higher (detail pass).
+    ellipse(118, 309, 4.2, 2.8, 'rgba(40,20,10,0.30)');
+    ellipse(138, 309, 4.2, 2.8, 'rgba(40,20,10,0.30)');
+    c.strokeStyle = '#6e3524'; c.lineWidth = 8; c.lineCap = 'round';
     if (variant === 1) {                               // flat, serious
-      c.beginPath(); c.moveTo(106, 362); c.lineTo(150, 362); c.stroke();
-    } else if (variant === 2) {                        // grin
-      c.fillStyle = '#5e2a1c'; c.beginPath(); c.ellipse(128, 358, 26, 18, 0, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.moveTo(111, 357); c.lineTo(145, 357); c.stroke();
+    } else if (variant === 2) {                        // grin, narrowed + raised
+      c.fillStyle = '#5e2a1c'; c.beginPath(); c.ellipse(128, 353, 19, 12.5, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#f5ede2';
-      c.beginPath(); c.moveTo(107, 346); c.lineTo(149, 346); c.lineTo(146, 359); c.lineTo(110, 359); c.closePath(); c.fill();
-    } else {                                           // easy smile
-      c.beginPath(); c.arc(128, 344, 24, Math.PI * 0.18, Math.PI * 0.82); c.stroke();
+      c.beginPath(); c.moveTo(112, 343.5); c.lineTo(144, 343.5); c.lineTo(141.5, 354); c.lineTo(114.5, 354); c.closePath(); c.fill();
+    } else {                                           // easy smile, smaller + higher
+      c.beginPath(); c.arc(128, 340, 19, Math.PI * 0.18, Math.PI * 0.82); c.stroke();
     }
     var tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -428,8 +431,16 @@
     // comparison): waist narrowest 0.140 = 0.61x the chest's 0.230,
     // pelvis 0.186 = 0.81x the chest — a continuous narrowing loft,
     // never three same-width blocks stacked.
-    push(clothGeos, lathe([[0, -0.09], [0.140, -0.086], [0.146, -0.05], [0.148, 0], [0.154, 0.05], [0.162, 0.086], [0, 0.09]], 18), 'Spine', shirtColor, M(0, 1.22, 0, 0, 0, 0, 1, 1, 0.68));
-    push(clothGeos, lathe([[0, -0.18], [0.148, -0.174], [0.168, -0.13], [0.186, -0.04], [0.205, 0.05], [0.226, 0.13], [0.230, 0.172], [0, 0.18]], 18), 'Chest', shirtColor, M(0, 1.37, 0, 0, 0, 0, 1, 1, 0.68));
+    // Clothing pass (user: the shirt was the body PAINTED — every
+    // segment line showed): the shirt is now a SHELL with its own
+    // silhouette, two overlapping lofts ~1.5-2.5 cm proud of the
+    // torso beneath, the lower one's hem falling straight past the
+    // waist to y=1.06, swallowing the belt ring (0.166) and the
+    // pelvis top (0.186) so no torso/pelvis/belt line can read
+    // from outside. The upper loft sinks over the lower in the
+    // overlap with matched radii — no step anywhere.
+    push(clothGeos, lathe([[0, -0.16], [0.197, -0.155], [0.191, -0.10], [0.178, -0.02], [0.182, 0.06], [0.198, 0.12], [0.206, 0.145], [0, 0.15]], 18), 'Spine', shirtColor, M(0, 1.22, 0, 0, 0, 0, 1, 1, 0.68));
+    push(clothGeos, lathe([[0, -0.15], [0.208, -0.145], [0.222, -0.08], [0.240, 0.0], [0.247, 0.06], [0.228, 0.12], [0.165, 0.15], [0, 0.155]], 18), 'Chest', shirtColor, M(0, 1.44, 0, 0, 0, 0, 1, 1, 0.68));
     // Trapezius SLOPE, not a ring: radius falls steadily from 0.20
     // at the chest to 0.07 at the neck, so the shoulder line angles
     // down from the neck and the deltoid caps land IN the slope.
@@ -441,10 +452,11 @@
     // Slimmer neck (v4 softening: -30-50%) as an explicit-segment
     // capsule, sunk into the trapezius below and the head above.
     push(skinGeos, new THREE.CapsuleGeometry(0.046, 0.05, 6, 14), 'Neck', skinColor, M(0, 1.57, 0));
-    // Ears: small flattened spheres riding the Head bone inside the
-    // skin mesh, at the narrower composite head's sides.
-    push(skinGeos, new THREE.SphereGeometry(0.037, 12, 9), 'Head', skinColor, M(-0.117, 1.715, 0, 0, 0, 0, 0.6, 1, 0.85));
-    push(skinGeos, new THREE.SphereGeometry(0.037, 12, 9), 'Head', skinColor, M(0.117, 1.715, 0, 0, 0, 0, 0.6, 1, 0.85));
+    // Ears (detail pass, user: round ears sticking out sideways
+    // read simian): 0.65x, flattened tight to the skull, a touch
+    // higher and further back, skin-coloured.
+    push(skinGeos, new THREE.SphereGeometry(0.024, 12, 9), 'Head', skinColor, M(-0.113, 1.728, -0.014, 0, 0, 0, 0.45, 0.95, 0.8));
+    push(skinGeos, new THREE.SphereGeometry(0.024, 12, 9), 'Head', skinColor, M(0.113, 1.728, -0.014, 0, 0, 0, 0.45, 0.95, 0.8));
     // Arms — authored along the A-pose direction from the shoulder:
     // deltoid cap sunk into the chest, tapered lathe upper arm, elbow
     // ball, tapered forearm (wrist ~0.79x elbow), rounded hand +20%.
@@ -460,35 +472,45 @@
       var delt = new THREE.SphereGeometry(0.070, 14, 10);
       delt.scale(1.06, 0.82, 1.06);
       push(clothGeos, delt, upB, shirtColor, M(sx, 1.50, 0));
-      var upList = sleeveSkin ? skinGeos : clothGeos;
-      // One continuous taper the whole way down (body-shape
-      // addendum): upper arm 0.048 at the shoulder to 0.034 at the
-      // elbow, forearm 0.039 to a 0.026 wrist = 0.54x the upper arm.
-      // The elbow ball (0.046) stays PROUD of both segments so the
-      // joint reads as a ball, not a pinch.
-      push(upList, lathe([[0, -0.14], [0.034, -0.136], [0.038, -0.10], [0.041, -0.02], [0.044, 0.06], [0.047, 0.12], [0.048, 0.138], [0, 0.14]], 16).translate(0, -0.14, 0), upB, sleeveSkin ? skinColor : shirtColor, M(sx, 1.49, 0, 0, 0, rz));
+      // Clothing pass: sleeves are TUBES with their own silhouette,
+      // never the arm painted. A short sleeve (sleeveSkin) is a cloth
+      // tube ~1.6 cm proud of the arm ending in a hem mid-arm, skin
+      // below it; a long sleeve runs the whole upper arm ~1.4 cm
+      // proud with a gentler taper than the arm inside.
+      if (sleeveSkin) {
+        push(clothGeos, lathe([[0, 0.006], [0.056, 0.012], [0.060, 0.06], [0.064, 0.11], [0.065, 0.138], [0, 0.14]], 14).translate(0, -0.14, 0), upB, shirtColor, M(sx, 1.49, 0, 0, 0, rz));
+        push(skinGeos, lathe([[0, -0.14], [0.034, -0.136], [0.038, -0.10], [0.041, -0.02], [0.043, 0.004], [0, 0.010]], 14).translate(0, -0.14, 0), upB, skinColor, M(sx, 1.49, 0, 0, 0, rz));
+      } else {
+        push(clothGeos, lathe([[0, -0.14], [0.048, -0.136], [0.051, -0.10], [0.054, -0.02], [0.057, 0.06], [0.060, 0.12], [0.062, 0.138], [0, 0.14]], 16).translate(0, -0.14, 0), upB, shirtColor, M(sx, 1.49, 0, 0, 0, rz));
+      }
       push(skinGeos, new THREE.SphereGeometry(0.046, 14, 10), foB, skinColor, M(ex, ey, 0), 0.88);
       push(skinGeos, lathe([[0, -0.135], [0.026, -0.13], [0.029, -0.09], [0.032, -0.01], [0.036, 0.07], [0.038, 0.12], [0.039, 0.133], [0, 0.135]], 16).translate(0, -0.135, 0), foB, skinColor, M(ex, ey, 0, 0, 0, rz));
       // A real HAND, not a paddle: palm plus four capsule fingers
       // with silhouette gaps between them and an angled thumb, all
       // merged into the forearm's skin list (zero extra draw calls).
-      // Fingers rest at a natural 12-20-degree curl, longest in the
-      // middle; the whole hand keeps the bible's +20% oversize.
+      // Detail pass (user: fingers did not read at 1.5 m): fingers
+      // +30% longer and thicker, spread on a wider palm so the gaps
+      // are true holes (~7.6 mm), a darkened knuckle band at the
+      // finger roots so the crotches shade dark, and the thumb
+      // longer, higher and clearly opposed. Fingers rest at a
+      // natural 10-17-degree curl, longest in the middle.
       var wristM = M(ex + dX * 0.28, ey + dY * 0.28, 0, 0, 0, rz);
-      push(skinGeos, roundedBox(0.072, 0.078, 0.036, 0.016, 2).translate(0, -0.046, 0), foB, skinColor, wristM);
-      var fLen = [0.030, 0.035, 0.031, 0.024], fBend = [0.21, 0.28, 0.31, 0.35];
+      push(skinGeos, roundedBox(0.086, 0.078, 0.036, 0.016, 2).translate(0, -0.046, 0), foB, skinColor, wristM);
+      var knuckleShade = new THREE.Color(skinColor).multiplyScalar(0.55).getHex();
+      push(skinGeos, roundedBox(0.078, 0.02, 0.030, 0.008, 1).translate(0, -0.077, 0), foB, knuckleShade, wristM);
+      var fLen = [0.040, 0.047, 0.041, 0.032], fBend = [0.17, 0.23, 0.26, 0.30];
       for (var fi = 0; fi < 4; fi++) {
-        var fg = new THREE.CapsuleGeometry(0.0078, fLen[fi], 3, 8);
+        var fg = new THREE.CapsuleGeometry(0.0092, fLen[fi], 3, 8);
         fg.translate(0, -fLen[fi] / 2 - 0.004, 0);
         fg.rotateX(fBend[fi]);
-        fg.translate(-0.027 + fi * 0.018, -0.082, 0.001);
+        fg.translate(-0.039 + fi * 0.026, -0.082, 0.001);
         push(skinGeos, fg, foB, skinColor, wristM);
       }
-      var th = new THREE.CapsuleGeometry(0.0095, 0.024, 3, 8);
-      th.translate(0, -0.016, 0);
-      th.rotateX(0.35);
-      th.rotateZ(side * 0.6);
-      th.translate(-side * 0.034, -0.040, 0.006);
+      var th = new THREE.CapsuleGeometry(0.0105, 0.033, 3, 8);
+      th.translate(0, -0.020, 0);
+      th.rotateX(0.5);
+      th.rotateZ(side * 0.85);
+      th.translate(-side * 0.042, -0.036, 0.008);
       push(skinGeos, th, foB, skinColor, wristM);
     }
     armParts(-1); armParts(1);
@@ -507,27 +529,45 @@
       // 0.072, knee 0.060, ankle 0.042 — so the articulation reads
       // like the mannequin reference instead of melting away.
       push(thList, new THREE.SphereGeometry(0.072, 14, 10), 'UpLeg' + bn, thCol, M(sx, 0.99, 0), 0.9);
-      push(thList, lathe([[0, -0.235], [0.049, -0.228], [0.058, -0.18], [0.062, -0.06], [0.068, 0.06], [0.076, 0.16], [0.080, 0.21], [0.081, 0.23], [0, 0.235]], 16), 'UpLeg' + bn, thCol, M(sx, 0.765, 0));
+      // Clothing pass: trousers/shorts are a SHELL over the thigh —
+      // ~1.5 cm proud with their own gentle taper (0.67x hip-to-knee
+      // against the leg's 0.61x) — so the leg's segment lines stay
+      // under the cloth. Skirt figures keep the bare thigh.
+      var thighProfile = thighSkin
+        ? [[0, -0.235], [0.049, -0.228], [0.058, -0.18], [0.062, -0.06], [0.068, 0.06], [0.076, 0.16], [0.080, 0.21], [0.081, 0.23], [0, 0.235]]
+        : [[0, -0.235], [0.064, -0.228], [0.072, -0.18], [0.077, -0.06], [0.084, 0.06], [0.092, 0.16], [0.095, 0.21], [0.096, 0.23], [0, 0.235]];
+      push(thList, lathe(thighProfile, 16), 'UpLeg' + bn, thCol, M(sx, 0.765, 0));
       push(shList, new THREE.SphereGeometry(0.060, 14, 10), 'Shin' + bn, shCol, M(sx, 0.53, 0.004), 0.88);
       // The calf is its OWN segment (body-shape addendum): the shin
-      // lathe stays slim (0.031-0.034 through the lower half) and the
-      // calf ellipsoid carries the muscle, peaking in the upper
-      // third and standing proud of the lathe behind and at the
-      // sides; below it the leg falls hard to a 0.024 ankle — 0.52x
-      // the calf's max width.
-      push(shList, lathe([[0, -0.23], [0.024, -0.224], [0.026, -0.18], [0.029, -0.08], [0.032, 0.02], [0.038, 0.12], [0.047, 0.19], [0.052, 0.222], [0, 0.23]], 16), 'Shin' + bn, shCol, M(sx, 0.30, 0));
+      // lathe stays slim through the lower half and the calf
+      // ellipsoid carries the muscle, peaking in the upper third and
+      // standing proud of the lathe behind; below it the leg falls
+      // to the ankle — 0.52x the calf's max width.
+      // Detail pass (user: the lower leg tapered to a PEG): the
+      // ankle now keeps 0.65x of the calf's max width, the calf
+      // ellipsoid sits lower and fuller, and the whole lower-leg
+      // taper runs gentle — a leg with a calf, not a spike.
+      // Trousers get the same shell treatment on the shin (+1.4 cm,
+      // own taper); bare shins keep the softened skin profile.
+      var shinProfile = shinSkin
+        ? [[0, -0.23], [0.034, -0.224], [0.035, -0.18], [0.037, -0.08], [0.039, 0.02], [0.042, 0.12], [0.049, 0.19], [0.052, 0.222], [0, 0.23]]
+        : [[0, -0.23], [0.048, -0.224], [0.049, -0.18], [0.051, -0.08], [0.053, 0.02], [0.056, 0.12], [0.062, 0.19], [0.065, 0.222], [0, 0.23]];
+      push(shList, lathe(shinProfile, 16), 'Shin' + bn, shCol, M(sx, 0.30, 0));
       var calf = new THREE.SphereGeometry(0.052, 14, 10);
-      calf.scale(0.88, 1.5, 0.95);
-      push(shList, calf, 'Shin' + bn, shCol, M(sx, 0.42, -0.016));
+      calf.scale(0.94, 1.32, 1.0);
+      push(shList, calf, 'Shin' + bn, shCol, M(sx, 0.395, -0.016));
       push(shList, new THREE.SphereGeometry(0.042, 12, 9), 'Shin' + bn, shCol, M(sx, 0.10, 0.005), 0.88);
-      // Shoes follow the mannequin foot: flat, elongated, narrowing
-      // to the toe (a low scaled sphere caps the upper) — never a
-      // block. Two-tone with the light upper kept for dark ground.
-      push(clothGeos, roundedBox(0.128, 0.03, 0.335, 0.013, 2), 'Foot' + bn, 0x26262c, M(sx, 0.016, 0.052, 0.05, 0, 0), 0.9);
-      push(clothGeos, roundedBox(0.118, 0.075, 0.29, 0.03, 3), 'Foot' + bn, shoeColor, M(sx, 0.056, 0.030, 0.05, 0, 0));
-      var toe = new THREE.SphereGeometry(0.05, 12, 9);
-      toe.scale(1.05, 0.52, 1.25);
-      push(clothGeos, toe, 'Foot' + bn, shoeColor, M(sx, 0.042, 0.155, 0.05, 0, 0));
+      // Shoes (detail pass, user: the old ones read as BOATS —
+      // 0.335 m long, 0.128 wide, flat): now 0.27 m overall with a
+      // narrow rounded toe that slopes down to the tip, a THIN dark
+      // sole band reading as its own stripe under the light upper,
+      // and the whole shoe pitched so the heel sits ~13 mm higher
+      // than the toe. Reads as a shoe from the front and the side.
+      push(clothGeos, roundedBox(0.104, 0.022, 0.27, 0.009, 2), 'Foot' + bn, 0x26262c, M(sx, 0.013, 0.058, 0.05, 0, 0), 0.9);
+      push(clothGeos, roundedBox(0.096, 0.060, 0.195, 0.024, 3), 'Foot' + bn, shoeColor, M(sx, 0.052, 0.032, 0.05, 0, 0));
+      var toe = new THREE.SphereGeometry(0.046, 12, 9);
+      toe.scale(0.95, 0.45, 1.18);
+      push(clothGeos, toe, 'Foot' + bn, shoeColor, M(sx, 0.036, 0.140, 0.05, 0, 0));
     }
     legParts(-1); legParts(1);
     // Hair, hats and glasses are authored straight into the cloth mesh
@@ -548,8 +588,8 @@
     function fadeSides(y) {
       // Kept THIN and tight to the skull: the first cut (0.024 x
       // 0.085 x 0.15) read as black slabs floating off the head.
-      push(clothGeos, roundedBox(0.018, 0.06, 0.11, 0.008, 1), 'Head', hairColor, M(-0.118, y, -0.01));
-      push(clothGeos, roundedBox(0.018, 0.06, 0.11, 0.008, 1), 'Head', hairColor, M(0.118, y, -0.01));
+      push(clothGeos, roundedBox(0.018, 0.06, 0.11, 0.008, 1), 'Head', hairColor, M(-0.118, y, -0.032));
+      push(clothGeos, roundedBox(0.018, 0.06, 0.11, 0.008, 1), 'Head', hairColor, M(0.118, y, -0.032));
     }
     if (hairStyle === 'hat') {
       var hatColor = opts.hatColor != null ? opts.hatColor : 0x22242c;
@@ -613,12 +653,15 @@
     var headGeos = [];
     function hpush(geo, matrix) { var hp = part(geo, 'Head', skinColor, matrix); remapFaceUV(hp); headGeos.push(hp); }
     hpush(new THREE.SphereGeometry(0.15, 28, 20), M(0, 1.75, -0.005, 0, 0, 0, 0.80, 0.98, 0.86));
-    hpush(new THREE.SphereGeometry(0.15, 24, 16), M(0, 1.633, 0.016, 0, 0, 0, 0.64, 0.60, 0.70));
-    hpush(roundedBox(0.085, 0.07, 0.07, 0.028, 2), M(0, 1.563, 0.038));
-    hpush(new THREE.SphereGeometry(0.040, 14, 10), M(-0.055, 1.652, 0.052, 0, 0, 0, 1.0, 0.72, 0.72));
-    hpush(new THREE.SphereGeometry(0.040, 14, 10), M(0.055, 1.652, 0.052, 0, 0, 0, 1.0, 0.72, 0.72));
-    hpush(new THREE.CapsuleGeometry(0.0135, 0.016, 4, 10), M(0, 1.662, 0.112, 0.38, 0, 0));
-    hpush(new THREE.SphereGeometry(0.0145, 12, 9), M(0, 1.650, 0.120, 0, 0, 0, 1, 0.85, 0.8));
+    // Detail pass (user: the lower face read as a muzzle): jaw
+    // narrowed to 0.88x and pulled back, chin block slimmer and
+    // seated ~50% less proud, cheeks tucked in with it.
+    hpush(new THREE.SphereGeometry(0.15, 24, 16), M(0, 1.636, 0.008, 0, 0, 0, 0.563, 0.60, 0.63));
+    hpush(roundedBox(0.075, 0.066, 0.062, 0.026, 2), M(0, 1.566, 0.024));
+    hpush(new THREE.SphereGeometry(0.038, 14, 10), M(-0.049, 1.654, 0.044, 0, 0, 0, 1.0, 0.66, 0.58));
+    hpush(new THREE.SphereGeometry(0.038, 14, 10), M(0.049, 1.654, 0.044, 0, 0, 0, 1.0, 0.66, 0.58));
+    hpush(new THREE.CapsuleGeometry(0.0115, 0.012, 4, 10), M(0, 1.664, 0.110, 0.38, 0, 0));
+    hpush(new THREE.SphereGeometry(0.013, 12, 9), M(0, 1.652, 0.118, 0, 0, 0, 1, 0.85, 0.8));
     var headGeo = SH.World.mergeGeos(headGeos);
     var headMesh = new THREE.SkinnedMesh(headGeo, headMat);
     g.updateMatrixWorld(true); // bind inverses need true bind-pose worlds
