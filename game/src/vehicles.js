@@ -279,7 +279,12 @@
       [0.227, 0.346, 0.98, 1.15, 0.286, 1.30, 0.06], [0.323, 0.302, 0.96, 1.04, 0.236, 1.09, 0.05]
     ];
     var SPORT_BODY = [
-      [-0.500, 0.436, 0.35, 0.56, 0.404, 0.80, 0.09], [-0.453, 0.471, 0.25, 0.60, 0.441, 0.86, 0.09],
+      // Polish c2 final touch: the last two tail rings narrow
+      // (0.436->0.408W and 0.471->0.455W half-width) so the tail
+      // stops reading as a wide pink slab from the dusk cover
+      // camera; geometry only — spec, handling and collision are
+      // untouched.
+      [-0.500, 0.408, 0.35, 0.56, 0.378, 0.80, 0.09], [-0.453, 0.455, 0.25, 0.60, 0.425, 0.86, 0.09],
       [-0.305, 0.487, 0.24, 0.64, 0.457, 0.885, 0.08], [-0.116, 0.479, 0.24, 0.65, 0.452, 0.90, 0.08],
       [0.093, 0.471, 0.24, 0.64, 0.441, 0.885, 0.08], [0.305, 0.460, 0.24, 0.60, 0.420, 0.83, 0.09],
       // Rev 9.2 (parent verdict on the cover): the deck now holds
@@ -409,6 +414,30 @@
       box(W * 0.62, 0.42, 0.08, glass, 0, 1.04, L * 0.14);         // windscreen
       box(W * 0.5, 0.34, L * 0.3, dark, 0, 0.80, -L * 0.18, 'dark');       // bench seat
       box(0.5, 0.62, 0.3, dark, 0, 0.62, -L * 0.52, 'dark');               // outboard motor
+    } else if (type === 'ferry') {
+      // LAST FERRY OUT: the strait ferry as a real, drivable vessel —
+      // a broad flat-deck hull lofted like the speedboat's, but with a
+      // working car deck, a forward wheelhouse, a funnel and a stern
+      // loading door. It drives through the boat's water rules.
+      var ferryHull = loftMesh([
+        { z: -7.50, hw: 3.05, yB: 0.34, yM: 1.12, hwT: 2.95, yT: 1.52, cam: 0.04 },
+        { z: -4.00, hw: 3.30, yB: 0.24, yM: 1.16, hwT: 3.20, yT: 1.56, cam: 0.04 },
+        { z: 2.00, hw: 3.30, yB: 0.24, yM: 1.16, hwT: 3.20, yT: 1.58, cam: 0.04 },
+        { z: 5.50, hw: 2.85, yB: 0.32, yM: 1.20, hwT: 2.75, yT: 1.64, cam: 0.04 },
+        { z: 7.00, hw: 1.85, yB: 0.48, yM: 1.26, hwT: 1.75, yT: 1.70, cam: 0.03 },
+        { z: 7.50, hw: 0.65, yB: 0.62, yM: 1.32, hwT: 0.60, yT: 1.74, cam: 0.02 }
+      ], paint);
+      ferryHull.userData.mergeKey = 'paint';
+      box(W * 0.94, 0.10, L * 0.90, dark, 0, 1.60, -0.3, 'dark');            // car deck
+      var ferryCabinMat = new THREE.MeshLambertMaterial({ color: 0xf4f1e8, flatShading: true });
+      box(W * 0.64, 1.55, L * 0.30, ferryCabinMat, 0, 2.42, 2.6);            // wheelhouse block
+      box(W * 0.66, 0.55, L * 0.31, glass, 0, 2.78, 2.6);                    // wheelhouse glass band
+      box(W * 0.70, 0.16, L * 0.34, dark, 0, 3.28, 2.6, 'dark');             // wheelhouse roof
+      box(1.05, 1.45, 1.5, dark, 0, 3.05, -1.6, 'dark');                     // funnel
+      box(1.15, 0.22, 1.6, dark, 0, 3.85, -1.6, 'dark');                     // funnel cap
+      box(W * 0.72, 1.25, 0.14, dark, 0, 1.02, -L / 2 - 0.03, 'dark');       // stern loading door
+      box(0.09, 2.6, 0.09, dark, 0, 2.9, L * 0.36, 'dark');                  // bow mast
+      box(W * 0.5, 0.07, 0.07, chromeMat, 0, 1.66, L / 2 - 0.35, 'chrome');  // bow rail bar
     } else {
       // Cars (sedan / sport / taxi / police): extruded beltline shell +
       // a SEPARATE narrower glasshouse extrusion (Art Bible v2: the
@@ -506,7 +535,10 @@
       // Rev 9.2: the sport gets a DEEP dark valance (0.08-0.42 m) so
       // the pink tail panel ends decisively and the road takes over;
       // the sedan keeps its slimmer bumper (it already reads).
-      if (isSport) box(W * 1.01, 0.34, 0.28, dark, 0, 0.25, -L / 2 - 0.05, 'dark');
+      // Polish c2: the valance slims with the narrowed tail (W*0.94,
+      // 0.26 tall) — the Rev 9.2 full-width block read oversized in
+      // daylight.
+      if (isSport) box(W * 0.94, 0.26, 0.22, dark, 0, 0.27, -L / 2 - 0.05, 'dark');
       else box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05, 'dark'); // rear bumper
       // Rev 9: dark side skirts / lower cladding on EVERY car (the
       // two-tone break at the rocker line) + mirrors on thin stalks.
@@ -555,8 +587,8 @@
       wheel(-wx, L * 0.305, wr, 0.30); wheel(wx, L * 0.305, wr, 0.30);
       wheel(-wxR, -L * 0.305, wr, 0.30); wheel(wxR, -L * 0.305, wr, 0.30);
     }
-    // Contact blob shadow under every land vehicle (not the boat).
-    if (type !== 'boat') {
+    // Contact blob shadow under every land vehicle (not the boat/ferry).
+    if (type !== 'boat' && type !== 'ferry') {
       var blob = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.3 + 0.35, L * 1.05), getBlobMat());
       blob.rotation.x = -Math.PI / 2;
       blob.position.y = 0.02;
@@ -577,10 +609,17 @@
       var th1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), headMat); th1.position.set(-0.78, 0.80, L / 2 + 0.03); th1.userData.mergeKey = 'head'; g.add(th1);
       var th2 = th1.clone(); th2.position.x = 0.78; g.add(th2);
       var tband = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.05), tailMat); tband.position.set(0, 0.72, -L / 2 - 0.02); tband.userData.mergeKey = 'tail'; g.add(tband);
-    } else if (type === 'boat') {
+    } else if (type === 'boat' || type === 'ferry') {
       var bh1 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.05), headMat); bh1.position.set(-0.55, 0.82, L * 0.30); bh1.rotation.y = 0.3; bh1.userData.mergeKey = 'head'; g.add(bh1);
       var bh2 = bh1.clone(); bh2.position.x = 0.55; bh2.rotation.y = -0.3; g.add(bh2);
       var bt1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.07, 0.04), tailMat); bt1.position.set(0, 0.80, -L / 2 - 0.02); bt1.userData.mergeKey = 'tail'; g.add(bt1);
+      if (type === 'ferry') {
+        // The speedboat lamp spots sit inside the ferry's hull; hers
+        // ride on the bow rail and the stern door instead.
+        bh1.position.set(-W * 0.30, 1.74, L * 0.44); bh1.rotation.y = 0;
+        bh2.position.set(W * 0.30, 1.74, L * 0.44); bh2.rotation.y = 0;
+        bt1.position.set(0, 1.72, -L / 2 - 0.06);
+      }
     } else {
       var h1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat); h1.position.set(-hw, H * 0.52, L / 2 + 0.05); h1.userData.mergeKey = 'head'; g.add(h1);
       var h2 = h1.clone(); h2.position.x = hw; g.add(h2);
@@ -595,7 +634,7 @@
     }
     // Headlight glow sprites + a fake light cone (opacity driven globally by
     // the time of day via Vehicles.setLightLevel). No cone on the motor.
-    if (type !== 'boat' && type !== 'motor') {
+    if (type !== 'boat' && type !== 'ferry' && type !== 'motor') {
       var hg1 = new THREE.Sprite(getHeadGlowMat()); hg1.scale.set(1.05, 0.75, 1); hg1.position.set(-hw, H * 0.5, L / 2 + 0.25); g.add(hg1);
       var hg2 = new THREE.Sprite(getHeadGlowMat()); hg2.scale.set(1.05, 0.75, 1); hg2.position.set(hw, H * 0.5, L / 2 + 0.25); g.add(hg2);
       var cone = new THREE.Mesh(new THREE.ConeGeometry(1.1, 5.5, 12, 1, true), getConeMat());
@@ -814,12 +853,15 @@
     },
 
     nearestUsable: function () {
-      var p = SH.State.player, best = null, bd = 4.2;
+      var p = SH.State.player, best = null, bd = Infinity;
       for (var i = 0; i < this.list.length; i++) {
         var v = this.list[i];
         if (!v.active || v.dead || v.driver === 'traffic' || v.driver === 'police' || v.driver === 'roadblock') continue;
+        // Most vehicles board at arm's length; a moored ferry is
+        // boarded from the pier edge, metres from its centre.
+        var lim = v.boardRadius || 4.2;
         var d = Math.hypot(v.x - p.x, v.z - p.z);
-        if (d < bd) { bd = d; best = v; }
+        if (d < lim && d < bd) { bd = d; best = v; }
       }
       return best;
     },
@@ -833,7 +875,8 @@
       st.stats.carsStolen++;
       if (SH.Audio && SH.Audio.radio) SH.Audio.radio(true);
       if (SH.HUD) SH.HUD.notify('Driving: ' + veh.spec.label);
-      if (SH.Police && SH.Police.witnessCrime) SH.Police.witnessCrime('steal', veh.x, veh.z);
+      // Mission-sanctioned rides (the last ferry) are not thefts.
+      if (SH.Police && SH.Police.witnessCrime && !veh.noStealCrime) SH.Police.witnessCrime('steal', veh.x, veh.z);
     },
 
     exit: function () {
@@ -847,6 +890,22 @@
       var side = veh.heading + Math.PI / 2;
       st.player.x = veh.x + Math.sin(side) * 2.4;
       st.player.z = veh.z + Math.cos(side) * 2.4;
+      if (veh.type === 'ferry' && SH.World && SH.World.isLand && !SH.World.isLand(st.player.x, st.player.z)) {
+        // A ferry docks — you step off onto dry land, never into the
+        // strait. Scan a small ring around the hull for the first land
+        // point (the pier edge at the mooring, the island rim at the
+        // far dock); the plain side offset stays as the fallback.
+        var radii = [3.5, 5, 6.5, 8];
+        var foundLand = false;
+        for (var ri = 0; ri < radii.length && !foundLand; ri++) {
+          for (var ai = 0; ai < 8 && !foundLand; ai++) {
+            var ang = ai * Math.PI / 4;
+            var cx2 = veh.x + Math.sin(ang) * radii[ri];
+            var cz2 = veh.z + Math.cos(ang) * radii[ri];
+            if (SH.World.isLand(cx2, cz2)) { st.player.x = cx2; st.player.z = cz2; foundLand = true; }
+          }
+        }
+      }
       st.player.y = 0; st.player.vy = 0;
       SH.Audio.engine(0, false);
       if (SH.Audio && SH.Audio.radio) SH.Audio.radio(false);
@@ -885,7 +944,7 @@
         }
       }
       var cfg = SH.Config.world;
-      if (v.type === 'boat') {
+      if (v.type === 'boat' || v.type === 'ferry') {
         // Boats live on the water: free range across the bay, but the hull
         // grounds a couple of metres past the curved waterline, and Pulau
         // Seberang is solid — the island rim pushes a hull back out.
@@ -985,9 +1044,10 @@
       // instead of sitting glued to y=0.
       var bobY = 0;
       if (v.type === 'boat') bobY = Math.sin(SH.State.time * 1.7 + v.x * 0.05) * 0.14 - 0.1;
+      else if (v.type === 'ferry') bobY = Math.sin(SH.State.time * 1.1 + v.x * 0.03) * 0.05 - 0.04;
       v.mesh.position.set(v.x, bobY, v.z);
       v.mesh.rotation.y = v.heading;
-      v.mesh.rotation.z = -v.steer * Math.min(1, Math.abs(v.speed) / 20) * (v.type === 'boat' ? 0.16 : 0.06) + (v.type === 'boat' ? Math.sin(SH.State.time * 1.3) * 0.02 : 0);
+      v.mesh.rotation.z = -v.steer * Math.min(1, Math.abs(v.speed) / 20) * (v.type === 'boat' ? 0.16 : v.type === 'ferry' ? 0.05 : 0.06) + (v.type === 'boat' ? Math.sin(SH.State.time * 1.3) * 0.02 : 0);
       v.mesh.rotation.x = (throttle > 0 ? -0.012 : throttle < 0 ? 0.014 : 0) * Math.min(1, Math.abs(v.speed) / 12);
       for (var i = 0; i < v.wheels.length; i++) v.wheels[i].rotation.x += v.speed * dt / 0.4;
       // Rider visibility (Art Pass 3): inside a car the player mesh hides
@@ -1093,7 +1153,7 @@
       var targetRoll = Math.max(-0.085, Math.min(0.085, -dyaw * Math.abs(v.speed) * 0.45));
       v._roll = (v._roll || 0) + (targetRoll - (v._roll || 0)) * 0.25;
       v.mesh.rotation.y = v.heading;
-      if (v.type !== 'boat') v.mesh.rotation.z = v._roll;
+      if (v.type !== 'boat' && v.type !== 'ferry') v.mesh.rotation.z = v._roll;
       // A traffic motor shows its rider; a parked one does not.
       var rider = v.mesh.userData.rider;
       if (rider) rider.visible = !!v.driver && v.driver !== 'parked';

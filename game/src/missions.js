@@ -178,7 +178,13 @@
           { type: 'kill', text: 'End Dario\u2019s crew',
             say: [['Raka', 'It ends here, Kapten.', 2.6]] },
           { type: 'escape', text: 'Lose the police completely',
-            say: [['Mami Ratna', 'It is over, Raka. The ferry, the strait, the debt — all of it. You are free.', 4.4]] }
+            say: [['Mami Ratna', 'It is over, Raka. The ferry, the strait, the debt — all of it. You are free.', 4.4]] },
+          { type: 'enterVehicle', vehicle: 'ferry', text: 'Board the last ferry at the end of the pier (F)',
+            say: [['Mami Ratna', 'She is moored at the end of the pier, Raka. Take her across to Pulau Seberang — and do not look back.', 4.4]] },
+          { type: 'driveTo', x: 324, z: 452, r: 6, text: 'Sail the ferry to Pulau Seberang',
+            say: [['Raka', 'Open water. A clean horizon. So this is what free feels like.', 3.6]] },
+          { type: 'goTo', x: 348, z: 452, r: 7, needFoot: true, text: 'Step ashore on Pulau Seberang',
+            say: [['Raka', 'Solid ground. No debts, no sirens. Just the strait.', 3.4]] }
         ]
       }
     ];
@@ -322,6 +328,7 @@
       var finishedIndex = this.currentIndex;
       this.active = null;
       this.removeCourier();
+      this.releaseHeistTeam(run);
       if (SH.Combat) SH.Combat.clearEnemies();
       st.stats.missionsDone = Math.max(st.stats.missionsDone, finishedIndex + 1);
       SH.Economy.addCash(run.def.reward);
@@ -460,6 +467,19 @@
           run.eventFlags.boat = boat;
         }
       }
+      // The masked heist team (factory 'timHeist' actors): one watches
+      // the jewellery store, one waits by the boat at the pier. Their
+      // per-step behaviour lives in heistEvents; both are released
+      // when the boat pulls away and at mission completion.
+      if (!run.eventFlags.heistTeam) {
+        var hscene = SH.Main.getScene();
+        if (hscene) {
+          run.eventFlags.heistTeam = [
+            this.spawnHeistMate(54, 206, Math.PI * 0.25),
+            this.spawnHeistMate(64, 384, -Math.PI / 2)
+          ];
+        }
+      }
       if (step.type === 'enterVehicle') {
         run.stepData.boat = run.eventFlags.boat;
         run.stepData.targetVeh = run.eventFlags.boat;
@@ -469,6 +489,67 @@
         run.eventFlags.heistAlarm = true;
         if (SH.Police) SH.Police.forceWanted(3);
         Dialog.play([['Raka', 'Harbour lights behind me. Open water ahead.', 3]]);
+      }
+    },
+
+    // One masked heist-team actor from the shared factory — the same
+    // create + controller pattern as the M2 courier.
+    spawnHeistMate: function (x, z, heading) {
+      var seed = 9100 + ((this._mateSeed = (this._mateSeed || 0) + 1));
+      var built = SH.CharFactory.create('timHeist', seed);
+      var scene = SH.Main.getScene();
+      if (scene) scene.add(built.group);
+      var arch = built.archetype;
+      var ctl = SH.CharAnim.create(built, {
+        start: arch.idle || 'idle', idle: arch.idle, gait: arch.gait, posture: arch.posture
+      });
+      built.group.position.set(x, 0, z);
+      built.group.rotation.y = heading;
+      return { char: built, ctl: ctl, x: x, z: z, heading: heading, done: false };
+    },
+
+    // Heist team behaviour: the store guard falls back to the pier
+    // once the run to the boat starts; when the boat pulls away
+    // (driveTo / escape steps) both men are aboard — their actors are
+    // released back to the factory pool.
+    heistEvents: function (run, dt) {
+      var team = run.eventFlags.heistTeam;
+      if (!team) return;
+      var step = run.def.steps[run.stepIndex];
+      for (var i = 0; i < team.length; i++) {
+        var m = team[i];
+        if (!m || m.done) continue;
+        if (step.type === 'driveTo' || step.type === 'escape') {
+          SH.CharFactory.release(m.char);
+          m.done = true;
+          continue;
+        }
+        var tx = m.x, tz = m.z;
+        if (i === 0 && run.stepIndex >= 1) { tx = 57; tz = 380; } // fall back to the pier
+        var dx = tx - m.x, dz = tz - m.z;
+        var d = Math.hypot(dx, dz);
+        var spd = 0;
+        if (d > 0.7) {
+          spd = 4.6;
+          m.heading = Math.atan2(dx / d, dz / d);
+          m.x += Math.sin(m.heading) * spd * dt;
+          m.z += Math.cos(m.heading) * spd * dt;
+        }
+        m.ctl.setSpeed(spd);
+        m.ctl.update(dt);
+        m.char.group.position.set(m.x, 0, m.z);
+        m.char.group.rotation.y = m.heading;
+      }
+    },
+
+    releaseHeistTeam: function (run) {
+      var team = run && run.eventFlags ? run.eventFlags.heistTeam : null;
+      if (!team) return;
+      for (var i = 0; i < team.length; i++) {
+        if (team[i] && !team[i].done) {
+          SH.CharFactory.release(team[i].char);
+          team[i].done = true;
+        }
       }
     },
 
@@ -507,6 +588,24 @@
     // Last Ferry Out: Dario's car flees around the bay road; stay on him to
     // run him down, then his crew makes a stand at the ferry ramp.
     ferryStepSetup: function (run, step) {
+      // The last ferry herself: a real drivable vessel (the boat's
+      // enter/exit + water rules) moored at the end of the Kencana
+      // pier from the start of the finale — boarding her is the
+      // finale's last leg, not a cutscene.
+      if (!run.eventFlags.ferry) {
+        var fscene = SH.Main.getScene();
+        if (fscene) {
+          var ferry = SH.Vehicles.spawnVehicle(fscene, 'ferry', 0xe8e3d8, 47, 392, 0);
+          ferry.driver = 'parked';
+          ferry.boardRadius = 8;      // boarded from the pier edge
+          ferry.noStealCrime = true;  // Mami's own boat out — not a theft
+          run.eventFlags.ferry = ferry;
+        }
+      }
+      if (step.type === 'enterVehicle') {
+        run.stepData.targetVeh = run.eventFlags.ferry;
+        this.syncObjective(step);
+      }
       if (step.type === 'chaseCar' && !run.eventFlags.darioCar) {
         var scene = SH.Main.getScene();
         if (!scene) return;
@@ -663,10 +762,11 @@
 
       if (run.def.id === 'escort-mami') this.escortEvents(run, dt);
       if (run.def.id === 'double-cross') this.crossEvents(run, dt);
+      if (run.def.id === 'kencana-heist') this.heistEvents(run, dt);
 
       switch (step.type) {
         case 'goTo': {
-          var needFoot = run.def.id === 'escort-mami' && run.stepIndex === run.def.steps.length - 1;
+          var needFoot = step.needFoot === true || (run.def.id === 'escort-mami' && run.stepIndex === run.def.steps.length - 1);
           if (Math.hypot(f.x - step.x, f.z - step.z) < step.r && (!needFoot || !st.driving)) this.advance();
           break;
         }
