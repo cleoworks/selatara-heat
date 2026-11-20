@@ -34,20 +34,25 @@
         var data = JSON.parse(raw);
         if (!data || data.v !== 1) return false;
         var st = SH.State;
-        st.cash = data.cash || 0;
+        // Per-field finite guards: a truncated or hand-edited v1 save
+        // must never poison live state with undefined/NaN — fields that
+        // are missing or non-numeric keep their current/default values.
+        st.cash = Number.isFinite(data.cash) ? data.cash : 0;
         if (data.player) {
-          st.player.x = data.player.x; st.player.z = data.player.z;
-          st.player.health = data.player.health; st.player.armor = data.player.armor || 0;
+          if (Number.isFinite(data.player.x)) st.player.x = data.player.x;
+          if (Number.isFinite(data.player.z)) st.player.z = data.player.z;
+          if (Number.isFinite(data.player.health)) st.player.health = data.player.health;
+          if (Number.isFinite(data.player.armor)) st.player.armor = data.player.armor;
         }
-        if (data.hour !== undefined) SH.Main.setHour(data.hour);
+        if (Number.isFinite(data.hour)) SH.Main.setHour(data.hour);
         if (data.outfit) st.outfit = data.outfit;
         if (data.settings) { st.settings = data.settings; SH.Input.sensitivity = data.settings.sensitivity || 1; SH.Audio.setVolumes(data.settings.volume, data.settings.music, data.settings.sfx); }
-        if (data.stats) st.stats = data.stats;
+        if (data.stats && typeof data.stats === 'object') st.stats = data.stats;
         st.storyComplete = !!data.storyComplete;
         if (data.weapon) st.weapon = data.weapon;
         if (data.owned && SH.Combat) SH.Combat.owned = data.owned;
-        if (data.missionIndex !== undefined && SH.Missions) SH.Missions.currentIndex = data.missionIndex;
-        st.ammo = data.ammo || 0; st.ammoReserve = data.ammoReserve || 0;
+        if (Number.isFinite(data.missionIndex) && SH.Missions) SH.Missions.currentIndex = data.missionIndex;
+        st.ammo = Number.isFinite(data.ammo) ? data.ammo : 0; st.ammoReserve = Number.isFinite(data.ammoReserve) ? data.ammoReserve : 0;
         return true;
       } catch (e) { return false; }
     },

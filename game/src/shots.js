@@ -33,7 +33,11 @@
       z: Math.cos(st.camYaw) * Math.cos(st.camPitch)
     };
     var t = st.driving ? st.vehiclePos : st.player;
-    var dist = st.driving ? 5.4 : 6.4, height = st.driving ? 1.55 : 1.9;
+    // Polish c2: staged driving shots use the same vehicle-scaled
+    // frame as gameplay (Player.driveCamSpec), so a staged truck
+    // reads like the truck actually drives.
+    var dcs = st.driving && SH.Player.driveCamSpec ? SH.Player.driveCamSpec() : { dist: 5.4, height: 1.55 };
+    var dist = st.driving ? (st._shotCamDist || dcs.dist) : 6.4, height = st.driving ? dcs.height : 1.9;
     var cx = t.x + back.x * dist, cz = t.z + back.z * dist;
     if (st.driving) { cx += back.z * 1.7; cz += -back.x * 1.7; }
     SH.Player._camPos = new THREE.Vector3(cx, Math.max(0.7, height + back.y * dist), cz);

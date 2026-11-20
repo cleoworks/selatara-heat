@@ -72,6 +72,11 @@
     // bridge from the Kencana shore (ellipse in world metres) ----
     island: { x: 430, z: 452, rx: 104, rz: 70, name: 'PULAU SEBERANG' },
 
+    // ---- Pulau Karang Kecil: a small western islet reached by a
+    // stone causeway from the Kencana shore (polish c2 map add-on;
+    // ellipse in world metres, causeway runs north from its shore) ----
+    island2: { x: -330, z: 420, rx: 55, rz: 34, name: 'PULAU KARANG KECIL' },
+
     // ---- Player ----
     player: {
       walkSpeed: 4.2, sprintSpeed: 7.4, accel: 26, jumpSpeed: 5.4, gravity: -14,
@@ -85,6 +90,7 @@
       truck: { label: 'Bara Container Truck', maxSpeed: 24, accel: 7, brake: 17, grip: 7, turn: 1.4, length: 7.6, width: 2.5, height: 3.1, mass: 3200, colors: [0xd8d3c8, 0x7a8894, 0xc97a3a] },
       motor: { label: 'Selat Scooter', maxSpeed: 36, accel: 15, brake: 24, grip: 10, turn: 2.8, length: 2.1, width: 0.7, height: 1.15, mass: 220, colors: [0x37b24d, 0xff6b4a, 0x4f7ac9, 0xf2e3c6] },
       boat: { label: 'Kencana Speedboat', maxSpeed: 26, accel: 9, brake: 12, grip: 5, turn: 1.5, length: 6.4, width: 2.3, height: 1.5, mass: 900, colors: [0xffffff, 0xff8c5a] },
+      ferry: { label: 'Feri Selatara', maxSpeed: 19, accel: 4.5, brake: 9, grip: 4, turn: 0.85, length: 15, width: 6.6, height: 4.6, mass: 9000, colors: [0xe8e3d8] },
       police: { label: 'Selatara Patrol', maxSpeed: 40, accel: 14, brake: 24, grip: 10, turn: 2.1, length: 4.5, width: 1.85, height: 1.5, mass: 1250, colors: [0xf2f2f2] }
     },
 

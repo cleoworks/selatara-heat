@@ -171,11 +171,29 @@
     // No shot / close-up / cutscene value feeds this branch:
     // _shotCamDist is driving-only and _shotAimDist aiming-only
     // by construction.
+    // Polish c2: the driving camera scales with the vehicle. One
+    // fixed 5.4 m / 1.55 m frame fits a sedan, but the container
+    // truck (7.6 m long, 3.1 m tall, cargo rear face 3.8 m behind
+    // centre) filled the whole frame with its cargo box the moment
+    // you climbed in (milestone-b observation). For large vehicles
+    // the distance, camera height and look height derive from the
+    // vehicle's own spec; cars and bikes keep the exact old frame.
+    driveCamSpec: function () {
+      var st = SH.State;
+      var spec = (st.vehicle && st.vehicle.spec) || null;
+      if (!spec) return { dist: 5.4, height: 1.55, lookY: 1.15 };
+      return {
+        dist: spec.length > 5.5 ? Math.max(5.4, spec.length * 1.05 + 1.6) : 5.4,
+        height: spec.height > 2 ? Math.max(1.55, spec.height * 0.72) : 1.55,
+        lookY: spec.height > 2 ? Math.max(1.15, spec.height * 0.5) : 1.15
+      };
+    },
     updateCamera: function (dt, camera) {
       var st = SH.State, p = st.player;
       var target = st.driving ? st.vehiclePos : p;
-      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || 5.4) : 6.1);
-      var height = st.driving ? 1.55 : 1.40;
+      var dcs = st.driving ? this.driveCamSpec() : null;
+      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || dcs.dist) : 6.1);
+      var height = st.driving ? dcs.height : 1.40;
       var back = new THREE.Vector3(Math.sin(st.camYaw) * Math.cos(st.camPitch), Math.sin(st.camPitch), Math.cos(st.camYaw) * Math.cos(st.camPitch));
       var cx = target.x + back.x * dist;
       var cy = (target.y || 0) + height + back.y * dist;
@@ -192,7 +210,7 @@
       this._camPos.y += (cy - this._camPos.y) * k;
       this._camPos.z += (cz - this._camPos.z) * k;
       camera.position.copy(this._camPos);
-      var lookY = (target.y || 0) + (st.driving ? 1.15 : 1.40);
+      var lookY = (target.y || 0) + (st.driving ? dcs.lookY : 1.40);
       // FX camera reset: on foot the view axis goes through the
       // chest point itself (no forward lead) — with the 2 m lead
       // the axis flattened to ~8 deg; through the chest it is the

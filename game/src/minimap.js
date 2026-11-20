@@ -93,6 +93,27 @@
     g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx + 12) / WORLD_W * MAP, (isl.rz + 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#4d8a48';
     g.beginPath(); g.ellipse(w2mx(isl.x), w2my(isl.z), (isl.rx - 12) / WORLD_W * MAP, (isl.rz - 12) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+    // Pulau Karang Kecil (c2): same treatment + its stone causeway.
+    var isl2m = SH.Config.island2;
+    if (isl2m) {
+      g.fillStyle = '#d9ba7f';
+      g.beginPath(); g.ellipse(w2mx(isl2m.x), w2my(isl2m.z), (isl2m.rx + 10) / WORLD_W * MAP, (isl2m.rz + 10) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#4d8a48';
+      g.beginPath(); g.ellipse(w2mx(isl2m.x), w2my(isl2m.z), (isl2m.rx - 11) / WORLD_W * MAP, (isl2m.rz - 11) / WORLD_H * MAP, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#b9a888';
+      g.lineWidth = 5 / WORLD_W * MAP;
+      g.beginPath();
+      g.moveTo(w2mx(isl2m.x), w2my(SH.World.coastZ(isl2m.x) - 2));
+      g.lineTo(w2mx(isl2m.x), w2my(isl2m.z - isl2m.rz + 4));
+      g.stroke();
+    }
+    // Karat piers (c2), from the shared CityData the landmarks
+    // registered — the map draws the same decks the world renders.
+    var prs = (SH.CityData && SH.CityData.piers) || [];
+    g.fillStyle = '#8a6f4d';
+    for (i = 0; i < prs.length; i++) {
+      g.fillRect(w2mx(prs[i].x - prs[i].w / 2), w2my(prs[i].z0), w2mx(prs[i].x + prs[i].w / 2) - w2mx(prs[i].x - prs[i].w / 2), w2my(prs[i].z1) - w2my(prs[i].z0));
+    }
 
     // Taman Arus parkland: a rounded rectangle that follows the park's
     // own blocks (Rev 5 — no more green blob), drawn under the road net.
@@ -154,7 +175,7 @@
     }
     for (i = 0; i < parkZones.length; i++) {
       var pz2 = parkZones[i];
-      g.fillStyle = pz2.kind === 'track' ? 'rgba(168,95,54,0.85)' : pz2.kind === 'garden' ? 'rgba(110,160,80,0.55)' : 'rgba(226,214,178,0.9)';
+      g.fillStyle = pz2.color || (pz2.kind === 'track' ? 'rgba(168,95,54,0.85)' : pz2.kind === 'garden' ? 'rgba(110,160,80,0.55)' : 'rgba(226,214,178,0.9)');
       if (pz2.circle) {
         g.beginPath();
         g.ellipse(w2mx(pz2.circle[0]), w2my(pz2.circle[1]), pz2.circle[2] / WORLD_W * MAP, pz2.circle[2] / WORLD_H * MAP, 0, 0, Math.PI * 2);

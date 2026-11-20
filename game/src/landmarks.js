@@ -415,10 +415,23 @@
     dress.push(fanGeo(ellipsePts(FX, FZ, 9.6, 9.6, 0, 22), 0.56, 0x46a8cc));
     part(timber, new THREE.CylinderGeometry(0.85, 1.15, 1.5, 10), 0x8f8574, FX, 1.3, FZ, 0, 0, 0);
     part(timber, new THREE.CylinderGeometry(2.7, 1.9, 0.4, 12), 0x9a8f7c, FX, 2.2, FZ, 0, 0, 0);
-    part(glow, new THREE.ConeGeometry(0.55, 2.6, 8), 0xcfeef7, FX, 3.9, FZ, 0, 0, 0);
-    for (var fj = 0; fj < 6; fj++) {
-      var fa = fj / 6 * Math.PI * 2;
-      part(glow, new THREE.ConeGeometry(0.2, 1.1, 6), 0xbfe6f2, FX + Math.sin(fa) * 1.7, 1.85, FZ + Math.cos(fa) * 1.7, Math.cos(fa) * 0.55, 0, -Math.sin(fa) * 0.55);
+    // Polish c2: the jet is a soft tiered plume now, not one opaque
+    // spike — stacked cones in the DRESS family (white-based, so the
+    // pale aqua vertex colours stay pale; the water material's deep
+    // blue base multiplied them back into a solid blue cone in the
+    // first two pw proofs), plus droplet points in the glow list
+    // where the water falls back.
+    part(dress, new THREE.ConeGeometry(2.2, 0.9, 10), 0xd6eef7, FX, 3.0, FZ, 0, 0, 0);
+    part(dress, new THREE.ConeGeometry(1.45, 1.6, 10), 0xe2f3fa, FX, 3.7, FZ, 0, 0, 0);
+    part(dress, new THREE.ConeGeometry(0.95, 1.5, 10), 0xeef8fc, FX, 4.45, FZ, 0, 0, 0);
+    part(dress, new THREE.ConeGeometry(0.5, 1.3, 8), 0xf8fdff, FX, 5.1, FZ, 0, 0, 0);
+    for (var fd = 0; fd < 10; fd++) {
+      var fda = fd / 10 * Math.PI * 2;
+      part(glow, new THREE.SphereGeometry(0.17, 6, 5), 0xdff4fc, FX + Math.cos(fda) * 2.3, 3.0 + (fd % 3) * 0.22, FZ + Math.sin(fda) * 2.3, 0, 0, 0);
+    }
+    for (var fd2 = 0; fd2 < 6; fd2++) {
+      var fda2 = fd2 / 6 * Math.PI * 2 + 0.4;
+      part(glow, new THREE.SphereGeometry(0.13, 6, 5), 0xeafaff, FX + Math.cos(fda2) * 1.25, 4.15 + (fd2 % 2) * 0.2, FZ + Math.sin(fda2) * 1.25, 0, 0, 0);
     }
     for (var fb = 0; fb < 4; fb++) {
       var ba = fb / 4 * Math.PI * 2 + 0.78;
@@ -848,6 +861,488 @@
     SH.CityData.mono = { pts: mapPts, stations: stations };
   }
 
+  // ---------- Polish c2: district fill rollout -----------------------
+  // The District Pilot finished Taman Arus by filling its plain-grass
+  // blocks with registered zones + merged geometry. This is the same
+  // pattern rolled out to the three emptiest districts (measured on a
+  // 1 m sample grid over the shared city data: Karat 65.1% plain
+  // grass, Bukit Mawar 59.0%, Pantai Kencana 50.2%). Every placement
+  // is tested against the SAME shared data the pilot audit used —
+  // road graph distance, CityData.buildings polygons, colliders,
+  // inland water — so nothing lands on a carriageway or inside a
+  // footprint, and every filled area registers in CityData.parks so
+  // the 2D map and the fill audit see the same city. All geometry
+  // merges into the shared dress/timber/water lists: zero new draw
+  // calls.
+  function inPolyL(p, x, z) {
+    var ins = false;
+    for (var i = 0, j = p.length - 1; i < p.length; j = i++) {
+      var xi = p[i][0], zi = p[i][1], xj = p[j][0], zj = p[j][1];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins;
+    }
+    return ins;
+  }
+  function bboxOf(p) {
+    var x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (var i = 0; i < p.length; i++) { x0 = Math.min(x0, p[i][0]); x1 = Math.max(x1, p[i][0]); z0 = Math.min(z0, p[i][1]); z1 = Math.max(z1, p[i][1]); }
+    return { x0: x0, x1: x1, z0: z0, z1: z1 };
+  }
+  function bldgClear(x, z, pad) {
+    var bs = SH.CityData.buildings;
+    for (var i = 0; i < bs.length; i++) {
+      var bb = bboxOf(bs[i].pts);
+      if (x > bb.x0 - pad && x < bb.x1 + pad && z > bb.z0 - pad && z < bb.z1 + pad) {
+        if (inPolyL(bs[i].pts, x, z)) return false;
+        var dx = Math.max(bb.x0 - x, 0, x - bb.x1), dz = Math.max(bb.z0 - z, 0, z - bb.z1);
+        if (Math.hypot(dx, dz) < pad) return false;
+      }
+    }
+    return true;
+  }
+  function colliderClear(x, z, pad) {
+    var cs = SH.World.colliders;
+    for (var i = 0; i < cs.length; i++) {
+      if (Math.abs(x - cs[i].x) < cs[i].hx + pad && Math.abs(z - cs[i].z) < cs[i].hz + pad) return false;
+    }
+    return true;
+  }
+  // A free-standing spot: on land, dry, clear of roads, buildings,
+  // colliders and already-registered park zones.
+  function spotFree(x, z, roadMin, pad) {
+    if (!SH.World.isLand(x, z) || SH.World.inWater(x, z)) return false;
+    if (distToGraph(x, z) < roadMin) return false;
+    if (!bldgClear(x, z, pad) || !colliderClear(x, z, pad)) return false;
+    var P = SH.CityData.parks || [];
+    for (var i = 0; i < P.length; i++) {
+      var s = P[i];
+      if (s.circle && Math.hypot(x - s.circle[0], z - s.circle[1]) < s.circle[2] + 1) return false;
+      if (s.rect && x > s.rect[0] - 1 && x < s.rect[2] + 1 && z > s.rect[1] - 1 && z < s.rect[3] + 1) return false;
+      if (s.poly && inPolyL(s.poly, x, z)) return false;
+    }
+    return true;
+  }
+  // A ground pad rect: corners + centre must be dry land, off the
+  // carriageways and out of every footprint (pads may slide UNDER a
+  // building's own footprint — that reads as its apron — so building
+  // overlap is allowed, road/water overlap is not).
+  function padFree(x0, z0, x1, z1, roadMin) {
+    var pts = [[x0, z0], [x1, z0], [x0, z1], [x1, z1], [(x0 + x1) / 2, (z0 + z1) / 2], [(x0 + x1) / 2, z0], [(x0 + x1) / 2, z1], [x0, (z0 + z1) / 2], [x1, (z0 + z1) / 2]];
+    for (var i = 0; i < pts.length; i++) {
+      if (!SH.World.isLand(pts[i][0], pts[i][1]) || SH.World.inWater(pts[i][0], pts[i][1])) return false;
+      if (distToGraph(pts[i][0], pts[i][1]) < roadMin) return false;
+    }
+    return true;
+  }
+  function padRect(shared, x0, z0, x1, z1, y, colorFn, kind, mapColor, deferReg) {
+    shared.dress.push(fanGeo([[x0, z0], [x1, z0], [x1, z1], [x0, z1]], y, colorFn));
+    if (deferReg) return { rect: [x0, z0, x1, z1], kind: kind, color: mapColor };
+    var zone = { rect: [x0, z0, x1, z1], kind: kind };
+    if (mapColor) zone.color = mapColor;
+    parkReg(zone);
+    return zone;
+  }
+  // District cells: consecutive avenue/street centrelines clipped to
+  // the district rect (the same grid buildings.js builds on).
+  function districtCells(d) {
+    var cfgW = SH.Config.world;
+    var xs = [d.x0].concat(cfgW.avenuesX.filter(function (v) { return v > d.x0 && v < d.x1; })).concat([d.x1]);
+    var zs = [d.z0].concat(cfgW.streetsZ.filter(function (v) { return v > d.z0 && v < d.z1; })).concat([d.z1]);
+    var cells = [];
+    for (var i = 0; i + 1 < xs.length; i++) for (var j = 0; j + 1 < zs.length; j++) {
+      cells.push({ x0: xs[i], x1: xs[i + 1], z0: zs[j], z1: zs[j + 1] });
+    }
+    return cells;
+  }
+  function districtById(id) {
+    var ds = SH.Config.districts;
+    for (var i = 0; i < ds.length; i++) if (ds[i].id === id) return ds[i];
+    return null;
+  }
+
+  // Tile a cell interior with tested sub-rect pads. Whole-cell pads
+  // fail wherever an alley, diagonal or crescent crosses the cell
+  // (measured: most cells), so each ~25 m tile is tested on its own
+  // 9 points against the graph at roadMin 8.6 (the widest carriageway
+  // + sidewalk edge sits at 8.8; a tile edge may tuck 0.2 m under a
+  // slab's vertical face, never over asphalt). Accepted tiles merge
+  // into the dress list; their zones register immediately unless
+  // deferReg collects them for later (garden furniture is tested
+  // against pre-fill zones, like the pilot's ordering).
+  function tilePads(shared, x0, z0, x1, z1, y, colorFn, kind, mapColor, deferReg, zonesOut) {
+    var tile = 25, nx = Math.max(1, Math.round((x1 - x0) / tile)), nz = Math.max(1, Math.round((z1 - z0) / tile));
+    var accepted = 0, tested = 0;
+    for (var i = 0; i < nx; i++) for (var j = 0; j < nz; j++) {
+      var sx0 = x0 + (x1 - x0) * i / nx, sx1 = x0 + (x1 - x0) * (i + 1) / nx;
+      var sz0 = z0 + (z1 - z0) * j / nz, sz1 = z0 + (z1 - z0) * (j + 1) / nz;
+      tested++;
+      if (!padFree(sx0, sz0, sx1, sz1, 8.6)) continue;
+      accepted++;
+      shared.dress.push(fanGeo([[sx0, sz0], [sx1, sz0], [sx1, sz1], [sx0, sz1]], y, colorFn));
+      var zone = { rect: [sx0, sz0, sx1, sz1], kind: kind };
+      if (mapColor) zone.color = mapColor;
+      if (deferReg) zonesOut.push(zone); else parkReg(zone);
+    }
+    return { accepted: accepted, tested: tested };
+  }
+
+  // --- Pelabuhan Karat: paved working yards -------------------------
+  // Port land is yards, not lawn: cell interiors become gravel or
+  // concrete pads (tone varies per cell, with darker wheel-polish
+  // noise), and drum + crate clusters stand on the yards at tested
+  // spots. Pads carry no colliders — port traffic and missions keep
+  // their yards driveable, exactly like the pilot's car park.
+  function fillKarat(shared, stats) {
+    var d = districtById('karat'), cells = districtCells(d), rng = SH.World.makeRng(8801);
+    cells.forEach(function (c, ci) {
+      var inset = 10.5;
+      var x0 = c.x0 + inset, x1 = c.x1 - inset, z0 = c.z0 + inset, z1 = c.z1 - inset;
+      if (x1 - x0 < 24 || z1 - z0 < 24) return;
+      var gravel = ci % 2 === 0;
+      var base = gravel ? 0x8d8578 : 0x97928a, alt = gravel ? 0x7c7466 : 0x86817a;
+      // Drum + crate clusters FIRST, while the pads are not yet
+      // registered zones (spotFree would reject spots inside them).
+      for (var k = 0; k < 3; k++) {
+        var sx = x0 + 6 + rng() * (x1 - x0 - 12), sz = z0 + 6 + rng() * (z1 - z0 - 12);
+        if (!spotFree(sx, sz, 10.5, 2.2)) continue;
+        stats.karatClusters++;
+        var drumCols = [0xa84a30, 0x4f7ac9, 0x777d84, 0xc97a3a];
+        for (var dr = 0; dr < 4; dr++) {
+          part(shared.timber, new THREE.CylinderGeometry(0.34, 0.34, 0.95, 8), drumCols[(rng() * 4) | 0], sx + (dr % 2) * 0.85, 0.48, sz + ((dr / 2) | 0) * 0.85, 0, 0, 0);
+        }
+        box(shared.timber, 0xa8763e, sx + 2.2, 0.4, sz + 0.4, 1.1, 0.8, 1.1, rng() * 0.6);
+        box(shared.timber, 0x7d5a38, sx + 2.3, 1.15, sz + 0.3, 0.95, 0.7, 0.95, rng() * 0.6);
+      }
+      var t = tilePads(shared, x0, z0, x1, z1, 0.008, function (x, z) {
+        var n = 0.5 + 0.5 * Math.sin(x * 0.31 + z * 0.47) * Math.sin(x * 0.11 - z * 0.23);
+        return lerpHex(base, alt, n * 0.7).getHex();
+      }, 'plaza', gravel ? 'rgba(150,140,120,0.85)' : 'rgba(168,164,152,0.85)');
+      stats.karatTiles += t.accepted; stats.karatTilesTested += t.tested;
+      // Painted container-slot lines across the middle of the cell —
+      // only where the yard tile underneath actually landed (a line
+      // floating on plain grass reads as a glitch, measured in the
+      // pw-karat proof).
+      if (ci % 2 === 0) {
+        var lineLen = Math.min(30, z1 - z0 - 10);
+        for (var lx = x0 + 8; lx < x1 - 6; lx += 13) {
+          if (!padFree(lx - 0.5, (z0 + z1) / 2 - lineLen / 2, lx + 0.5, (z0 + z1) / 2 + lineLen / 2, 8.6)) continue;
+          box(shared.timber, 0xd8d3c8, lx, 0.03, (z0 + z1) / 2, 0.28, 0.03, lineLen);
+        }
+      }
+    });
+  }
+
+  // --- Bukit Mawar: tended villa gardens ----------------------------
+  // The villas already stand in CityData; what read as empty grass
+  // between them becomes tended garden: a mow-striped lawn fan over
+  // each cell interior, hedgerow segments along its edges (gaps fall
+  // where villas/driveways sit), flower beds, park trees, and a pool
+  // deck on some cells.
+  function fillMawar(shared, stats) {
+    var d = districtById('mawar'), cells = districtCells(d), rng = SH.World.makeRng(8802);
+    cells.forEach(function (c, ci) {
+      var inset = 11.5;
+      var x0 = c.x0 + inset, x1 = c.x1 - inset, z0 = c.z0 + inset, z1 = c.z1 - inset;
+      if (x1 - x0 < 30 || z1 - z0 < 30) return;
+      // Furniture FIRST (tested against pre-fill zones), the lawn
+      // tiles register afterwards — same ordering as Karat.
+      // Hedgerows: 12 m segments along the north and south edges,
+      // each segment tested — a villa or driveway in the way leaves
+      // a natural gap instead of a hedge through a wall.
+      [z0 + 1.2, z1 - 1.2].forEach(function (hz) {
+        for (var hx = x0 + 6; hx < x1 - 5; hx += 12.6) {
+          if (!spotFree(hx, hz, 10, 1.6)) continue;
+          stats.mawarHedges++;
+          box(shared.dress, 0x2f6b2f, hx, 0.3, hz, 12, 0.6, 0.9, 0);
+        }
+      });
+      // Flower beds + park trees at tested spots.
+      for (var fb = 0; fb < 2; fb++) {
+        var bx = x0 + 12 + rng() * (x1 - x0 - 24), bz = z0 + 12 + rng() * (z1 - z0 - 24);
+        if (spotFree(bx, bz, 10.5, 6)) { flowerBed(shared, bx, bz, 7 + rng() * 3, 3.4, rng() * 1.2, fb ? 0xff7a9e : 0xe2543e, 0xffd23f); stats.mawarBeds++; }
+      }
+      for (var tr = 0; tr < 3; tr++) {
+        var tx = x0 + 8 + rng() * (x1 - x0 - 16), tz = z0 + 8 + rng() * (z1 - z0 - 16);
+        if (spotFree(tx, tz, 10.5, 3.4)) { parkTree(shared.dress, tx, tz, 0.95 + rng() * 0.4); stats.mawarTrees++; }
+      }
+      // Pool deck on some cells: stone fan + water ellipse + chairs.
+      if (rng() < 0.6) {
+        var px = x0 + 16 + rng() * Math.max(1, (x1 - x0 - 36)), pz = z0 + 14 + rng() * Math.max(1, (z1 - z0 - 30));
+        if (spotFree(px, pz, 10.5, 6)) {
+          stats.mawarPools++;
+          shared.dress.push(fanGeo(ellipsePts(px, pz, 10.5, 7, 0, 18), 0.012, 0xcfc0a4));
+          shared.water.push(fanGeo(ellipsePts(px, pz, 8.2, 4.9, 0, 18), 0.03));
+          parkReg({ rect: [px - 10.5, pz - 7, px + 10.5, pz + 7], kind: 'plaza' });
+          for (var ch = 0; ch < 3; ch++) box(shared.timber, 0xf2ede2, px - 6 + ch * 2.2, 0.25, pz + 5.6, 0.7, 0.5, 1.6, 0.2);
+        }
+      }
+      // Mow-striped lawn tiles over the cell interior. Stripes phase
+      // on ABSOLUTE x so neighbouring tiles read as one lawn.
+      var lawnZones = [];
+      var t = tilePads(shared, x0, z0, x1, z1, 0.008, function (x, z) {
+        var stripe = (Math.floor(x / 6) % 2 === 0) ? 0x57a84f : 0x4c9a45;
+        var n = 0.5 + 0.5 * Math.sin(x * 0.23 + z * 0.31);
+        return lerpHex(stripe, 0x5da24e, n * 0.35).getHex();
+      }, 'garden', null, true, lawnZones);
+      stats.mawarTiles += t.accepted; stats.mawarTilesTested += t.tested;
+      lawnZones.forEach(function (z) { parkReg(z); });
+    });
+  }
+
+  // --- Pantai Kencana: hotel terraces + beach furniture -------------
+  // Hotel drums recorded in CityData get a stone terrace on their sea
+  // side; the sand gets working beach furniture — timber decks,
+  // volleyball courts, lifeguard towers — at tested spots along the
+  // shore curve (the same coastZ every shore consumer reads).
+  function fillKencana(shared, stats) {
+    var d = districtById('kencana');
+    // Hotel terraces were measured impossible: the beachfront drums
+    // stand exactly 26 m north of the coast-road centreline with
+    // radius 11-17 m, leaving ~3 m of clear ground — no terrace fits
+    // without painting the carriageway. The district's real open
+    // ground is the SAND, so the fill works there instead:
+    // promenade deck segments seaward of the boardwalk, a beach
+    // soccer pitch, more courts, and a beach-club cluster.
+    // Promenade decks: 22 m timber platforms on the sand. The first
+    // placement (boardwalk sea side) was measured impossible along
+    // most of the front — the ring road's southern arc runs at
+    // z 246-284, right through that line — so the decks sit further
+    // out on the sand at coastZ-38 and padFree keeps the ones the
+    // shore geometry actually allows.
+    for (var bx = -470; bx <= 470; bx += 30) {
+      if (bx > 38 && bx < 82) continue;                    // ferry pier
+      if (bx > -52 && bx < 30) continue;                   // outflow delta
+      if (bx > -436 && bx < -388) continue;                // lighthouse apron
+      var bz = SH.World.coastZ(bx) - 38;
+      if (!padFree(bx - 11, bz - 2.6, bx + 11, bz + 2.6, 8.6)) continue;
+      stats.kencanaDecks2++;
+      for (var pp2 = 0; pp2 < 6; pp2++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.1, 0.1, 0.7, 5), 0x6e5133, bx - 9 + (pp2 % 3) * 9, 0.08, bz - 2 + ((pp2 / 3) | 0) * 4, 0, 0, 0);
+      }
+      box(shared.timber, 0xa87c50, bx, 0.47, bz, 22, 0.14, 5.2);
+      parkReg({ rect: [bx - 11, bz - 2.6, bx + 11, bz + 2.6], kind: 'plaza', color: 'rgba(216,186,138,0.9)' });
+    }
+    // Beach soccer pitch: paler groomed sand + two goal frames.
+    var sx2 = -120, sz2 = SH.World.coastZ(-120) - 26;
+    if (SH.World.isLand(sx2, sz2) && colliderClear(sx2, sz2, 12)) {
+      stats.kencanaPitch++;
+      shared.dress.push(fanGeo([[sx2 - 18, sz2 - 11], [sx2 + 18, sz2 - 11], [sx2 + 18, sz2 + 11], [sx2 - 18, sz2 + 11]], 0.012, 0xf0deb2));
+      [-17, 17].forEach(function (gx) {
+        part(shared.timber, new THREE.CylinderGeometry(0.07, 0.07, 2.4, 5), 0xf2ede2, sx2 + gx, 1.2, sz2 - 3.6, 0, 0, 0);
+        part(shared.timber, new THREE.CylinderGeometry(0.07, 0.07, 2.4, 5), 0xf2ede2, sx2 + gx, 1.2, sz2 + 3.6, 0, 0, 0);
+        part(shared.timber, new THREE.CylinderGeometry(0.07, 0.07, 7.3, 5), 0xf2ede2, sx2 + gx, 2.4, sz2, Math.PI / 2, 0, 0);
+      });
+      parkReg({ rect: [sx2 - 18, sz2 - 11, sx2 + 18, sz2 + 11], kind: 'plaza', color: 'rgba(240,222,178,0.9)' });
+    }
+    // Beach club cluster west of the delta: deck + umbrellas + loungers.
+    var cx2 = -260, cz2 = SH.World.coastZ(-260) - 34;
+    if (SH.World.isLand(cx2, cz2) && colliderClear(cx2, cz2, 10)) {
+      stats.kencanaClub++;
+      box(shared.timber, 0xa87c50, cx2, 0.4, cz2, 20, 0.16, 9);
+      var clubCols = [0xff4fa3, 0x37e0ff, 0xffd23f, 0xff8c5a, 0x9fd8c0];
+      for (var cu = 0; cu < 5; cu++) {
+        var ux = cx2 - 8 + cu * 4, uz = cz2 + (cu % 2) * 3 - 1.5;
+        part(shared.dress, new THREE.ConeGeometry(2.1, 1.0, 8), clubCols[cu], ux, 2.5, uz, 0, 0, 0);
+        part(shared.timber, new THREE.CylinderGeometry(0.05, 0.05, 2.0, 5), 0x6e5133, ux, 1.45, uz, 0, 0, 0);
+        box(shared.timber, 0xf2ede2, ux + 0.9, 0.62, uz, 0.6, 0.22, 1.7, 0.15);
+      }
+      parkReg({ rect: [cx2 - 10, cz2 - 4.5, cx2 + 10, cz2 + 4.5], kind: 'plaza', color: 'rgba(216,186,138,0.9)' });
+    }
+    // The boardwalk itself: a built timber promenade rendered by
+    // roads.js along beachRoadZ+17 — register its band so the map
+    // and the fill audit see the surface that is actually there
+    // (same class as the pilot registering the running track).
+    var bwN = [], bwS = [];
+    for (var wx = -480; wx <= 480; wx += 40) {
+      bwN.push([wx, SH.World.beachRoadZ(wx) + 14.4]);
+      bwS.push([wx, SH.World.beachRoadZ(wx) + 19.6]);
+    }
+    parkReg({ poly: bwN.concat(bwS.reverse()), kind: 'plaza', color: 'rgba(196,164,116,0.9)' });
+    stats.kencanaBoardwalk = 1;
+    // Timber beach decks on the sand.
+    var deckCols = [0xff4fa3, 0xffd23f, 0x37e0ff, 0xff8c5a, 0x9fd8c0];
+    [-420, -250, 150, 320, 460].forEach(function (dx, di) {
+      var dz = SH.World.coastZ(dx) - 30;
+      if (!SH.World.isLand(dx, dz) || !colliderClear(dx, dz, 8)) return;
+      stats.kencanaDecks++;
+      for (var pp = 0; pp < 6; pp++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.11, 0.11, 0.8, 5), 0x6e5133, dx - 6 + (pp % 3) * 6, 0.1, dz - 2.6 + ((pp / 3) | 0) * 5.2, 0, 0, 0);
+      }
+      box(shared.timber, 0xa87c50, dx, 0.52, dz, 15, 0.18, 7);
+      for (var um = 0; um < 3; um++) {
+        part(shared.dress, new THREE.ConeGeometry(2.3, 1.1, 8), deckCols[(di + um) % deckCols.length], dx - 4.5 + um * 4.5, 2.6, dz, 0, 0, 0);
+        part(shared.timber, new THREE.CylinderGeometry(0.05, 0.05, 2.1, 5), 0x6e5133, dx - 4.5 + um * 4.5, 1.55, dz, 0, 0, 0);
+      }
+      parkReg({ rect: [dx - 7.5, dz - 3.5, dx + 7.5, dz + 3.5], kind: 'plaza', color: 'rgba(216,186,138,0.9)' });
+    });
+    // Volleyball courts: paler sand + posts + net.
+    [-320, 90, 380, -180, 200, -40].forEach(function (vx) {
+      var vz = SH.World.coastZ(vx) - 20;
+      if (!SH.World.isLand(vx, vz)) return;
+      stats.kencanaCourts++;
+      shared.dress.push(fanGeo([[vx - 8, vz - 4.5], [vx + 8, vz - 4.5], [vx + 8, vz + 4.5], [vx - 8, vz + 4.5]], 0.012, 0xeed9a8));
+      part(shared.timber, new THREE.CylinderGeometry(0.06, 0.06, 2.4, 5), 0x6e5133, vx - 4.5, 1.2, vz, 0, 0, 0);
+      part(shared.timber, new THREE.CylinderGeometry(0.06, 0.06, 2.4, 5), 0x6e5133, vx + 4.5, 1.2, vz, 0, 0, 0);
+      box(shared.dress, 0x2c3136, vx, 1.75, vz, 9, 1.0, 0.05, 0);
+      parkReg({ rect: [vx - 8, vz - 4.5, vx + 8, vz + 4.5], kind: 'plaza', color: 'rgba(238,217,168,0.9)' });
+    });
+    // Lifeguard towers: legs, platform, walled cabin, cone roof.
+    [-460, -60, 260].forEach(function (lx) {
+      var lz = SH.World.coastZ(lx) - 16;
+      if (!SH.World.isLand(lx, lz) || !colliderClear(lx, lz, 2)) return;
+      stats.kencanaTowers++;
+      [[-0.95, -0.95], [0.95, -0.95], [-0.95, 0.95], [0.95, 0.95]].forEach(function (lp) {
+        box(shared.timber, 0x7d5a38, lx + lp[0], 1.6, lz + lp[1], 0.18, 3.2, 0.18, 0);
+      });
+      box(shared.timber, 0xa87c50, lx, 3.3, lz, 2.7, 0.16, 2.7, 0);
+      box(shared.timber, 0xf2ede2, lx, 4.15, lz + 1.05, 2.4, 1.5, 0.18, 0);
+      box(shared.timber, 0xf2ede2, lx - 1.11, 4.15, lz, 0.18, 1.5, 2.3, 0);
+      box(shared.timber, 0xf2ede2, lx + 1.11, 4.15, lz, 0.18, 1.5, 2.3, 0);
+      part(shared.timber, new THREE.ConeGeometry(2.1, 1.0, 8), 0xd8402f, lx, 5.4, lz, 0, 0, 0);
+      for (var rg = 0; rg < 4; rg++) box(shared.timber, 0x6e5133, lx - 0.5 + rg * 0.33, 0.8 + rg * 0.62, lz - 1.6, 0.08, 0.08, 1.1, 0);
+      SH.World.colliders.push({ x: lx, z: lz, hx: 1.4, hz: 1.4 });
+      parkReg({ rect: [lx - 2.2, lz - 2.2, lx + 2.2, lz + 2.2], kind: 'plaza', color: 'rgba(216,186,138,0.9)' });
+    });
+  }
+
+  function buildDistrictFill(shared) {
+    var stats = {
+      karatTiles: 0, karatTilesTested: 0, karatClusters: 0,
+      mawarTiles: 0, mawarTilesTested: 0, mawarHedges: 0, mawarBeds: 0, mawarTrees: 0, mawarPools: 0,
+      kencanaTerraces: 0, kencanaDecks: 0, kencanaCourts: 0, kencanaTowers: 0, kencanaDecks2: 0, kencanaPitch: 0, kencanaClub: 0
+    };
+    fillKarat(shared, stats);
+    fillMawar(shared, stats);
+    fillKencana(shared, stats);
+    SH.LandmarksFillStats = stats;
+  }
+
+  // ---------- Polish c2: parked map add-ons --------------------------
+  // The outer land and the bay get the features the map comparison
+  // parked in November: a farm patchwork on the northern arc, a
+  // second small islet with a stone causeway west of the bay, and
+  // working piers jutting from the Karat shore. The mainland shallow
+  // gradient already exists (roads.js shore ribbon grades pale ->
+  // deep along coastZ, and the map strokes a shallow band); here it
+  // is extended around the new islet and under the new piers.
+  function buildMapAddons(shared) {
+    var stats = { fields: 0, piers: 0, islet: 0, barn: 0 };
+    var rng = SH.World.makeRng(8803);
+    // --- Farm patchwork: two arcs of field rects north of the ring,
+    // each tested against the land ellipse and the graph (the ring
+    // runs along z -460..-478 up there). Crop tones alternate per
+    // field; rows are drawn as stripes so the patchwork reads from
+    // the air and on the 2D map (zones carry their own colour).
+    var tones = [
+      { c: 0xd9b84a, a: 0xc7a53e, map: 'rgba(217,184,74,0.85)' },
+      { c: 0x77b255, a: 0x68a347, map: 'rgba(119,178,85,0.85)' },
+      { c: 0x9c7248, a: 0x8a623e, map: 'rgba(156,114,72,0.85)' },
+      { c: 0x5f9e4d, a: 0x529442, map: 'rgba(95,158,77,0.85)' },
+      { c: 0xc2a15a, a: 0xb08e4c, map: 'rgba(194,161,90,0.85)' }
+    ];
+    var fieldRows = [[-514, -490], [-494, -470]];
+    var barnField = null;
+    fieldRows.forEach(function (row, ri) {
+      for (var fx = -560; fx < 560; fx += 62) {
+        var fcx = fx + 28, fcz = (row[0] + row[1]) / 2;
+        if (!SH.World.isLand(fcx, fcz)) continue;
+        if (!padFree(fx, row[0], fx + 56, row[1], 10.5)) continue;
+        var tone = tones[(stats.fields + ri) % tones.length];
+        stats.fields++;
+        if (!barnField && fcx > 0 && fcx < 130) barnField = { x: fcx, z: fcz };
+        (function (tone2, x0, z0) {
+          shared.dress.push(fanGeo([[x0, z0], [x0 + 56, z0], [x0 + 56, z0 + (row[1] - row[0])], [x0, z0 + (row[1] - row[0])]], 0.006, function (x, z) {
+            var stripe = (Math.floor((z - z0) / 3) % 2 === 0) ? tone2.c : tone2.a;
+            var n = 0.5 + 0.5 * Math.sin(x * 0.4 + z * 0.9);
+            return lerpHex(stripe, tone2.c, n * 0.2).getHex();
+          }));
+        })(tone, fx, row[0]);
+        parkReg({ rect: [fx, row[0], fx + 56, row[1]], kind: 'farm', color: tone.map });
+      }
+    });
+    // One farmstead on an accepted field: barn + silo + hay bales.
+    if (barnField) {
+      stats.barn = 1;
+      var bx2 = barnField.x - 14, bz2 = barnField.z;
+      box(shared.timber, 0x9c4a34, bx2, 2.5, bz2, 11, 5, 7.5);
+      box(shared.timber, 0x6e3427, bx2, 5.6, bz2, 12, 1.1, 4.6, 0);
+      box(shared.timber, 0xf2ede2, bx2, 1.6, bz2 + 3.78, 3.2, 3.2, 0.1, 0);
+      part(shared.timber, new THREE.CylinderGeometry(2.1, 2.1, 9.5, 10), 0xb9bec4, bx2 + 10, 4.75, bz2 - 1, 0, 0, 0);
+      part(shared.timber, new THREE.CylinderGeometry(0.2, 2.2, 1.6, 10), 0x8f959b, bx2 + 10, 10.3, bz2 - 1, 0, 0, 0);
+      for (var hb = 0; hb < 3; hb++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.75, 0.75, 1.1, 9), 0xd9b84a, bx2 + 3 + hb * 2.4, 0.75, bz2 + 6.5, Math.PI / 2, 0, rng() * 1.2);
+      }
+      SH.World.colliders.push({ x: bx2, z: bz2, hx: 5.5, hz: 3.8 });
+      SH.World.colliders.push({ x: bx2 + 10, z: bz2 - 1, hx: 2.1, hz: 2.1 });
+    }
+    // --- Pulau Karang Kecil: shallow apron, sand rim, grass heart,
+    // foam ring, stone causeway to the Kencana shore, a hut and a
+    // small jetty. Mirrors the Pulau Seberang treatment (buildings.js
+    // discs) in the merged landmark lists.
+    var isl = SH.Config.island2;
+    if (isl) {
+      stats.islet = 1;
+      shared.water.push(fanGeo(ellipsePts(isl.x, isl.z, isl.rx + 26, isl.rz + 20, 0, 22), -0.3, function (x, z) {
+        var dd = Math.hypot((x - isl.x) / (isl.rx + 26), (z - isl.z) / (isl.rz + 20));
+        return lerpHex(0x9fd4d8, 0x3f8fb5, Math.min(1, dd * 1.15)).getHex();
+      }));
+      shared.dress.push(fanGeo(ellipsePts(isl.x, isl.z, isl.rx + 10, isl.rz + 10, 0, 22), -0.02, function (x, z) {
+        var n = 0.5 + 0.5 * Math.sin(x * 0.33 + z * 0.51);
+        return lerpHex(0xe3c491, 0xd9ba7f, n * 0.5).getHex();
+      }));
+      shared.dress.push(fanGeo(ellipsePts(isl.x, isl.z, isl.rx - 11, isl.rz - 11, 0, 22), -0.01, function (x, z) {
+        var n = 0.5 + 0.5 * Math.sin(x * 0.21 - z * 0.37);
+        return lerpHex(0x55a34f, 0x4c9a45, n * 0.5).getHex();
+      }));
+      shared.water.push(ringGeo(ellipsePts(isl.x, isl.z, isl.rx + 11.5, isl.rz + 11.5, 0, 22), ellipsePts(isl.x, isl.z, isl.rx + 8.5, isl.rz + 8.5, 0, 22), 0.004, 0xf4f1e4));
+      // Causeway: a stone ribbon from the shore to the islet's north
+      // edge, bollards along both sides.
+      var cwZ0 = SH.World.coastZ(isl.x) - 2, cwZ1 = isl.z - isl.rz + 4;
+      shared.dress.push(stripGeo([[isl.x, cwZ0], [isl.x, cwZ1]], 10, 0.06, function (x, z) {
+        var n = 0.5 + 0.5 * Math.sin(x * 0.8 + z * 0.35);
+        return lerpHex(0xa89a80, 0x978a70, n * 0.6).getHex();
+      }));
+      for (var cb = 0; cb < 8; cb++) {
+        var cbz = cwZ0 + 6 + cb * ((cwZ1 - cwZ0 - 12) / 7);
+        box(shared.timber, 0x6e5133, isl.x - 5.4, 0.55, cbz, 0.32, 1.1, 0.32, 0);
+        box(shared.timber, 0x6e5133, isl.x + 5.4, 0.55, cbz, 0.32, 1.1, 0.32, 0);
+      }
+      // Hut + palms + jetty.
+      box(shared.timber, 0xa8763e, isl.x + 12, 1.4, isl.z + 8, 5.4, 2.8, 4.4, 0.3);
+      part(shared.timber, new THREE.ConeGeometry(4.4, 1.8, 4), 0x7d5a38, isl.x + 12, 3.7, isl.z + 8, 0, 0.3 + Math.PI / 4, 0);
+      SH.World.colliders.push({ x: isl.x + 12, z: isl.z + 8, hx: 2.9, hz: 2.5 });
+      miniPalm(shared.timber, shared.dress, isl.x - 18, isl.z - 6, 1.0, 0.7);
+      miniPalm(shared.timber, shared.dress, isl.x - 30, isl.z + 12, 0.9, 2.4);
+      miniPalm(shared.timber, shared.dress, isl.x + 26, isl.z - 12, 1.05, 4.4);
+      box(shared.timber, 0xa87c50, isl.x, 0.5, isl.z + isl.rz + 6, 7, 0.25, 10);
+      for (var jp = 0; jp < 4; jp++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.11, 0.11, 1.3, 5), 0x6e5133, isl.x - 3 + (jp % 2) * 6, 0.0, isl.z + isl.rz + 2.5 + ((jp / 2) | 0) * 7, 0, 0, 0);
+      }
+    }
+    // --- Karat piers: three working piers jutting south from the
+    // port shore into the bay, over a pale shallow apron. Registered
+    // in CityData.piers so the 2D map draws the same geometry.
+    SH.CityData.piers = [];
+    [380, 470, 555].forEach(function (px) {
+      var pz0 = SH.World.coastZ(px) - 4, pz1 = pz0 + 30, pzc = (pz0 + pz1) / 2;
+      shared.water.push(fanGeo([[px - 9, pz0 - 5], [px + 9, pz0 - 5], [px + 9, pz1 + 7], [px - 9, pz1 + 7]], -0.28, function (x, z) {
+        var dd = Math.abs(x - px) / 9;
+        return lerpHex(0x8fc8d4, 0x3f8fb5, Math.min(1, dd * 1.1)).getHex();
+      }));
+      box(shared.timber, 0x8a6f4d, px, 0.95, pzc, 8, 0.35, 34);
+      for (var pp3 = 0; pp3 < 8; pp3++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.15, 0.15, 1.9, 6), 0x6e5133, px - 3.6 + (pp3 % 2) * 7.2, 0.05, pz0 + 2 + ((pp3 / 2) | 0) * 9.5, 0, 0, 0);
+      }
+      box(shared.timber, 0xa8763e, px - 1.8, 1.55, pz1 - 3, 1.6, 0.85, 1.6, 0.4);
+      box(shared.timber, 0x4f7ac9, px + 1.6, 1.5, pz1 - 4.5, 1.4, 0.75, 1.4, -0.3);
+      for (var bo = 0; bo < 4; bo++) {
+        part(shared.timber, new THREE.CylinderGeometry(0.16, 0.2, 0.55, 6), 0x3c4147, px - 3.4 + (bo % 2) * 6.8, 1.4, pz0 + 5 + ((bo / 2) | 0) * 16, 0, 0, 0);
+      }
+      SH.CityData.piers.push({ x: px, z0: pz0, z1: pz1, w: 8 });
+      stats.piers++;
+    });
+    SH.MapAddonStats = stats;
+  }
+
   var Landmarks = {
     build: function (scene) {
       W = SH.World.waterData;
@@ -859,6 +1354,8 @@
       buildMercusuar(scene, shared);
       buildMenara(scene, shared);
       buildMonorel(scene, shared);
+      buildDistrictFill(shared);
+      buildMapAddons(shared);
       var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
       waterMesh.name = 'w1-water';
       scene.add(waterMesh);

@@ -119,6 +119,13 @@
     if (x > 53 && x < 67 && z > 240 && z < 396) return true; // ferry pier
     if (onIsland(x, z, 2)) return true;
     for (var i = 0; i < bridgeSegs.length; i++) if (distToSeg(x, z, bridgeSegs[i]) < 8) return true;
+    // Polish c2: Pulau Karang Kecil + its stone causeway.
+    var isl2 = SH.Config.island2;
+    if (isl2) {
+      var e2x = (x - isl2.x) / (isl2.rx + 2), e2z = (z - isl2.z) / (isl2.rz + 2);
+      if (e2x * e2x + e2z * e2z < 1) return true;
+      if (Math.abs(x - isl2.x) < 5.5 && z > 284 && z < isl2.z - isl2.rz + 6) return true; // causeway
+    }
     return false;
   }
 

@@ -728,17 +728,59 @@
       }
 
       // ---- Night-market tents in Ruko Senja ----
+      // Polish c2: the canopy is a real tent now, not a bare cone —
+      // a four-sided canvas roof whose edges SAG between the corners
+      // (edge midpoints hang 0.07 lower), a scalloped valance around
+      // the rim, an underside ceiling so the open sides read from
+      // street level, and a finial spike at the apex. Built once as
+      // unit geometry (half-width 0.5, rim at y=0, apex at y=1) and
+      // instanced on the same placements the cone used; corner +
+      // centre poles and a stocked interior table complete the stall
+      // (see the stall loop below).
+      function tentCanopyGeo() {
+        var A = [0, 1, 0], U = [0, 0.70, 0], F = [0, 1.17, 0];
+        var C = [[-0.5, 0, -0.5], [0.5, 0, -0.5], [0.5, 0, 0.5], [-0.5, 0, 0.5]];
+        var M = [[0, -0.07, -0.5], [0.5, -0.07, 0], [0, -0.07, 0.5], [-0.5, -0.07, 0]];
+        var V = [[-0.5, -0.17, -0.5], [0.5, -0.17, -0.5], [0.5, -0.17, 0.5], [-0.5, -0.17, 0.5]];
+        var Vm = [[0, -0.22, -0.5], [0.5, -0.22, 0], [0, -0.22, 0.5], [-0.5, -0.22, 0]];
+        var B = [[0.05, 0.97, 0], [0, 0.97, 0.05], [-0.05, 0.97, 0], [0, 0.97, -0.05]];
+        var pos = [];
+        function tri(a, b, c) { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+        for (var s = 0; s < 4; s++) {
+          var s2 = (s + 1) % 4;
+          tri(A, C[s], M[s]); tri(A, M[s], C[s2]);                 // sagging roof panels
+          tri(C[s], C[s2], Vm[s]); tri(C[s], Vm[s], V[s]); tri(C[s2], V[s2], Vm[s]); // valance
+          tri(U, C[s2], C[s]);                                    // underside ceiling
+          tri(F, B[s], B[s2]);                                    // finial spike
+        }
+        var g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.computeVertexNormals();
+        return g;
+      }
       var tents = [];
       var tentColors = [0xff4fa3, 0xffd23f, 0x37e0ff, 0xff8c5a, 0x9fd8c0];
       for (pi = 0; pi < 26; pi++) {
         var mx = -352 + (pi % 13) * 7.6, mz = 84 + ((pi / 13) | 0) * 16;
-        tents.push({ x: mx, y: 2.6, z: mz, sx: 6.4, sy: 2.8, sz: 6.4, color: tentColors[(rng() * tentColors.length) | 0] });
+        tents.push({ x: mx, y: 1.85, z: mz, sx: 6.4, sy: 2.15, sz: 6.4, color: tentColors[(rng() * tentColors.length) | 0] });
       }
       // The tent canvas carries a warm emissive that setNightGlow raises
       // after dark, so the stalls read as lit from inside.
-      var tentMat = new THREE.MeshLambertMaterial({ flatShading: true, emissive: 0xff8a3a, emissiveIntensity: 0 });
+      var tentMat = new THREE.MeshLambertMaterial({ flatShading: true, emissive: 0xff8a3a, emissiveIntensity: 0, side: THREE.DoubleSide });
       this.tentMaterial = tentMat;
-      makeInstanced(new THREE.ConeGeometry(0.72, 1, 4), tentMat, tents, scene, false);
+      makeInstanced(tentCanopyGeo(), tentMat, tents, scene, false);
+      // Tent poles: four corners + one centre pole per tent, a single
+      // instanced mesh — the structure that makes the canopy read as
+      // a pitched tent instead of a floating pyramid.
+      var tentPoles = [];
+      for (pi = 0; pi < 26; pi++) {
+        var px2 = -352 + (pi % 13) * 7.6, pz2 = 84 + ((pi / 13) | 0) * 16;
+        [[-2.95, -2.95], [2.95, -2.95], [2.95, 2.95], [-2.95, 2.95]].forEach(function (pc) {
+          tentPoles.push({ x: px2 + pc[0], y: 0.925, z: pz2 + pc[1], sx: 1, sy: 1.85, sz: 1 });
+        });
+        tentPoles.push({ x: px2, y: 1.0, z: pz2, sx: 1.3, sy: 2.0, sz: 1.3 });
+      }
+      makeInstanced(new THREE.CylinderGeometry(0.045, 0.045, 1, 5), new THREE.MeshLambertMaterial({ color: 0x6e5133 }), tentPoles, scene, false);
 
       // Rev 6: the market stands on a packed-earth pad (not lawn), and
       // every tent is a working stall — a counter facing the walkway,
@@ -753,6 +795,12 @@
         var smx = -352 + (pi % 13) * 7.6, smz = 84 + ((pi / 13) | 0) * 16;
         var faceDir = smz === 84 ? 1 : -1; // counters face the z=92 walkway
         counters.push({ x: smx, y: 0.45, z: smz + faceDir * 5.1, sx: 3.4, sy: 0.9, sz: 0.95, color: 0x8a6844 });
+        // Polish c2: a stocked table INSIDE the tent too, visible
+        // through the open sides between the poles.
+        counters.push({ x: smx, y: 0.42, z: smz, sx: 3.8, sy: 0.84, sz: 1.3, color: 0x8a6844 });
+        for (var gi2 = 0; gi2 < 3; gi2++) {
+          stallGoods.push({ x: smx - 1.2 + gi2 * 1.2, y: 1.0, z: smz, sx: 0.36, sy: 0.32, sz: 0.36, color: goodsColors[(rng() * goodsColors.length) | 0] });
+        }
         for (var gi = 0; gi < 3; gi++) {
           stallGoods.push({ x: smx - 1.1 + gi * 1.1, y: 1.06, z: smz + faceDir * 5.1, sx: 0.34, sy: 0.3, sz: 0.34, color: goodsColors[(rng() * goodsColors.length) | 0] });
         }
@@ -791,6 +839,9 @@
       bulbSpan(-306.4, 84, -306.4, 100);
       bulbSpan(-276.0, 84, -276.0, 100);
       for (var bfi = 0; bfi < 12; bfi++) bulbSpan(-352 + bfi * 7.6, 92, -352 + (bfi + 1) * 7.6, 92);
+      // Polish c2: one bulb hangs under each tent apex, so at night
+      // every stall glows from inside its own canopy.
+      for (pi = 0; pi < 26; pi++) bulbPts.push({ x: -352 + (pi % 13) * 7.6, y: 3.05, z: 84 + ((pi / 13) | 0) * 16 });
       var bulbMat = new THREE.MeshBasicMaterial({ color: 0x665533 });
       this.bulbMaterial = bulbMat;
       this.bulbOffColor = new THREE.Color(0x665533);
