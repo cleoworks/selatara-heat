@@ -93,26 +93,59 @@
       st.mode = 'playing';
 
       if (name === 'cover') {
-        // Golden-hour westbound drive on the Pantai Kencana beachfront
-        // street, which now bends with the coast (z from beachRoadZ):
-        // hotels and palms on the right, open sea on the left, and the
-        // sun sprite visible ahead over the water.
-        SH.Main.setHour(17.85);
-        var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0xff4fa3, -30, SH.World.beachRoadZ(-30), -Math.PI / 2);
+        // RESTAGE (2026-11-20): the cover is the pursuit, not the cruise.
+        // Grammar taken from the current #1 cover (composition only —
+        // every asset, name and HUD element is ours): low chase camera
+        // behind the player's sport car at speed, TWO police units
+        // flanking with lightbars lit, the air unit hanging ahead in
+        // the top of the frame, wanted stars + police panel + mission
+        // panel + dialogue + radio all live, and the low sun at the
+        // end of the road as backlight. Staged entirely through the
+        // real systems: Police.stageChase() for the pursuit, with the
+        // heli orbit and the roadblock re-aimed for the capture moment
+        // (game time runs ~1 s of physics inside the render window, so
+        // everything is placed for where the car IS at capture, not
+        // where it starts).
+        SH.Main.setHour(17.55);
+        var car = SH.Vehicles.spawnVehicle(scene, 'sport', 0xff4fa3, 60, SH.World.beachRoadZ(60), -Math.PI / 2);
+        car.speed = 22; // already at speed at capture: the readout must say so (79 km/h)
         enterClean(car);
-        st._shotCruise = { speed: 15 };
-        st.camYaw = Math.PI / 2; st.camPitch = 0.04;
+        st._shotCruise = { speed: 22 };
+        st._shotCamDist = 9.0; // wider than cruise framing: flankers + lightbars fit
+        st.camYaw = Math.PI / 2; st.camPitch = 0.03;
         snapCamera();
         st.cash = 4650;
-        st.objective = { title: 'FIRST RUN', text: 'Deliver the package to Butik Kencana', x: 60, z: 178 };
+        st.objective = { title: 'PORT OF LIES', text: 'Lose the police completely', x: 60, z: 232 };
+        if (SH.Police) {
+          SH.Police.stageChase();
+          // Air unit: park the orbit centre ~75 m ahead of the car and
+          // freeze lastKnown on the same point so it does not drift
+          // back; the frozen orbit angle then hangs the heli a further
+          // ~31 m west and 15 m south — ~115 m from the camera, where
+          // the whole aircraft (not just its searchlight cone) fits
+          // the upper frame as a distant silhouette over the road's
+          // end. (At ~70 m only the cone crossed the frame and read
+          // as a floating beam — measured on the v2 render.)
+          if (SH.Police.heli) {
+            SH.Police.heli.cx = -15; SH.Police.heli.cz = SH.World.beachRoadZ(-15);
+            SH.Police.heli.angle = 2.7;
+          }
+          SH.Police.lastKnown.x = -15; SH.Police.lastKnown.z = SH.World.beachRoadZ(-15);
+          // Roadblock: stageChase parks it 60 m ahead of the START;
+          // push it a little further west so it is still ahead (and
+          // readable mid-frame) at capture.
+          var blk = SH.Police.blocks || [];
+          for (var bi = 0; bi < blk.length; bi++) {
+            blk[bi].veh.x -= 25;
+            SH.Vehicles.syncMesh(blk[bi].veh);
+          }
+        }
         stageTraffic([
-          { from: [0, 228], to: [-120, 228], t: 0.42 },
-          { from: [-120, 228], to: [0, 228], t: 0.3 },
-          { from: [-240, 228], to: [-120, 228], t: 0.75 },
-          { from: [120, 228], to: [0, 228], t: 0.55 }
+          { from: [-120, 228], to: [-240, 228], t: 0.5 },
+          { from: [120, 228], to: [240, 228], t: 0.4 }
         ]);
-        stagePeds([[-52, 241], [-18, 224], [8, 246], [-84, 221]]);
-        if (SH.HUD) SH.HUD.subtitle('Mami Ratna', 'Beach road, Raka. Sunset is pretty — the debt is not. Move.', 30);
+        stagePeds([[36, 250], [88, 250], [12, 252], [104, 222]]);
+        if (SH.HUD) SH.HUD.subtitle('Mami Ratna', 'Half the force is behind you, Raka. Do NOT stop for the sunset.', 30);
       } else if (name === 'drive') {
         // Northbound through Pelita Heights at golden hour, towers both sides.
         SH.Main.setHour(17.9);
@@ -134,16 +167,30 @@
       } else if (name === 'chase') {
         // Four-star pursuit on the Pelita avenue at dusk: patrol cars behind,
         // roadblock ahead, helicopter above, police panel on the HUD.
+        // RESTAGE (2026-11-20): same pursuit grammar as the new cover,
+        // different scene + tighter camera for contact-sheet variety —
+        // the car starts at speed (readout ~72 km/h, was 30), the
+        // framing closes in (dist 7), and the air unit is parked ahead
+        // over the avenue so its silhouette + searchlight cross the
+        // upper frame instead of orbiting out of shot.
         SH.Main.setHour(18.1);
         var car3 = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xe83a3a, -120, -118, Math.PI);
+        car3.speed = 20;
         enterClean(car3);
-        st._shotCruise = { speed: 16 };
-        st._shotCamDist = 8.5; // wider chase framing: staged units + lightbars fit
+        st._shotCruise = { speed: 20 };
+        st._shotCamDist = 7; // tighter than the cover: the avenue chase is the intense one
         st.camYaw = 0; st.camPitch = 0.05;
         snapCamera();
         st.cash = 3120;
         st.objective = { title: 'PORT OF LIES', text: 'Lose the police completely', x: -120, z: -118 };
-        if (SH.Police) SH.Police.stageChase();
+        if (SH.Police) {
+          SH.Police.stageChase();
+          if (SH.Police.heli) {
+            SH.Police.heli.cx = -120; SH.Police.heli.cz = -193;
+            SH.Police.heli.angle = -1.05;
+          }
+          SH.Police.lastKnown.x = -120; SH.Police.lastKnown.z = -193;
+        }
         // Traffic stays OUT of the player's avenue: one car far ahead in the
         // same avenue, one crossing on the next avenue — nothing can stack
         // onto the staged pursuit formation.
