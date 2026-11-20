@@ -26,6 +26,7 @@
       el.title = byId('title-screen'); el.pause = byId('pause-menu');
       el.map = byId('map-screen'); el.settings = byId('settings-panel');
       el.controls = byId('controls-panel');
+      el.stats = byId('pause-stats');
       el.btnContinue = byId('btn-continue');
 
       byId('btn-new').addEventListener('click', function () { SH.Audio.init(); SH.Audio.resume(); SH.Audio.click(); Menus.newGame(); });
@@ -35,7 +36,7 @@
       byId('btn-resume').addEventListener('click', function () { Menus.resume(); });
       byId('btn-openmap').addEventListener('click', function () { Menus.openMap(); });
       byId('btn-save').addEventListener('click', function () {
-        if (SH.Save.saveGame()) SH.HUD.notify('Game saved');
+        if (SH.Save.saveGame()) { SH.HUD.notify('Game saved'); Menus.refreshStats(); }
         else SH.HUD.notify('Save unavailable in this browser');
       });
       byId('btn-quit-title').addEventListener('click', function () { SH.State.mode = 'title'; Menus.syncMode(); });
@@ -111,6 +112,68 @@
       el.controls.classList.toggle('hidden', which !== 'controls');
     },
 
+    // Career panel inside the pause menu (v2: hero tiles + taxonomy).
+    // Every value is a live field the game really tracks — cash,
+    // stats.missionsDone / carsStolen, the mission list + currentIndex,
+    // Combat.owned, Config.weapons labels, Config.shops prices,
+    // State.time (real accumulated play seconds) and Save.hasSave().
+    // The only derived number is STORY COMPLETION % = missionsDone /
+    // Missions.list.length x 100 — a direct ratio of two tracked
+    // values, labelled as such. Nothing else is derived from anything
+    // the code does not record (distanceKm stays excluded: the field
+    // exists but no system ever updates it; the game tracks no races,
+    // stunts or collectibles, so no such categories are shown).
+    refreshStats: function () {
+      if (!el.stats) return;
+      var st = SH.State;
+      function fmtCash(n) { return '$' + Math.round(n || 0).toLocaleString('en-US'); }
+      function fmtTime(sec) {
+        sec = Math.max(0, Math.floor(sec || 0));
+        var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+        return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+      }
+      var list = (SH.Missions && SH.Missions.list) || [];
+      var done = Math.min(st.stats.missionsDone || 0, list.length);
+      var cur = SH.Missions ? SH.Missions.currentIndex : done;
+      var owned = (SH.Combat && SH.Combat.owned) || {};
+      var wTotal = 0, wOwned = 0;
+      for (var wid in SH.Config.weapons) { wTotal++; if (owned[wid]) wOwned++; }
+      var pct = list.length ? (done / list.length * 100) : 0;
+      var pctTxt = (pct % 1 === 0) ? String(pct) : pct.toFixed(1);
+      var hero = '<div class="stat-hero">' +
+        '<div class="hero-tile"><span>STORY COMPLETION</span><b>' + pctTxt + '%</b>' +
+          '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
+          '<em>' + done + ' of ' + list.length + ' story missions done</em></div>' +
+        '<div class="hero-tile"><span>CASH ON HAND</span><b class="cash">' + fmtCash(st.cash) + '</b>' +
+          '<em>' + (SH.Save.hasSave() ? 'Save data — Slot 1 saved' : 'No save data yet') + '</em></div>' +
+        '<div class="hero-tile"><span>CARS STOLEN</span><b>' + (st.stats.carsStolen || 0) + '</b>' +
+          '<em>Play time ' + fmtTime(st.time) + '</em></div>' +
+        '</div>';
+      var msn = '';
+      for (var i = 0; i < list.length; i++) {
+        var cls = i < done ? 'done' : (i === cur ? 'cur' : 'todo');
+        var mark = i < done ? '✓' : (i === cur ? '▸' : '·');
+        msn += '<div class="msn ' + cls + '"><span class="t">' + mark + ' ' + list[i].title + '</span><i>' + list[i].giver + ' · <b>' + fmtCash(list[i].reward) + '</b></i></div>';
+      }
+      var ars = '';
+      for (var wid2 in SH.Config.weapons) {
+        var w = SH.Config.weapons[wid2];
+        var status;
+        if (owned[wid2]) status = '<b class="own">OWNED</b>';
+        else if (SH.Config.shops[wid2]) status = '<b class="price">' + fmtCash(SH.Config.shops[wid2]) + '</b>';
+        else status = '<b class="lock">LOCKED</b>';
+        ars += '<div class="stat-row"><span>' + w.label + '</span>' + status + '</div>';
+      }
+      var rec = '';
+      rec += '<div class="stat-row"><span>Story</span><b>' + (st.storyComplete ? 'Complete' : 'In progress') + '</b></div>';
+      rec += '<div class="stat-row"><span>Current job</span><b>' + (cur < list.length ? list[cur].title : '—') + '</b></div>';
+      rec += '<div class="stat-row"><span>Weapons owned</span><b>' + wOwned + ' / ' + wTotal + '</b></div>';
+      el.stats.innerHTML = '<h2>CAREER — RAKA PRAMUDYA</h2>' + hero + '<div class="stat-cols">' +
+        '<div class="stat-rows"><div class="stat-head">STORY MISSIONS — ' + done + ' / ' + list.length + ' DONE</div>' + msn + '</div>' +
+        '<div class="stat-rows"><div class="stat-head">ARSENAL — ' + wOwned + ' / ' + wTotal + ' OWNED</div>' + ars +
+        '<div class="stat-head rec">RECORD</div>' + rec + '</div></div>';
+    },
+
     newGame: function () {
       var st = SH.State;
       SH.Save.clear();
@@ -166,6 +229,7 @@
       el.pause.classList.toggle('hidden', m !== 'paused');
       el.map.classList.toggle('hidden', m !== 'map');
       if (m === 'map') SH.Minimap.drawFullMap(byId('bigmap'));
+      if (m === 'paused') this.refreshStats();
       if (m === 'title') el.btnContinue.classList.toggle('hidden', !SH.Save.hasSave());
     },
 

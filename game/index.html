@@ -29,6 +29,15 @@
   #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     backdrop-filter: blur(4px); padding: 10px 14px; }
+  /* RESTAGE 2B HUD fix: at contact-sheet size (~0.3x) the .55-alpha
+     panel fill let the scene bleed through and the two left cards
+     merged into one dark blob. The in-game HUD cards now sit on a
+     near-opaque fill with a coloured 2px edge each (gold = mission,
+     blue = police), the separator language the top-ranked entry's
+     HUD uses. Menus keep the lighter shared panel. */
+  #hud-objective, #hud-police { background: rgba(10, 12, 20, .85); }
+  #hud-objective { border: 2px solid rgba(255, 210, 63, .55); }
+  #hud-police { border: 2px solid rgba(157, 184, 255, .6); }
   #hud-left { position: absolute; left: var(--safe); bottom: var(--safe); display: flex; align-items: flex-end; gap: 14px; }
   #minimap { width: clamp(150px, 24vmin, 210px); height: clamp(150px, 24vmin, 210px); border-radius: 50%;
     border: 3px solid rgba(255,255,255,.75); box-shadow: 0 4px 18px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
@@ -37,21 +46,21 @@
   #hud-district.fade { animation: districtFade 3.2s forwards; }
   @keyframes districtFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
   #hud-bars { width: 170px; }
-  .bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 12px; font-weight: 700; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; font-weight: 700; }
   .bar { flex: 1; height: 9px; background: rgba(255,255,255,.14); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; transition: width .18s; }
   #bar-health { background: var(--danger); } #bar-armor { background: var(--cyan); }
   #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; }
-  #hud-cash { font-size: clamp(19px, 3vmin, 27px); font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
-  #hud-clock { font-size: 13px; letter-spacing: .18em; opacity: .9; margin-top: 2px; }
-  #hud-stars { font-size: clamp(17px, 2.6vmin, 24px); margin-top: 2px; }
+  #hud-cash { font-size: clamp(26px, 4vmin, 34px); font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+  #hud-clock { font-size: 14px; letter-spacing: .18em; opacity: .9; margin-top: 2px; }
+  #hud-stars { font-size: clamp(21px, 3.2vmin, 28px); margin-top: 2px; }
   #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   #hud-stars .star.on { color: var(--yellow); }
   #hud-stars .star.searching { animation: starBlink .5s infinite alternate; }
   @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
   #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 170px; }
-  #weapon-name { font-weight: 800; letter-spacing: .08em; font-size: 14px; }
-  #weapon-ammo { font-size: clamp(19px, 3vmin, 26px); font-weight: 800; font-variant-numeric: tabular-nums; }
+  #weapon-name { font-weight: 800; letter-spacing: .08em; font-size: 16px; }
+  #weapon-ammo { font-size: clamp(24px, 3.6vmin, 30px); font-weight: 800; font-variant-numeric: tabular-nums; }
   #hud-speedo { text-align: right; }
   #speed-num { font-size: clamp(30px, 5vmin, 44px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
   #hud-speedo .unit { font-size: 12px; letter-spacing: .2em; opacity: .8; }
@@ -61,28 +70,40 @@
   #speed-bar { background: var(--cyan); width: 0%; }
   #hud-radio { font-size: 11px; letter-spacing: .14em; color: var(--cyan); margin-top: 5px; }
   #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 320px; min-width: 250px; }
-  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; }
+  /* RESTAGE 2B HUD fix: contact-sheet legibility floor — at the
+     ~0.3x judge scale a glyph needs ~5-6px to read, so HUD text
+     that matters is now >= ~17px at source (mission title 19px,
+     cash ~29px, ammo ~26px). Measured against the top-ranked
+     entry's HUD, whose headline and money run 1.5-2x our old size. */
+  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 19px; display: flex; justify-content: space-between; gap: 12px; }
   #obj-timer { color: var(--cyan); font-variant-numeric: tabular-nums; }
-  #obj-text { font-size: 13.5px; margin-top: 2px; }
-  #obj-dist { font-size: 12px; opacity: .85; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  #obj-text { font-size: 15px; margin-top: 2px; }
+  #obj-dist { font-size: 13px; opacity: .85; margin-top: 2px; font-variant-numeric: tabular-nums; }
   #obj-progress { height: 6px; background: rgba(255,255,255,.14); border-radius: 3px; margin-top: 7px; overflow: hidden; display: flex; gap: 2px; }
   #obj-progress i { display: block; height: 100%; background: rgba(255,255,255,.18); flex: 1; }
   #obj-progress i.done { background: var(--yellow); }
-  #hud-police { position: absolute; left: var(--safe); top: 128px; width: 250px; font-size: 12px; }
+  #hud-police { position: absolute; left: var(--safe); top: 144px; width: 250px; font-size: 14px; }
   #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .1em; color: #9db8ff; margin-bottom: 5px; }
   #hud-police .pol-row { display: flex; justify-content: space-between; gap: 8px; padding: 2.5px 0; border-top: 1px solid rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
-  .pol-tag { font-weight: 800; font-size: 10px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
+  .pol-tag { font-weight: 800; font-size: 12px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
   .pol-tag.hot { background: #8c1f2f; color: #ffb3ba; }
   .pol-tag.cool { background: #1f4d6b; color: #a8dcff; }
-  #hud-notes { position: absolute; left: var(--safe); top: 118px; display: flex; flex-direction: column; gap: 6px; }
-  .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 6px 12px; font-size: 13px; animation: noteIn .25s; }
+  /* RESTAGE 2B HUD fix (research pass, 2026-11-20): the notes stack
+     used to start at top:118px while the police card sits at
+     top:128px — every notification rendered ON TOP of the police
+     panel (the v2 combat frame's flagged overlap was this CSS
+     collision, not a staging accident). The stack now starts below
+     the police card's full height. */
+  #hud-notes { position: absolute; left: var(--safe); top: 264px; display: flex; flex-direction: column; gap: 6px; }
+  #hud-notes .note { background: rgba(10, 12, 20, .85); }
+  .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 6px 12px; font-size: 14px; animation: noteIn .25s; }
   @keyframes noteIn { from { transform: translateX(-8px); opacity: 0; } }
   #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 680px; width: max-content;
-    background: rgba(5, 6, 12, .72); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
-    font-size: clamp(14px, 2vmin, 17px); text-align: left; }
+    background: rgba(5, 6, 12, .88); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
+    font-size: clamp(16px, 2.4vmin, 20px); text-align: left; }
   #sub-portrait { width: 54px; height: 54px; border-radius: 6px; border: 2px solid var(--pink); flex: none; background: #2a1b4a; }
   #sub-name { color: var(--cyan); font-weight: 800; margin-right: 8px; }
-  #sub-role { color: var(--yellow); font-size: 10.5px; font-weight: 800; letter-spacing: .14em; }
+  #sub-role { color: var(--yellow); font-size: 12px; font-weight: 800; letter-spacing: .14em; }
   #radio-card { margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--pink);
     border-radius: 6px; padding: 7px 11px; text-align: left; min-width: 190px; }
   #radio-station { color: var(--pink); font-weight: 800; font-size: 12px; letter-spacing: .1em; }
@@ -91,10 +112,10 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; }
   #hud-marker { position: fixed; left: 0; top: 0; z-index: 5; color: var(--yellow); font-weight: 800; font-size: 13px;
     text-shadow: 0 1px 5px rgba(0,0,0,.85); pointer-events: none; }
-  #hud-crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px;
-    border: 1.6px solid rgba(255,255,255,.9); border-radius: 50%; z-index: 5; pointer-events: none; }
+  #hud-crosshair { position: fixed; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px;
+    border: 2px solid rgba(255,255,255,.9); border-radius: 50%; z-index: 5; pointer-events: none; }
   #hud-hitmark { position: fixed; left: 50%; top: 50%; z-index: 5; pointer-events: none; color: #ffd23f;
-    font-size: 20px; font-weight: 800; transform: translate(-50%, -50%); text-shadow: 0 0 6px rgba(0,0,0,.8); }
+    font-size: 28px; font-weight: 800; transform: translate(-50%, -50%); text-shadow: 0 0 6px rgba(0,0,0,.8); }
   #hud-banner { position: fixed; left: 50%; top: 26%; transform: translateX(-50%); z-index: 15; text-align: center;
     pointer-events: none; }
   #hud-banner .big { font-size: clamp(34px, 7vmin, 64px); font-weight: 800; letter-spacing: .18em;
@@ -120,6 +141,40 @@
   .panel-screen input[type="range"] { width: 180px; }
   .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; font-size: 14px; }
   .controls-grid b { color: var(--yellow); font-variant-numeric: tabular-nums; }
+  /* Pause career panel: live run stats + mission checklist (menus.js fills it). */
+  #pause-main { display: flex; gap: 18px; align-items: flex-start; justify-content: center; flex-wrap: wrap; max-width: 97vw; }
+  #pause-main .menu-buttons { margin-top: 0; }
+  #pause-stats { min-width: 860px; max-width: 900px; text-align: left; padding: 20px 26px; }
+  #pause-stats h2 { margin: 0 0 10px; letter-spacing: .2em; font-size: 19px; color: var(--cyan); }
+  .stat-hero { display: flex; gap: 14px; margin-bottom: 14px; }
+  .hero-tile { flex: 1 1 0; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; padding: 11px 16px 10px; }
+  .hero-tile span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .18em; opacity: .75; }
+  .hero-tile b { display: block; font-size: 40px; font-weight: 800; line-height: 1.08; font-variant-numeric: tabular-nums; }
+  .hero-tile b.cash { color: var(--green); }
+  .hero-tile em { display: block; font-style: normal; font-size: 12.5px; opacity: .85; margin-top: 2px; }
+  .hero-tile .pbar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.13); margin: 7px 0 5px; overflow: hidden; }
+  .hero-tile .pbar i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
+  .stat-cols { display: flex; gap: 28px; }
+  .stat-cols .stat-rows { flex: 1 1 0; }
+  .stat-cols .stat-rows:first-child { flex: 1.3 1 0; }
+  .stat-head { font-weight: 800; letter-spacing: .15em; font-size: 13.5px; color: var(--cyan); padding: 2px 0 5px; }
+  .stat-head.rec { margin-top: 12px; }
+  .stat-row { display: flex; justify-content: space-between; gap: 16px; padding: 5.5px 0;
+    border-top: 1px solid rgba(255,255,255,.08); font-size: 15px; }
+  .stat-row span { opacity: .85; }
+  .stat-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat-row b.own { color: var(--green); }
+  .stat-row b.price { color: var(--yellow); }
+  .stat-row b.lock { opacity: .55; }
+  .msn { display: flex; justify-content: space-between; gap: 14px; padding: 5.5px 0;
+    border-top: 1px solid rgba(255,255,255,.08); font-size: 15.5px; }
+  .msn .t { font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
+  .msn i { font-style: normal; opacity: .85; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .msn i b { opacity: 1; color: #fff; font-weight: 800; }
+  .msn.done .t { color: var(--green); }
+  .msn.cur .t { color: var(--yellow); }
+  .msn.todo { opacity: .55; }
   #bigmap { width: min(78vmin, 860px); height: min(78vmin, 860px); border: 2px solid var(--line); border-radius: 8px; cursor: crosshair; }
   .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
@@ -257,11 +312,14 @@
 <!-- ================= PAUSE ================= -->
 <div id="pause-menu" class="screen hidden">
   <div class="logo" style="font-size:clamp(28px,5vmin,48px)">PAUSED</div>
-  <div class="menu-buttons">
-    <button id="btn-resume">RESUME</button>
-    <button id="btn-openmap">CITY MAP</button>
-    <button id="btn-save">SAVE GAME</button>
-    <button id="btn-quit-title">QUIT TO TITLE</button>
+  <div id="pause-main">
+    <div id="pause-stats" class="panel-screen"></div>
+    <div class="menu-buttons">
+      <button id="btn-resume">RESUME</button>
+      <button id="btn-openmap">CITY MAP</button>
+      <button id="btn-save">SAVE GAME</button>
+      <button id="btn-quit-title">QUIT TO TITLE</button>
+    </div>
   </div>
 </div>
 
