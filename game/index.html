@@ -93,7 +93,7 @@
   #hud-objective, #hud-police, #hud-weapon { background: rgba(10, 12, 20, .85); border-radius: 10px; }
   #hud-objective { border: 2px solid rgba(255, 210, 63, .55); }
   #hud-police { border: 2px solid rgba(157, 184, 255, .6); }
-  #hud-weapon { border: 2px solid rgba(55, 224, 255, .55); padding: 10px 16px; }
+  #hud-weapon { border: 2px solid rgba(55, 224, 255, .55); padding: 10px 14px 11px; min-width: 224px; }
   /* Hazard-stripe cap on the mission card — the #1 entry's
      signature accent; pure CSS, clipped by the card radius. */
   #hud-objective::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px;
@@ -122,8 +122,39 @@
   @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
   #hud-wanted-status { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: #ff9f43; margin-top: 4px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
   #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 200px; }
-  #weapon-name { font-weight: 800; letter-spacing: .12em; font-size: 15px; text-transform: uppercase; color: var(--cyan); }
-  #weapon-ammo { font-size: clamp(27px, 4vmin, 34px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  /* Weapon card (hud2 follow-up): the #1 entry's slot language brought
+     to the active-weapon card — small caps name + state chip on top,
+     the magazine count as the card's biggest glyph, the reserve as
+     its own labelled block, a segmented per-round magazine bar, a
+     gold reload progress bar, and the full arsenal as a slot strip
+     (active slot gold, owned dim, unowned faded). All values are
+     live Combat state; nothing here is decoration. */
+  #weapon-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  #weapon-name { font-weight: 800; letter-spacing: .14em; font-size: 13.5px; text-transform: uppercase; color: var(--cyan); white-space: nowrap; }
+  #weapon-state { font-size: 10.5px; font-weight: 800; letter-spacing: .14em; color: var(--yellow);
+    background: rgba(255, 210, 63, .14); border: 1px solid rgba(255, 210, 63, .55); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  #weapon-state.danger { color: #ff8f9d; background: rgba(255, 74, 94, .14); border-color: rgba(255, 74, 94, .6); }
+  #weapon-state.reloading { animation: weapPulse .45s infinite alternate; }
+  @keyframes weapPulse { from { opacity: 1; } to { opacity: .45; } }
+  #weapon-main { display: flex; align-items: center; justify-content: flex-end; gap: 11px; margin-top: 3px; }
+  #weapon-icon { color: #dfe6ee; display: inline-flex; }
+  #weapon-icon svg { width: 52px; height: 18px; display: block; }
+  #weapon-icon svg *, .wslot svg * { fill: currentColor; }
+  #weapon-ammo { font-size: clamp(34px, 5vmin, 42px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  #weapon-reserve-box { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border-left: 1px solid rgba(255,255,255,.18); padding-left: 10px; }
+  #weapon-reserve-label { font-size: 9.5px; font-weight: 800; letter-spacing: .2em; opacity: .65; }
+  #weapon-reserve { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; }
+  #weapon-magbar { display: flex; gap: 2px; margin-top: 8px; height: 5px; }
+  #weapon-magbar i { flex: 1; background: rgba(255,255,255,.16); border-radius: 2px; }
+  #weapon-magbar i.on { background: var(--cyan); }
+  #weapon-reload { height: 4px; background: rgba(255,255,255,.14); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  #weapon-reload-fill { display: block; height: 100%; background: var(--yellow); width: 0%; }
+  #weapon-slots { display: flex; gap: 5px; margin-top: 9px; }
+  .wslot { flex: 1; border: 1.5px solid rgba(255,255,255,.20); border-radius: 7px; padding: 4px 1px 3px; text-align: center; color: #dfe6ee; opacity: .72; }
+  .wslot svg { width: 30px; height: 11px; display: block; margin: 0 auto; }
+  .wslot span { display: block; font-size: 8.5px; font-weight: 800; letter-spacing: .1em; margin-top: 2px; }
+  .wslot.active { border-color: rgba(255, 210, 63, .95); background: rgba(255, 210, 63, .12); color: var(--yellow); opacity: 1; }
+  .wslot.locked { opacity: .30; }
   #hud-speedo { text-align: right; width: 216px; margin-left: auto; }
   #speed-num { font-size: clamp(46px, 7.2vmin, 62px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,.65); }
   #hud-speedo .unit { font-size: 13px; letter-spacing: .2em; opacity: .85; font-weight: 700; }
@@ -313,8 +344,18 @@
   </div>
   <div id="hud-right">
     <div id="hud-weapon" class="panel">
-      <div id="weapon-name">Fists</div>
-      <div id="weapon-ammo">—</div>
+      <div id="weapon-head">
+        <span id="weapon-name">Fists</span>
+        <span id="weapon-state" class="hidden"></span>
+      </div>
+      <div id="weapon-main">
+        <span id="weapon-icon"></span>
+        <span id="weapon-ammo">—</span>
+        <span id="weapon-reserve-box"><span id="weapon-reserve-label">RESERVE</span><span id="weapon-reserve">0</span></span>
+      </div>
+      <div id="weapon-magbar"></div>
+      <div id="weapon-reload" class="hidden"><i id="weapon-reload-fill"></i></div>
+      <div id="weapon-slots"></div>
     </div>
     <div id="hud-speedo" class="hidden">
       <div><span id="speed-num">0</span> <span class="unit">KM/H</span></div>

@@ -16,12 +16,27 @@
 
   function byId(id) { return document.getElementById(id); }
 
+  // Weapon silhouettes for the weapon card + arsenal strip (flat
+  // side profiles in the game's own blocky style; decorative shapes
+  // only — every number on the card is live Combat state).
+  var WEAPON_ICONS = {
+    fist: '<svg viewBox="0 0 48 16"><circle cx="15" cy="5.5" r="3.2"/><circle cx="21.5" cy="4.6" r="3.4"/><circle cx="28" cy="4.6" r="3.4"/><circle cx="34" cy="5.5" r="3.2"/><rect x="11" y="6" width="27" height="7" rx="3"/><circle cx="39.5" cy="10" r="2.8"/></svg>',
+    pistol: '<svg viewBox="0 0 48 16"><rect x="3" y="4.6" width="27" height="3.6" rx="1"/><rect x="29" y="5.4" width="5" height="2"/><rect x="3" y="2.8" width="4" height="2"/><path d="M13 8.2h6.4L17.6 15h-3.8z"/><rect x="20" y="8.2" width="5" height="1.8"/></svg>',
+    smg: '<svg viewBox="0 0 48 16"><rect x="7" y="4.8" width="29" height="3.8" rx="1"/><rect x="36" y="5.8" width="9" height="1.8"/><rect x="0" y="5.4" width="7" height="2.8"/><rect x="17" y="3" width="7" height="1.8"/><path d="M21 8.6h5l-.8 6.4h-3.6z"/><path d="M10.5 8.6h4.6l-1 4.8H10z"/></svg>',
+    shotgun: '<svg viewBox="0 0 48 16"><rect x="11" y="5" width="34" height="2.1"/><rect x="12" y="8" width="19" height="1.5"/><rect x="25" y="7.3" width="8.5" height="2.4" rx="1"/><rect x="5" y="4.6" width="8" height="4.6" rx="1"/><path d="M0 5.2h5v4.2L1.2 10.6 0 8.6z"/></svg>'
+  };
+  var WEAPON_SHORT = { fist: 'FISTS', pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN' };
+
   var HUD = {
     init: function () {
       el.hud = byId('hud'); el.cash = byId('hud-cash'); el.clock = byId('hud-clock');
       el.stars = byId('hud-stars'); el.health = byId('bar-health'); el.armor = byId('bar-armor');
       el.healthNum = byId('bar-health-num'); el.weaponBox = byId('hud-weapon');
       el.weaponName = byId('weapon-name'); el.weaponAmmo = byId('weapon-ammo');
+      el.weaponState = byId('weapon-state'); el.weaponIcon = byId('weapon-icon');
+      el.weaponReserve = byId('weapon-reserve'); el.weaponReserveBox = byId('weapon-reserve-box');
+      el.weaponMagbar = byId('weapon-magbar'); el.weaponReload = byId('weapon-reload');
+      el.weaponReloadFill = byId('weapon-reload-fill'); el.weaponSlots = byId('weapon-slots');
       el.speedo = byId('hud-speedo'); el.speedNum = byId('speed-num');
       el.radioStation = byId('radio-station'); el.radioTrack = byId('radio-track');
       el.speedBar = byId('speed-bar'); el.objective = byId('hud-objective');
@@ -269,9 +284,61 @@
       } else {
         el.speedo.classList.add('hidden');
         el.weaponBox.classList.remove('hidden');
-        var spec = SH.Combat ? SH.Combat.current() : SH.Config.weapons[st.weapon];
+        var wid = st.weapon;
+        var spec = SH.Combat ? SH.Combat.current() : SH.Config.weapons[wid];
         el.weaponName.textContent = spec ? spec.label : '';
-        el.weaponAmmo.textContent = spec && spec.mag !== Infinity ? (st.ammo + ' / ' + st.ammoReserve) : '—';
+        var finite = !!spec && spec.mag !== Infinity;
+        // Silhouette of the active weapon (rebuilt on switch only).
+        if (el.weaponIcon._id !== wid) {
+          el.weaponIcon._id = wid;
+          el.weaponIcon.innerHTML = WEAPON_ICONS[wid] || '';
+        }
+        // The magazine count is the card's biggest glyph; the reserve
+        // is its own labelled block beside it. Fists have no magazine.
+        el.weaponAmmo.textContent = finite ? String(st.ammo) : '∞';
+        el.weaponReserveBox.style.display = finite ? '' : 'none';
+        if (finite) el.weaponReserve.textContent = st.ammoReserve;
+        // Segmented magazine bar: one pip per round of capacity,
+        // filled pips = rounds left (rebuilt only when it changes).
+        var magKey = finite ? (wid + ':' + spec.mag + ':' + st.ammo) : 'inf';
+        if (el.weaponMagbar._key !== magKey) {
+          el.weaponMagbar._key = magKey;
+          if (!finite) { el.weaponMagbar.innerHTML = ''; }
+          else {
+            var mh = '';
+            for (var mi = 0; mi < spec.mag; mi++) mh += '<i class="' + (mi < st.ammo ? 'on' : '') + '"></i>';
+            el.weaponMagbar.innerHTML = mh;
+          }
+        }
+        // Reload progress bar + state chip, from Combat's live timer.
+        var reloading = !!(SH.Combat && SH.Combat.reloadTimer > 0 && finite);
+        el.weaponReload.classList.toggle('hidden', !reloading);
+        if (reloading) el.weaponReloadFill.style.width = Math.min(100, (1 - SH.Combat.reloadTimer / spec.reload) * 100) + '%';
+        var wstate = '', wdanger = false;
+        if (reloading) wstate = 'RELOADING';
+        else if (finite && st.ammo === 0 && st.ammoReserve === 0) { wstate = 'NO AMMO'; wdanger = true; }
+        else if (finite && st.ammo > 0 && st.ammoReserve === 0) wstate = 'LAST MAG';
+        if (el.weaponState._last !== wstate) {
+          el.weaponState._last = wstate;
+          el.weaponState.textContent = wstate;
+          el.weaponState.classList.toggle('hidden', !wstate);
+          el.weaponState.classList.toggle('danger', wdanger);
+          el.weaponState.classList.toggle('reloading', reloading);
+        }
+        // Arsenal strip (the #1 entry's slot language): every weapon
+        // in Config order — active slot gold, owned dim, unowned faded.
+        var owned = SH.Combat ? SH.Combat.owned : { fist: true };
+        var slotKey = wid + '|' + (owned.pistol ? 1 : 0) + (owned.smg ? 1 : 0) + (owned.shotgun ? 1 : 0);
+        if (el.weaponSlots._key !== slotKey) {
+          el.weaponSlots._key = slotKey;
+          var ids = Object.keys(SH.Config.weapons), sh = '';
+          for (var si = 0; si < ids.length; si++) {
+            var sid = ids[si];
+            var scls = 'wslot' + (sid === wid ? ' active' : (owned[sid] ? '' : ' locked'));
+            sh += '<div class="' + scls + '">' + (WEAPON_ICONS[sid] || '') + '<span>' + (WEAPON_SHORT[sid] || sid.toUpperCase()) + '</span></div>';
+          }
+          el.weaponSlots.innerHTML = sh;
+        }
       }
 
       // Objective panel + 3D marker (+ stage progress and step timer).

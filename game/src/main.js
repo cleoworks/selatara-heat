@@ -108,7 +108,13 @@
     // Night exposure + the player fill light ride the same curve: the
     // renderer opens up a little after dark and the fill hovers over the
     // focus, offset toward the camera so it rims the subject.
-    if (renderer) renderer.toneMappingExposure = 1.15 + nightAmount(State.hour) * 0.22;
+    // OVERHAUL: exposure breathes with the light phase — a
+    // golden-hour lift (+0.07 at the horizon sun of the cover)
+    // on top of the base, keeping the night ramp. Flat 1.15 at
+    // every hour was one of the "flat light" tells: the dusk
+    // frame and the noon frame exposed identically.
+    var goldAmt = Math.max(0, 1 - Math.abs(elev) * 3.2) * (1 - nightAmount(State.hour));
+    if (renderer) renderer.toneMappingExposure = 1.15 + goldAmt * 0.07 + nightAmount(State.hour) * 0.22;
     if (fillLight) {
       var fAmt = nightAmount(State.hour);
       // FX fix: three r155+ physical light units make a PointLight's
@@ -547,7 +553,10 @@
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    // OVERHAUL: PCFSoft — the hard PCF edge made the long dusk
+    // shadows read as aliased steps on the asphalt; soft filtering
+    // is the same shadow map, just filtered like light.
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     window.addEventListener('resize', function () {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();

@@ -30,8 +30,12 @@
         // only low at the horizon where the sun sprite adds its local
         // glow. No magenta wash; neon lives in the city, not the sky.
         skyTop: 0x2c4a73, skyBand: 0x6f87b3, skyMid: 0xcf9a5e, skyLow: 0xffc98a, fog: 0xd8b490,
-        sun: 0xffa040, sunIntensity: 1.15, hemiSky: 0xa9bde0, hemiGround: 0x59463a,
-        hemiIntensity: 0.85, ambient: 0.3, water: 0x2a6a9e, sand: 0xe0af7c,
+        // OVERHAUL: dusk contrast — the key light firms up
+        // (1.15 -> 1.22) while the hemisphere wash eases
+        // (0.85 -> 0.82), so sunset frames model their subjects
+        // instead of bathing them in even light.
+        sun: 0xffa040, sunIntensity: 1.22, hemiSky: 0xa9bde0, hemiGround: 0x59463a,
+        hemiIntensity: 0.82, ambient: 0.3, water: 0x2a6a9e, sand: 0xe0af7c,
         asphalt: 0x3a3638, sidewalk: 0x8a7264, grass: 0x3f7a3a
       },
       night: {
@@ -41,8 +45,15 @@
         // clothes and car paint stay readable and nothing falls to a
         // pure-black silhouette. (Purple cast removed in the natural-
         // sky revision: night is blue, not violet.)
+        // OVERHAUL: the night wash eases (hemi 0.8 -> 0.74,
+        // ambient 0.42 -> 0.36) so lit places — the market's
+        // tents and bulbs — pool warm against a deeper blue
+        // night instead of the whole frame floating at one
+        // level. The character key/fill lights (main.js) keep
+        // the subject readable; the roads' emissive night floor
+        // keeps the ground from going black.
         sun: 0x8aa8ff, sunIntensity: 0.3, hemiSky: 0x3d5a8a, hemiGround: 0x1e2632,
-        hemiIntensity: 0.8, ambient: 0.42, water: 0x10344c, sand: 0x655a49,
+        hemiIntensity: 0.74, ambient: 0.36, water: 0x10344c, sand: 0x655a49,
         asphalt: 0x201f26, sidewalk: 0x3a3844, grass: 0x1c3d27
       }
     },

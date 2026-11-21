@@ -90,6 +90,11 @@
   }
   var bodyMat = charGrade(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, flatShading: false }));
   var darkMat = mat(0x14161c, 0.5);
+  // COMBAT V7.1: the pistol's own material — bright steel, NOT the
+  // near-black darkMat. At photo distance the dark gun merged with
+  // the dark wristband and the hand holding it; a light metal tone
+  // is what separates the silhouette (see attachPistolTo).
+  var gunMat = mat(0xb9c1cc, 0.42);
 
   // ---- PREMIUM PASS: procedural fabric micro-textures ------------------
   // After FX2/FX3 the shading is clean, but garments still read as
@@ -296,6 +301,34 @@
       grd.addColorStop(0.55, 'rgba(255,255,255,0.05)'); grd.addColorStop(0.85, 'rgba(255,255,255,0)');
       grd.addColorStop(0.97, 'rgba(0,0,0,0.08)'); grd.addColorStop(1, 'rgba(0,0,0,0.10)');
       c.fillStyle = grd; c.fillRect(0, 0, S, S);
+      // OVERHAUL color-blocking (panel rounds 9-12: clothes read
+      // as one flat tone at photo distance). Two additions, both
+      // derived from the garment's own colour so every archetype
+      // keeps its identity:
+      // (1) CYLINDRICAL shading along u — the loft is a tube, so a
+      // fixed light wrap is painted in: bright at the front centre
+      // (u 0.75 -> x 192), falling off at the sides (x 0/128) and
+      // the back (x 64). Under the game's flat hemisphere wash
+      // this is what keeps a torso reading ROUND instead of a
+      // coloured board; on sleeves and pant legs the same wrap
+      // reads as the limb's own shading.
+      var ug = c.createLinearGradient(0, 0, S, 0);
+      ug.addColorStop(0, 'rgba(0,0,0,0.13)');
+      ug.addColorStop(0.25, 'rgba(0,0,0,0.05)');
+      ug.addColorStop(0.5, 'rgba(0,0,0,0.11)');
+      ug.addColorStop(0.75, 'rgba(255,255,255,0.085)');
+      ug.addColorStop(1, 'rgba(0,0,0,0.13)');
+      c.fillStyle = ug; c.fillRect(0, 0, S, S);
+      // (2) A two-tone YOKE band across the upper chest (canvas
+      // y 44-78, just under the collar trim) in a deepened shade
+      // of the base, closed by a pale accent rule — the classic
+      // colour-block a real shirt has and a flat texture lacks.
+      // On sleeves/pant legs the same band lands as a cuff/stripe
+      // detail, which reads as trim, not error.
+      c.fillStyle = 'rgba(0,0,0,0.17)';
+      c.fillRect(0, 44, S, 34);
+      c.fillStyle = 'rgba(255,255,255,0.13)';
+      c.fillRect(0, 79, S, 3.5);
       c.fillStyle = 'rgba(0,0,0,0.15)';
       for (j = 0; j < S; j += 16) { c.fillRect(5, j, 2.5, 8); c.fillRect(S - 8, j, 2.5, 8); } // seam stitch dashes
       if (c2 === 1) {
@@ -313,6 +346,25 @@
         c.strokeStyle = 'rgba(0,0,0,0.28)'; c.lineWidth = 1.4; c.setLineDash([4, 3]);
         c.strokeRect(210.5, 83.5, 14, 29); c.setLineDash([]);
       }
+    }
+    // CHARPOLISH trim (cloth + hawaii — the two lofted torso
+    // fabrics): a defined band + stitch line at BOTH v ends of
+    // the loft UV. v=1 (canvas top) is the collar ring on the
+    // torso AND the hem ring on sleeves and pants legs, so one
+    // band reads as collar + cuff + ankle hem at once; v=0 is
+    // the shirt hem / waistband line. The old gradient-only ends
+    // read as shading; a band + stitch reads as TRIM.
+    if (kind === 'cloth' || kind === 'hawaii') {
+      var th = cv.height / 256;
+      c.fillStyle = 'rgba(0,0,0,0.15)';
+      c.fillRect(0, 0, cv.width, 11 * th); c.fillRect(0, cv.height - 11 * th, cv.width, 11 * th);
+      c.fillStyle = 'rgba(255,255,255,0.10)';
+      c.fillRect(0, 0, cv.width, 2 * th); c.fillRect(0, cv.height - 2 * th, cv.width, 2 * th);
+      c.strokeStyle = 'rgba(255,255,255,0.20)'; c.lineWidth = 1.3 * th; c.setLineDash([5 * th, 4 * th]);
+      c.beginPath();
+      c.moveTo(0, 13.5 * th); c.lineTo(cv.width, 13.5 * th);
+      c.moveTo(0, cv.height - 13.5 * th); c.lineTo(cv.width, cv.height - 13.5 * th);
+      c.stroke(); c.setLineDash([]);
     }
     var tex = new THREE.CanvasTexture(cv);
     tex.anisotropy = 8;
@@ -348,8 +400,9 @@
   // parent verdict on round 1): the face is FLAT and CLEAN, fully
   // drawn here — oval eyes with cream white + dark iris + 1-point
   // highlight, THICK drawn brows (hair-coloured, ~2x the old
-  // strokes), nose as SOFT SIDE SHADING ONLY (the 3D nose mesh and
-  // the 3D eye/brow gear are deleted), mouth line + lower-lip hint,
+  // strokes), nose as soft side shading BACKING the displacement
+  // nose in rig.buildHead (CHARPOLISH; the 3D nose MESH and the
+  // 3D eye/brow gear stay deleted), mouth line + lower-lip hint,
   // very soft blush. High contrast so features read at 3 m.
   // Expression variants (f.expr) swap the texture.
   // FX6 — generateFaceTexture(archetypeSpec, skinHex): the same
@@ -459,47 +512,58 @@
     // ---- eyes: drawn ovals, white + iris + highlight ------------
     // soft shadow just above (under-brow) and below each eye
     c.fillStyle = 'rgba(70,38,20,0.08)';
-    c.beginPath(); c.ellipse(50.5, 112.5, 9, 2.4, 0, 0, 7); c.ellipse(77.5, 112.5, 9, 2.4, 0, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(50.5, 112.5, 11, 2.6, 0, 0, 7); c.ellipse(77.5, 112.5, 11, 2.6, 0, 0, 7); c.fill();
     c.fillStyle = 'rgba(70,38,20,0.10)';
-    c.beginPath(); c.ellipse(50.5, 128.5, 8, 2.0, 0, 0, 7); c.ellipse(77.5, 128.5, 8, 2.0, 0, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(50.5, 130, 10, 2.0, 0, 0, 7); c.ellipse(77.5, 130, 10, 2.0, 0, 0, 7); c.fill();
     function eye(cx) {
-      var ry = f.eyes === 'narrow' ? 3.9 : f.eyes === 'sleepy' ? 4.4 : expr === 'surprised' ? 6.4 : 5.4;
+      // CHARPOLISH: whites + iris scaled ~1.3x around the SAME
+      // centres (positions are load-bearing: eyewear alignment +
+      // the head displacement's eye band). The old 10.8 px-tall
+      // white subtended ~3 screen px at the combat photo's range
+      // — a dot. The white now stands 14.4 px tall with a 10.6 px
+      // iris and a real pupil inside it: white + iris + pupil
+      // read as an EYE at game distance, still clean low-poly.
+      var ry = f.eyes === 'narrow' ? 4.6 : f.eyes === 'sleepy' ? 5.6 : expr === 'surprised' ? 7.8 : 7.2;
       c.fillStyle = '#f2ede4';
-      c.beginPath(); c.ellipse(cx, 121, 7.4, ry, 0, 0, 7); c.fill();
+      c.beginPath(); c.ellipse(cx, 121, 9.4, ry, 0, 0, 7); c.fill();
       var iy = f.eyes === 'sleepy' ? 121.8 : 121;
       // FX6: the iris carries the character's seed colour
       // (browns/blacks common, blue rare — rolled by the factory);
       // pupil + main catchlight + a whisper second catchlight.
+      // CHARPOLISH: iris radius follows the enlarged white
+      // (capped so narrow eyes keep the FX6 spill proportion).
+      var irisR = Math.min(5.3, ry + 0.5);
       c.fillStyle = f.irisColor || '#2e1a0c';
-      c.beginPath(); c.arc(cx, iy, 4.3, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx, iy, irisR, 0, 7); c.fill();
       c.fillStyle = '#0d0603';
-      c.beginPath(); c.arc(cx, iy, 2.3, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx, iy, irisR * 0.53, 0, 7); c.fill();
       c.fillStyle = '#ffffff';
-      c.beginPath(); c.arc(cx - 1.6, iy - 1.8, 1.4, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx - irisR * 0.38, iy - irisR * 0.42, irisR * 0.32, 0, 7); c.fill();
       c.globalAlpha = 0.45;
-      c.beginPath(); c.arc(cx + 1.9, iy + 1.6, 0.8, 0, 7); c.fill();
+      c.beginPath(); c.arc(cx + irisR * 0.44, iy + irisR * 0.37, irisR * 0.19, 0, 7); c.fill();
       c.globalAlpha = 1;
       if (f.eyes === 'sleepy') { // lid band over the top of the eye
-        c.fillStyle = css(skinHex); c.fillRect(cx - 7.8, 114.4, 15.6, 5.2);
+        c.fillStyle = css(skinHex); c.fillRect(cx - 9.8, 113.0, 19.6, 5.6);
       }
       // lash line over the top edge — firm upper lid (style lock)
-      c.strokeStyle = 'rgba(43,24,15,0.92)'; c.lineWidth = 1.9; c.lineCap = 'round';
-      c.beginPath(); c.ellipse(cx, 121, 7.7, ry + 0.4, 0, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
+      c.strokeStyle = 'rgba(43,24,15,0.92)'; c.lineWidth = 2.2; c.lineCap = 'round';
+      c.beginPath(); c.ellipse(cx, 121, 9.7, ry + 0.4, 0, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
     }
     eye(50.5); eye(77.5);
-    // nose: soft side shading ONLY (no 3D nose) — FX6 firms the
-    // shading up so the nose reads PROMINENT (mancung) at game
-    // distance: a deeper bridge shadow, a soft light kiss on the
-    // bridge's lit side, a stronger under-tip shadow and firmer
-    // nostril dots. Still pure texture — the geometry nose stays
-    // forbidden (round-1 doll verdict).
+    // nose: FX6 side shading, now BACKING a real displacement
+    // nose in rig.buildHead (CHARPOLISH — bridge ridge + tip ball
+    // + alar flare as radial relief on the sphere; the round-1
+    // doll verdict was against the separate nose MESH, not
+    // against relief). The shading stays aligned with the relief:
+    // bridge shadow over the ridge, light kiss on its lit side,
+    // under-tip shadow seating the tip ball, firm nostril dots.
     var ng = c.createLinearGradient(60, 0, 69, 0);
     ng.addColorStop(0, 'rgba(60,30,10,0)'); ng.addColorStop(0.5, 'rgba(60,30,10,0.17)'); ng.addColorStop(1, 'rgba(60,30,10,0)');
     c.fillStyle = ng; c.fillRect(58.5, 125, 11, 18);
     var nhl = c.createLinearGradient(61, 0, 64.5, 0);
     nhl.addColorStop(0, 'rgba(255,226,196,0)'); nhl.addColorStop(0.5, 'rgba(255,226,196,0.10)'); nhl.addColorStop(1, 'rgba(255,226,196,0)');
     c.fillStyle = nhl; c.fillRect(61, 126, 3.5, 15);
-    c.fillStyle = 'rgba(60,30,10,0.18)';
+    c.fillStyle = 'rgba(60,30,10,0.22)';
     c.beginPath(); c.ellipse(64, 146.5, 4.6, 1.7, 0, 0, 7); c.fill();
     c.fillStyle = 'rgba(50,26,12,0.45)';
     c.beginPath(); c.arc(60.5, 144, 1.15, 0, 7); c.arc(67.5, 144, 1.15, 0, 7); c.fill();
@@ -947,6 +1011,33 @@
     return new THREE.Mesh(new THREE.PlaneGeometry(0.105, 0.026), pm);
   }
 
+  // COMBAT V7: the gripped-pistol build, factored out of
+  // buildAccessories so the SAME mesh can be attached to a character
+  // that already exists (SH.CharFactory.attachPistol) — one build
+  // path, no copies. Stage D iteration 3: a gripped barrel follows
+  // the hand's -Y (the finger line). Built along +Z it pointed at
+  // the sky whenever the arm raised to aim (hand frame pitches with
+  // the arm); rotated +90 deg X it tracks the aim line and hangs
+  // naturally when the arm is down.
+  function attachPistolTo(char) {
+    if (!char || !char.bones || !char.bones.handR) return null;
+    if (char._pistolMesh) return char._pistolMesh;
+    var pg = Rig.mergePlain([
+      Rig.prim(new THREE.BoxGeometry(0.026, 0.045, 0.030), 0, -0.028, 0.004, 1, 1, 1, 0),
+      Rig.prim(new THREE.BoxGeometry(0.020, 0.024, 0.115), 0, 0.004, 0.045, 1, 1, 1, 0)]);
+    var pm = attach(char.bones.handR, pg, gunMat, 0, -0.052, 0.012);
+    pm.rotation.x = Math.PI / 2;
+    // COMBAT V7.1: 1.3x — at the combat photo's range the true-size
+    // gun subtended ~4 px at judge scale and vanished into the
+    // wristband; a third larger in bright steel (gunMat) it reads
+    // as a weapon shape in the hand at 384 px while staying
+    // proportionate at native size.
+    pm.scale.setScalar(1.3);
+    pm.castShadow = true; // create()'s traverse does this for built-in gear; a post-creation attach must set it itself
+    char._pistolMesh = pm;
+    return pm;
+  }
+
   function buildAccessories(char, wear, r) {
     var b = char.bones, p = char.params, u = p.u, H = p.H, acc = wear.accessories || [];
     // HEAD PASS: head size from the rig's head constants; hats sit
@@ -1103,16 +1194,7 @@
       attach(b.handR, new THREE.CylinderGeometry(0.006, 0.007, 0.055, 6), mat(0x7a4a22, 0.8), 0, -0.045, 0.02, 1.2, 0, 0);
     }
     if (has('pistol')) {
-      var pg = Rig.mergePlain([
-        Rig.prim(new THREE.BoxGeometry(0.026, 0.045, 0.030), 0, -0.028, 0.004, 1, 1, 1, 0),
-        Rig.prim(new THREE.BoxGeometry(0.020, 0.024, 0.115), 0, 0.004, 0.045, 1, 1, 1, 0)]);
-      // Stage D iteration 3: a gripped barrel follows the hand's -Y
-      // (the finger line). Built along +Z it pointed at the sky
-      // whenever the arm raised to aim (hand frame pitches with the
-      // arm); rotated +90 deg X it tracks the aim line and hangs
-      // naturally when the arm is down.
-      var pm = attach(b.handR, pg, darkMat, 0, -0.052, 0.012);
-      pm.rotation.x = Math.PI / 2;
+      attachPistolTo(char);
     }
     if (has('rifle')) {
       var barrelGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6);
@@ -1334,7 +1416,10 @@
     var stubP = arch.face && arch.face.stubble;
     faceSpec.stubble = stubP === true ? true : (typeof stubP === 'number' ? hr() < stubP : false);
     faceSpec.stubSeed = Math.floor(hr() * 1000003) + 11;
-    var headMat = charGrade(new THREE.MeshStandardMaterial({ map: generateFaceTexture(faceSpec, skinHex), roughness: 0.8, metalness: 0, flatShading: false }));
+    // CHARPOLISH: vertexColors on — buildHead now bakes the
+    // two-tone skin lift (face/ears 1.09, neck gradient) into the
+    // head geometry's colour attribute.
+    var headMat = charGrade(new THREE.MeshStandardMaterial({ map: generateFaceTexture(faceSpec, skinHex), roughness: 0.8, metalness: 0, flatShading: false, vertexColors: true }));
     var head0 = new THREE.SkinnedMesh(Rig.buildHead(p, sk.index), headMat);
     head0.frustumCulled = false; bind(head0);
     var wear = resolveWear(arch, r);
@@ -1519,6 +1604,12 @@
 
   SH.CharFactory = {
     create: create, update: update, release: release, triCount: triCount,
+    // COMBAT V7: attach the factory pistol to an existing character's
+    // right hand (the buildAccessories 'pistol' gear, post-creation).
+    // For callers whose armed state is decided after the build —
+    // e.g. the screenshot staging arming the player — so they use
+    // the factory's own gun instead of a look-alike.
+    attachPistol: attachPistolTo,
     // RONDE 3B: context lever for the leads' rim shell (shared
     // material, one uniform drives every shell). The game rides it
     // on its night curve; callers that never call it (the lab) keep

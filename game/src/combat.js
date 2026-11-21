@@ -42,6 +42,40 @@
     return best;
   }
 
+  // CHARPOLISH: the cash drop wears a BANKNOTE texture (one shared
+  // canvas: green note, pale border frame, $ medallion + corner
+  // $s) instead of the plain emissive yellow cube that read as a
+  // market crate in the combat photo. Material/texture only — the
+  // grounded 0.30 m cube and its rest/bob behaviour are unchanged.
+  // FIXVISUAL (2026-11-21): the charpolish note still read as a
+  // plain yellow cube at full-frame distance — the greens were too
+  // muted and the medallion too small/dark to survive 6 m of dusk
+  // light. The note is re-inked: saturated deep green, a bright
+  // pale edge frame so the cube's silhouette carries a money
+  // outline, and an INVERTED medallion (pale disc, green $) at
+  // r 36 with a 54 px glyph — the $ is the largest single mark on
+  // the face, readable from the full frame, not only in a crop.
+  var cashTex = null;
+  function cashTexture() {
+    if (cashTex) return cashTex;
+    var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    var c = cv.getContext('2d');
+    c.fillStyle = '#1e7a34'; c.fillRect(0, 0, 128, 128);
+    c.strokeStyle = '#b9ec9f'; c.lineWidth = 8; c.strokeRect(4, 4, 120, 120);
+    c.fillStyle = '#2f9e44'; c.fillRect(12, 12, 104, 104);
+    c.strokeStyle = '#eaf7c8'; c.lineWidth = 5; c.strokeRect(12, 12, 104, 104);
+    c.fillStyle = '#eaf7c8';
+    c.beginPath(); c.arc(64, 64, 36, 0, 7); c.fill();
+    c.strokeStyle = '#1e7a34'; c.lineWidth = 4;
+    c.beginPath(); c.arc(64, 64, 36, 0, 7); c.stroke();
+    c.fillStyle = '#1e7a34'; c.font = 'bold 54px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('$', 64, 68);
+    c.fillStyle = '#eaf7c8'; c.font = 'bold 20px sans-serif';
+    c.fillText('$', 26, 27); c.fillText('$', 102, 27); c.fillText('$', 26, 103); c.fillText('$', 102, 103);
+    var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    cashTex = tex; return tex;
+  }
+
   // STAGE E: fighters are factory characters on the shared CharAnim
   // controller — the old figure builder call is retired. Legacy
   // spawnEnemy colour calls (missions / shots) map to Stage C enemy
@@ -123,15 +157,29 @@
       var miss = Math.random() > hitChance;
       var ex = tx + (miss ? (Math.random() - 0.5) * 3.4 : 0);
       var ez = tz + (miss ? (Math.random() - 0.5) * 3.4 : 0);
-      SH.Effects.muzzle(x, y, z);
+      // COMBAT V7: pass the shot direction so the muzzle star sits
+      // at the gun (0.35 m toward the target), not at body centre.
+      SH.Effects.muzzle(x, y, z, dx / dist, dz / dist);
       SH.Effects.tracer(x, y, z, ex, ty, ez, true);
       if (SH.Audio) SH.Audio.shot('enemy');
       if (!miss) {
         if (st.driving && st.vehicle) {
           SH.Vehicles.damage(st.vehicle, dmg * 0.7);
           if (Math.random() < 0.45) this.damagePlayer(dmg * 0.55);
-        } else this.damagePlayer(dmg);
-        SH.Effects.sparks(ex, ty, ez);
+          SH.Effects.sparks(ex, ty, ez);
+        } else {
+          this.damagePlayer(dmg);
+          // CHARPOLISH: a hit ON THE PLAYER bursts BLOOD — the
+          // same tight hard-dot burst an enemy hit makes — not the
+          // wide orange spark spray. Probe-verified on the staged
+          // combat frame (probe-charpolish): the spray's 11 beads
+          // at speed 6 drift ~0.6 m inside the freeze age and stack
+          // additively into one soft pink glow patch around Raka's
+          // back, while the enemy impact (blood: 6 beads, speed
+          // 2.6, dark red hard dots) reads as discrete flecks.
+          // Vehicle and ground-miss impacts keep sparks.
+          SH.Effects.blood(ex, ty, ez);
+        }
       } else SH.Effects.sparks(ex, 0.4, ez);
     },
 
@@ -181,11 +229,27 @@
     // ---- pickups ------------------------------------------------------------------
     spawnPickup: function (kind, x, z) {
       var colors = { health: 0x51e07a, armor: 0x37e0ff, ammo: 0xffd23f, cash: 0xffe97a };
+      // CHARPOLISH: cash gets the banknote texture (see
+      // cashTexture above) with a deep-green emissive so the note
+      // still glows as a pickup; other kinds keep their flat
+      // emissive colours.
       var mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 0.55, 0.55),
-        new THREE.MeshLambertMaterial({ color: colors[kind] || 0xffffff, emissive: (colors[kind] || 0xffffff), emissiveIntensity: 0.45, flatShading: true })
+        new THREE.BoxGeometry(0.30, 0.30, 0.30),
+        kind === 'cash'
+          ? new THREE.MeshLambertMaterial({ map: cashTexture(), emissive: 0x14521f, emissiveIntensity: 0.35, flatShading: true })
+          : new THREE.MeshLambertMaterial({ color: colors[kind] || 0xffffff, emissive: (colors[kind] || 0xffffff), emissiveIntensity: 0.45, flatShading: true })
       );
-      mesh.position.set(x, 1.1, z);
+      // COMBAT V7: a drop RESTS on the ground instead of hovering
+      // at chest height. The 1.1 m hover read as a floating slab
+      // in the world — worst on the staged combat photo, where a
+      // kill's drop hung in mid-air directly in front of the next
+      // fighter's torso. Loot falls to the floor like loot.
+      // COMBAT V7.1: the cube itself shrinks 0.55 -> 0.30 m — at
+      // 0.55 the grounded drop still read as a market crate, not a
+      // pickup. Centre 0.19 m = half height + the bob's clearance
+      // (updatePickups bobs ±0.04 around it, dipping to a true
+      // rest at 0.15).
+      mesh.position.set(x, 0.19, z);
       this.scene().add(mesh);
       this.pickups.push({ kind: kind, x: x, z: z, mesh: mesh, spin: Math.random() * 6, life: 90 });
     },
@@ -547,7 +611,7 @@
         pk.life -= dt;
         pk.spin += dt * 2.2;
         pk.mesh.rotation.y = pk.spin;
-        pk.mesh.position.y = 1.1 + Math.sin(st.time * 2.4 + pk.spin) * 0.16;
+        pk.mesh.position.y = 0.19 + Math.sin(st.time * 2.4 + pk.spin) * 0.04;
         var d = Math.hypot(pk.x - f.x, pk.z - f.z);
         if (d < 1.9 && !st.driving) {
           this.applyPickup(pk.kind);

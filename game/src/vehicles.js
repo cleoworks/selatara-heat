@@ -110,10 +110,17 @@
     // Step 5 polish: real metallic paint (clearcoat physical material
     // fed by the procedural sky env), deep glass, true chrome. The far
     // LOD keeps its cheap Phong shell — only near cars pay for this.
-    var paint = new THREE.MeshPhysicalMaterial({ color: colorHex, metalness: 0.72, roughness: 0.3, clearcoat: 0.9, clearcoatRoughness: 0.28, envMapIntensity: 0.9, flatShading: true });
+    // OVERHAUL: envMapIntensity 0.9 -> 1.2 — the sky reflection is
+    // what separates paint from coloured plastic at photo distance;
+    // the PMREM sky was already there, the paint just under-used it.
+    var paint = new THREE.MeshPhysicalMaterial({ color: colorHex, metalness: 0.72, roughness: 0.3, clearcoat: 0.9, clearcoatRoughness: 0.28, envMapIntensity: 1.2, flatShading: true });
     var dark = new THREE.MeshLambertMaterial({ color: 0x14151a, flatShading: true });
     var tireMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0, roughness: 0.94 });
-    var glass = new THREE.MeshStandardMaterial({ color: 0x18242f, metalness: 0.9, roughness: 0.07, transparent: true, opacity: 0.74, envMapIntensity: 1.3, flatShading: true });
+    // OVERHAUL: glass lightens (0x18242f -> 0x22384c) and thins
+    // (0.74 -> 0.66) with a stronger env streak (1.3 -> 1.6): the
+    // cabin stops being a black void — an occupant's silhouette
+    // and the sky's reflection both read through it now.
+    var glass = new THREE.MeshStandardMaterial({ color: 0x22384c, metalness: 0.9, roughness: 0.07, transparent: true, opacity: 0.66, envMapIntensity: 1.6, flatShading: true });
     var chromeMat = new THREE.MeshStandardMaterial({ color: 0xd6dde6, metalness: 1.0, roughness: 0.16, envMapIntensity: 1.3, flatShading: true });
     var L = spec.length, W = spec.width, H = spec.height;
     var wheels = [];
@@ -131,11 +138,15 @@
     // barrel inside the dish, and a geometric 5-spoke star on the outer
     // face. The whole wheel is one spinning group; the star sits on the
     // outboard side only (both sides on the centred motor wheels).
-    var rimBarrelMat = new THREE.MeshStandardMaterial({ color: 0xb9c1c9, metalness: 1.0, roughness: 0.25, envMapIntensity: 1.25, flatShading: true });
+    var rimBarrelMat = new THREE.MeshStandardMaterial({ color: 0xb9c1c9, metalness: 1.0, roughness: 0.25, envMapIntensity: 1.55, flatShading: true });
     // The spoke star + lip ring get a brighter metal: at chase distance
     // the rim is the brightest part of a real wheel, and a near-white
     // ring is what keeps the wheel from reading as a black hole.
-    var rimFaceMat = new THREE.MeshStandardMaterial({ color: 0xd7dde3, metalness: 0.9, roughness: 0.2, envMapIntensity: 1.4, flatShading: true, side: THREE.DoubleSide });
+    // OVERHAUL: brighter still (0xd7dde3 -> 0xe9eef4, env 1.4 -> 1.85)
+    // — in the judged cover the near-side wheels sat in shade and
+    // read as black discs; the rim now catches the sky env even in
+    // shade, so the 5-spoke star survives the photo.
+    var rimFaceMat = new THREE.MeshStandardMaterial({ color: 0xe9eef4, metalness: 0.9, roughness: 0.18, envMapIntensity: 1.85, flatShading: true, side: THREE.DoubleSide });
     function wheel(x, z, r, width) {
       var wWidth = width || 0.3;
       var grp = new THREE.Group();
@@ -564,7 +575,11 @@
       }
       if (type === 'police') {
         // Contrast door panels over the white body + the lightbar.
-        var doorMat = new THREE.MeshLambertMaterial({ color: 0x1c2f6e, flatShading: true });
+        // OVERHAUL: the panel is now the same class of material as
+        // the paint (standard, metallic, env-fed) instead of flat
+        // Lambert — a matte blue slab on a clearcoat body read as a
+        // sticker; now it catches the same sky streak as the body.
+        var doorMat = new THREE.MeshStandardMaterial({ color: 0x1c2f6e, metalness: 0.55, roughness: 0.38, envMapIntensity: 1.0, flatShading: true });
         box(0.05, 0.36, L * 0.46, doorMat, -(W * 0.489 + 0.008), 0.64, -L * 0.02);
         box(0.05, 0.36, L * 0.46, doorMat, W * 0.489 + 0.008, 0.64, -L * 0.02);
         // Two-tone lightbar: red left, blue right, each with its own glow
@@ -665,7 +680,7 @@
       }
     })();
 
-    return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat, paintMat: paint };
+    return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat, paintMat: paint, glassMat: glass };
   }
 
   var Vehicles = {
@@ -708,7 +723,7 @@
       scene.add(built.group);
       var veh = {
         type: type, spec: SH.Config.vehicleTypes[type], mesh: built.group, wheels: built.wheels,
-        tailMat: built.tailMat, brakeMat: built.brakeMat, headMat: built.headMat,
+        tailMat: built.tailMat, brakeMat: built.brakeMat, headMat: built.headMat, paintMat: built.paintMat, glassMat: built.glassMat,
         x: x, z: z, y: 0, heading: heading, speed: 0, steer: 0, hp: 100,
         driver: 'parked', active: true, smokeTimer: 0, dead: false, color: colorHex
       };
@@ -1000,6 +1015,30 @@
       v.hp -= amount;
       if (v.hp <= 0) {
         v.hp = 0; v.dead = true;
+        // A wreck reads as a wreck: the paint chars the moment the
+        // vehicle dies, and stays charred — wrecks do not un-burn.
+        if (v.paintMat) v.paintMat.color.setHex(0x2a2320);
+        // BLASTCAR (2026-11-22): panel round 14 — the char COLOUR
+        // alone still read as an intact cream sedan on the cover.
+        // Measured cause: the paint is metallic + clearcoat fed by
+        // the sky env, so 0x2a2320 renders as glossy warm bronze,
+        // and the glasshouse stays a clean mirror. A burnt shell
+        // is MATTE and its glass is smoked out: kill the clearcoat,
+        // the metalness and the env feed on the paint, and blacken
+        // the glass, so a dead vehicle reads burnt in any light.
+        if (v.paintMat) {
+          v.paintMat.roughness = 0.95;
+          v.paintMat.metalness = 0.1;
+          v.paintMat.clearcoat = 0;
+          v.paintMat.envMapIntensity = 0.25;
+        }
+        if (v.glassMat) {
+          v.glassMat.color.setHex(0x0b0d10);
+          v.glassMat.opacity = 0.94;
+          v.glassMat.roughness = 0.55;
+          v.glassMat.metalness = 0.3;
+          v.glassMat.envMapIntensity = 0.3;
+        }
         SH.Effects.explosion(v.x, 0.6, v.z);
         if (SH.Audio && SH.Audio.boom) SH.Audio.boom();
         if (SH.Police && SH.Police.witnessCrime && (v.driver === 'police' || v.driver === 'roadblock')) SH.Police.witnessCrime('killPolice', v.x, v.z);
@@ -1138,6 +1177,32 @@
         lb.blueMat.color.setHex(redOn ? 0x12275e : 0x2a6aff);
         lb.redGlow.material.opacity = active && redOn ? 0.55 + level * 0.3 : 0;
         lb.blueGlow.material.opacity = active && !redOn ? 0.55 + level * 0.3 : 0;
+      }
+      // SPECTACLE (2026-11-21): damage smoke + wreck fire for EVERY
+      // vehicle, not only the player's. updatePlayerVehicle already
+      // smokes the driven car on this same timer, so the driven car
+      // is skipped here; every other damaged vehicle (hp < 45)
+      // smokes on the same cadence, and a dead one also burns — a
+      // small fire burst per smoke tick — so a wreck anywhere in
+      // the city smoulders and licks flame in live play, exactly
+      // as it does in the staged photos.
+      if (SH.Effects && SH.Effects.smoke) {
+        var stepDt = SH.Config.loop.step;
+        for (var wi = 0; wi < this.list.length; wi++) {
+          var wv = this.list[wi];
+          if (!wv.dead && wv.hp >= 45) continue;
+          if (SH.State.driving && SH.State.vehicle === wv) continue;
+          wv.smokeTimer -= stepDt;
+          if (wv.smokeTimer <= 0) {
+            SH.Effects.smoke(wv.x, 1.1, wv.z, wv.dead || wv.hp < 22);
+            wv.smokeTimer = wv.dead ? 0.07 : 0.09;
+            // OVERHAUL: the burn now emits on the fire cloud
+            // (Effects.flame — large saturated flame beads) instead
+            // of a 4-bead burst on the 0.13 m spark cloud, which
+            // read as a sprinkle of sparks, never as fire.
+            if (wv.dead && SH.Effects.flame) SH.Effects.flame(wv.x, 0.95, wv.z, 1);
+          }
+        }
       }
     },
 

@@ -161,7 +161,10 @@
       wear: {
         top: { type: 'tee', pattern: 'hawaii', colors: [0xf2e3c6, 0xd8e4ea, 0xf5d9c0], colors2: [0xe86a4a, 0xdd5a8a, 0xef8f3a] },
         bottom: { type: 'shorts', colors: [0x8a6a3c, 0x5a6e7a, 0x746a4f] },
-        shoes: [0x54443a, 0x2a2c33], accessories: ['armTattoo']
+        // COMBAT V7: shooter archetypes carry the factory pistol —
+        // they fire in combat but were built unarmed (empty handR),
+        // unlike penjagaGudang / police, who already had 'pistol'.
+        shoes: [0x54443a, 0x2a2c33], accessories: ['armTattoo', 'pistol']
       },
       idle: 'idle_lean', walkSpeed: 1.3
     },
@@ -174,7 +177,7 @@
       wear: {
         top: { type: 'jacket', sleeve: 'long', color: 0x2b2320, rough: 0.5 },
         bottom: { type: 'long', colors: [0x23242a, 0x1d1f26] },
-        shoes: [0x1c1a16, 0x2a2019], accessories: ['armTattoo']
+        shoes: [0x1c1a16, 0x2a2019], accessories: ['armTattoo', 'pistol']
       },
       idle: 'idle', walkSpeed: 1.35
     },
@@ -212,7 +215,7 @@
       wear: {
         top: { type: 'vest', colors: [0x33302c, 0x402e28, 0x2c3436] },
         bottom: { type: 'shorts', colors: [0x3a3f45, 0x4a4038] },
-        shoes: [0x2a2c33, 0x54443a], accessories: ['armTattoo']
+        shoes: [0x2a2c33, 0x54443a], accessories: ['armTattoo', 'pistol']
       },
       idle: 'idle_lean', walkSpeed: 1.3
     },

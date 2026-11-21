@@ -10,18 +10,51 @@
     var g = c.getContext('2d');
     g.fillStyle = '#3d3835'; g.fillRect(0, 0, 128, 128);
     var rng = SH.World.makeRng(77);
-    // Fine aggregate noise.
-    for (var i = 0; i < 2400; i++) {
-      g.fillStyle = rng() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.055)';
+    // OVERHAUL: the aggregate grain doubles in contrast (alphas
+    // 0.035/0.055 -> 0.08/0.11). At the old values the texture was
+    // technically present but photographically absent — the road
+    // read as one flat grey sheet in every judged frame.
+    for (var i = 0; i < 3400; i++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.11)';
       g.fillRect(rng() * 128, rng() * 128, 1.6, 1.6);
     }
+    // OVERHAUL: polished wheel tracks. Traffic runs two lanes at
+    // fixed offsets, so real asphalt darkens in four longitudinal
+    // bands where tyres polish it (and lightens slightly between
+    // each pair, where grit accumulates). The bands run the full
+    // tile height; the UV bake rotates them with the street, so
+    // they stay longitudinal in both orientations. Soft edges via
+    // layered strokes of falling alpha.
+    function trackBand(cx) {
+      for (var tw = 11; tw > 0; tw -= 2.5) {
+        g.fillStyle = 'rgba(10,9,10,' + (0.028 + (11 - tw) * 0.006) + ')';
+        g.fillRect(cx - tw, 0, tw * 2, 128);
+      }
+      g.fillStyle = 'rgba(235,230,220,0.045)';
+      g.fillRect(cx - 1.5, 0, 3, 128);
+    }
+    trackBand(31); trackBand(97);
+    g.fillStyle = 'rgba(255,255,255,0.03)';
+    g.fillRect(44, 0, 40, 128); // gritty crown between the lanes
     // Repair patches: darker rectangles with soft edges.
-    for (var p = 0; p < 5; p++) {
+    for (var p = 0; p < 8; p++) {
       var px = rng() * 96, py = rng() * 96, pw = 18 + rng() * 26, ph = 12 + rng() * 22;
       g.fillStyle = 'rgba(12,10,12,0.16)';
       g.fillRect(px - 2, py - 2, pw + 4, ph + 4);
       g.fillStyle = 'rgba(10,9,11,0.22)';
       g.fillRect(px, py, pw, ph);
+    }
+    // OVERHAUL: oil stains — soft dark radial blooms, the kind a
+    // port city's junctions collect. Two per tile, kept off the
+    // edge lines so the markings stay clean.
+    for (var os = 0; os < 2; os++) {
+      var ox = 24 + rng() * 80, oy = rng() * 128, orad = 7 + rng() * 9;
+      var og = g.createRadialGradient(ox, oy, 1, ox, oy, orad);
+      og.addColorStop(0, 'rgba(8,8,12,0.34)');
+      og.addColorStop(0.7, 'rgba(8,8,12,0.16)');
+      og.addColorStop(1, 'rgba(8,8,12,0)');
+      g.fillStyle = og;
+      g.fillRect(ox - orad, oy - orad, orad * 2, orad * 2);
     }
     // Hairline cracks.
     g.strokeStyle = 'rgba(8,8,10,0.35)'; g.lineWidth = 1;
@@ -52,7 +85,10 @@
     var rng = SH.World.makeRng(31);
     // Large soft blotches (Rev 6): three grass tones + dry dirt, so
     // open ground reads as patchy terrain, not one flat colour.
-    var tones = ['rgba(38,74,26,0.20)', 'rgba(84,110,40,0.16)', 'rgba(140,124,62,0.13)', 'rgba(122,94,52,0.12)'];
+    // OVERHAUL: blotch + speckle contrast raised ~30% — same
+    // reasoning as the asphalt: present-but-invisible texture is
+    // the same as no texture at judge scale.
+    var tones = ['rgba(38,74,26,0.27)', 'rgba(84,110,40,0.22)', 'rgba(140,124,62,0.18)', 'rgba(122,94,52,0.17)'];
     for (var b = 0; b < 90; b++) {
       var bx = rng() * 512, by = rng() * 512, br = 26 + rng() * 90;
       var gr = g.createRadialGradient(bx, by, 2, bx, by, br);
@@ -61,15 +97,53 @@
       g.fillStyle = gr;
       g.fillRect(bx - br, by - br, br * 2, br * 2);
     }
-    for (var i = 0; i < 9000; i++) {
+    for (var i = 0; i < 12000; i++) {
       var v = rng();
-      g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.16)' : (v > 0.3 ? 'rgba(120,100,50,0.10)' : 'rgba(255,255,220,0.05)');
+      g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.21)' : (v > 0.3 ? 'rgba(120,100,50,0.14)' : 'rgba(255,255,220,0.07)');
       g.fillRect(rng() * 512, rng() * 512, 3 + rng() * 9, 3 + rng() * 9);
     }
     var t = new THREE.CanvasTexture(c);
     if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(34, 30);
+    t.anisotropy = 4;
+    return t;
+  }
+
+  // OVERHAUL: the beach was the last big untextured surface — a
+  // plain Lambert ribbon in palette sand. It now carries a fine
+  // grain + wind-ripple streak canvas. The ribbon UVs run u along
+  // the shore (x/46) and v across the width, so the texture
+  // repeat below lands the grain at ~5 m tiles.
+  function sandTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 256;
+    var g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 256);
+    var rng = SH.World.makeRng(53);
+    for (var i = 0; i < 5200; i++) {
+      var v = rng();
+      g.fillStyle = v > 0.55 ? 'rgba(146,116,66,0.13)' : (v > 0.25 ? 'rgba(255,250,230,0.10)' : 'rgba(105,80,44,0.08)');
+      g.fillRect(rng() * 256, rng() * 256, 1.8, 1.8);
+    }
+    // Wind ripples: soft horizontal arcs, low alpha, offset rows.
+    g.strokeStyle = 'rgba(120,94,52,0.10)'; g.lineWidth = 2.4;
+    for (var ry = 6; ry < 256; ry += 13) {
+      g.beginPath();
+      for (var rx = 0; rx <= 256; rx += 16) {
+        var yy = ry + Math.sin((rx + ry * 3) * 0.05) * 2.4;
+        if (rx === 0) g.moveTo(rx, yy); else g.lineTo(rx, yy);
+      }
+      g.stroke();
+    }
+    // Scattered shell/pebble flecks.
+    for (var s2 = 0; s2 < 130; s2++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(255,252,244,0.35)' : 'rgba(90,70,44,0.28)';
+      g.fillRect(rng() * 256, rng() * 256, 2.2, 1.4);
+    }
+    var t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(10, 6);
     t.anisotropy = 4;
     return t;
   }
@@ -195,7 +269,7 @@
       }
       // Sand ribbon with a breathing width (Rev 6): 47-73 m of beach
       // depending on the bay, not one uniform strip.
-      var sand = coastRibbon(function (x) { return -(54 + 12 * Math.sin(x * 0.009 + 1.7) + 7 * Math.sin(x * 0.023 + 0.4)); }, 8, -0.025, new THREE.MeshLambertMaterial({ color: pal.sand }));
+      var sand = coastRibbon(function (x) { return -(54 + 12 * Math.sin(x * 0.009 + 1.7) + 7 * Math.sin(x * 0.023 + 0.4)); }, 8, -0.025, new THREE.MeshLambertMaterial({ color: pal.sand, map: sandTexture() }));
       this.sandMesh = sand;
       // Wet-sand band at the waterline: darker, with a specular sheen.
       var wetMat = new THREE.MeshPhongMaterial({ color: 0x8a6f4d, shininess: 70, specular: 0x776644 });
@@ -205,7 +279,10 @@
       // colours grade from pale shallow (with alpha fade at the very
       // edge) to the palette's deep water (Rev 6), so the shallows
       // read as shallows instead of one flat blue.
-      var waterMat = new THREE.MeshPhongMaterial({ color: pal.water, shininess: 90, specular: 0x99ddff, transparent: true, opacity: 0.94 });
+      // OVERHAUL: specular tightened (90 -> 150) and brightened —
+      // the sea at golden hour should carry a hard sun glitter
+      // path, not a broad matte sheen.
+      var waterMat = new THREE.MeshPhongMaterial({ color: pal.water, shininess: 150, specular: 0xd6f2ff, transparent: true, opacity: 0.94 });
       var water = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), waterMat);
       water.rotation.x = -Math.PI / 2;
       water.position.set(0, -0.55, cfg.waterZ + 1750);
@@ -597,6 +674,49 @@
         var zebraMesh = new THREE.Mesh(SH.World.mergeGeos(zebraGeos), new THREE.MeshLambertMaterial({ color: 0xe8e8e2 }));
         zebraMesh.receiveShadow = true;
         scene.add(zebraMesh);
+      }
+      // SPECTACLE (2026-11-21): the beach boulevard's asphalt was
+      // featureless in the cover frame — the road now carries its
+      // history: two braking arcs baked into the surface where
+      // drivers dive for the junction gaps, and crash debris
+      // scattered on the beach verge at the end of the eastern arc.
+      // Permanent road dressing, merged the same way as the zebra
+      // bars above, following the real beachRoadZ curve.
+      var skidGeos = [], debrisGeos = [];
+      var sq2 = new THREE.Quaternion(), se2 = new THREE.Euler(), sm2 = new THREE.Matrix4(), sscl2 = new THREE.Vector3(1, 1, 1);
+      function flatBox(list, x, y, z, heading, wdt, hgt, lng) {
+        var geo = new THREE.BoxGeometry(wdt, hgt, lng);
+        se2.set(0, heading, 0); sq2.setFromEuler(se2);
+        sm2.compose(new THREE.Vector3(x, y, z), sq2, sscl2);
+        geo.applyMatrix4(sm2);
+        list.push(geo);
+      }
+      function skidArc(xFrom, xTo, latOff) {
+        for (var sx = xFrom; sx >= xTo; sx -= 1.7) {
+          var dzdt = (SH.World.beachRoadZ(sx + 1) - SH.World.beachRoadZ(sx - 1)) / 2;
+          flatBox(skidGeos, sx, 0.045, SH.World.beachRoadZ(sx) + latOff, Math.atan2(1, dzdt), 0.26, 0.012, 1.85);
+        }
+      }
+      skidArc(47, 27, -0.85); skidArc(47, 27, 0.85);
+      skidArc(-18, -34, -0.85); skidArc(-18, -34, 0.85);
+      if (skidGeos.length) {
+        var skidMesh = new THREE.Mesh(SH.World.mergeGeos(skidGeos), new THREE.MeshLambertMaterial({ color: 0x201d1a, transparent: true, opacity: 0.5 }));
+        skidMesh.renderOrder = 2;
+        scene.add(skidMesh);
+      }
+      var debRng = SH.World.makeRng(778);
+      for (var dbi = 0; dbi < 16; dbi++) {
+        var dbx = 17 + debRng() * 15, dbz = SH.World.beachRoadZ(dbx) + 3.4 + debRng() * 2.4;
+        flatBox(debrisGeos, dbx, 0.06 + debRng() * 0.05, dbz, debRng() * 3, 0.12 + debRng() * 0.26, 0.08 + debRng() * 0.1, 0.12 + debRng() * 0.26);
+      }
+      for (var dbj = 0; dbj < 6; dbj++) {
+        var dxj = 20 + debRng() * 9, dzj = SH.World.beachRoadZ(dxj) + 1.9 + debRng() * 1.1;
+        flatBox(debrisGeos, dxj, 0.05, dzj, debRng() * 3, 0.1 + debRng() * 0.2, 0.06, 0.1 + debRng() * 0.2);
+      }
+      if (debrisGeos.length) {
+        var debMesh = new THREE.Mesh(SH.World.mergeGeos(debrisGeos), new THREE.MeshLambertMaterial({ color: 0x3a3733, flatShading: true }));
+        debMesh.receiveShadow = true;
+        scene.add(debMesh);
       }
     },
 

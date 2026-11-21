@@ -483,8 +483,12 @@
       shadePart(tube(S.legR, boneIndex, radL, false, true), skinRGB, aoLeg, radL + 1)
     ];
     if (withFingers) {
-      parts.push(paintPart(mittenPart(p, boneIndex, 1), skinRGB));
-      parts.push(paintPart(mittenPart(p, boneIndex, -1), skinRGB));
+      // CHARPOLISH two-tone skin: hands carry the same 1.09 lift
+      // as the face — bare skin reads slightly lighter than the
+      // covered arm above it.
+      var skinHand = [Math.min(1, skinRGB[0] * 1.09), Math.min(1, skinRGB[1] * 1.09), Math.min(1, skinRGB[2] * 1.09)];
+      parts.push(paintPart(mittenPart(p, boneIndex, 1), skinHand));
+      parts.push(paintPart(mittenPart(p, boneIndex, -1), skinHand));
     }
     var g = mergeParts(parts);
     g.computeVertexNormals();
@@ -674,19 +678,48 @@
       // widens/narrows with d.chinW.
       rad += d.jawBump * (g2F(dx, ny, 0.47, -0.60, 0.16) +
                       g2F(dx, ny, -0.47, -0.60, 0.16)) * (0.5 + 0.5 * front);
-      rad += 0.020 * g2F(dx / d.chinW, ny, 0, -0.86, 0.20) * front;   // chin (broad, rounded — iter-2)
+      rad += 0.024 * g2F(dx / d.chinW, ny, 0, -0.86, 0.20) * front;   // chin (broad, rounded — iter-2; CHARPOLISH: 0.020 -> 0.024, a firmer chin against the cone jaw)
+      // CHARPOLISH: the nose is CONSTRUCTION again — a smooth
+      // bridge ridge running down from the glabella into a round
+      // tip ball with a slight alar flare at the base, all as
+      // radial relief on this same displaced sphere (NOT a
+      // bolted-on mesh: the round-1 doll verdict was against the
+      // separate sphere nose, and the parent brief re-opens the
+      // nose as integrated relief). Centred on the DRAWN nose —
+      // canvas bridge y 125 -> ny +0.037, tip y 144 -> ny -0.196,
+      // nostrils y 146.5 -> ny -0.222 under the sphere's own acos
+      // UV law — so the texture shading and the geometry agree.
+      // Peak ~10 mm proud of the sphere at the tip: enough to
+      // break the smooth forehead->chin profile curve, far under
+      // a clown nose. Front-weighted so the relief dies before
+      // the cheeks; the eye band (dx +-0.30) is untouched
+      // (bridge sigma x 0.10 -> e^-9 out there). Relief fields
+      // are not part of headCross(), so the neck funnel and the
+      // hair shells keep their designed clearances.
+      rad += 0.032 * front * Math.exp(-Math.pow(dx / 0.10, 2) - Math.pow((ny + 0.02) / 0.17, 2)); // nose bridge ridge
+      rad += 0.070 * front * g2F(dx, ny, 0, -0.185, 0.075);          // nose tip ball (amp/sigma tuned over two lab profile reads: a tighter ball breaks the silhouette instead of swelling it)
+      rad += 0.018 * front * (g2F(dx, ny, 0.088, -0.228, 0.052) +
+                              g2F(dx, ny, -0.088, -0.228, 0.052)); // alar (nostril) flare
       // iter-2 structure vs the iter-1 "egg": parietal width high
       // on the skull, a slight temple inset, a flatter crown
       rad += 0.016 * (g2F(dx, ny, 0.80, 0.35, 0.20) + g2F(dx, ny, -0.80, 0.35, 0.20));
       rad -= 0.014 * (g2F(dx, ny, 0.62, 0.30, 0.16) + g2F(dx, ny, -0.62, 0.30, 0.16)) * front;
       rad -= 0.018 * gF(ny, 0.92, 0.10);
       x += dx * rad * r0; y += dy * rad * r0; z += dz * rad * r0;
-      // round 2: the 3D nose bump is GONE (simplify clause) — the
-      // nose is soft side shading in the face texture only.
+      // (round 2 deleted the separate 3D nose MESH under the
+      // simplify clause; CHARPOLISH restores the nose as the
+      // integrated displacement fields above — see the nose
+      // bridge/tip/flare terms in the relief sum.)
       posA.setXYZ(i, x, cy + y, z);
     }
     geo.computeVertexNormals(); // indexed sphere -> smooth normals
-    var parts = [geoPart(geo, p, boneIndex, cy)];
+    // CHARPOLISH two-tone skin: the head sphere + ears carry a
+    // 1.09 vertex-colour lift (the factory's head material enables
+    // vertexColors), so the face reads slightly LIGHTER than the
+    // clothed body and the covered arms; the neck funnel keeps its
+    // own gradient (below), so the jaw -> neck transition keeps a
+    // soft shadow instead of a hard tone step.
+    var parts = [paintPart(geoPart(geo, p, boneIndex, cy), [1.09, 1.09, 1.09])];
     // ears: small C shells (flattened torus arcs) on the head side,
     // centred between the brow line and the nose base
     function makeEar(side) {
@@ -697,10 +730,14 @@
       return g;
     }
     var ec = headCross(-0.02, d);
-    parts.push(geoPart(makeEar(1), p, boneIndex, cy, [ec[0] - r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]));
-    parts.push(geoPart(makeEar(-1), p, boneIndex, cy, [-ec[0] + r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]));
-    // continuous skin loft: jaw -> throat -> neck -> inside torso
-    parts.push(neckFunnel(p, boneIndex, cy, r0));
+    parts.push(paintPart(geoPart(makeEar(1), p, boneIndex, cy, [ec[0] - r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]), [1.09, 1.09, 1.09]));
+    parts.push(paintPart(geoPart(makeEar(-1), p, boneIndex, cy, [-ec[0] + r0 * 0.008, cy, -r0 * 0.02], null, [0.62, 0.45]), [1.09, 1.09, 1.09]));
+    // continuous skin loft: jaw -> throat -> neck -> inside torso.
+    // CHARPOLISH: ring-gradient vertex colour — near-face tone at
+    // the tucked seam ring, dipping to 0.95 mid-neck (the soft
+    // under-jaw shadow the brief asks for), recovering toward the
+    // torso. Ring-major tube, radial 18 -> 19 verts per ring.
+    parts.push(shadePart(neckFunnel(p, boneIndex, cy, r0), [1, 1, 1], [1.03, 1.0, 0.98, 0.96, 0.95, 0.95, 0.96, 0.98], 19));
     var g = mergeParts(parts);
     // normals come from the indexed sphere / torus (smooth); do NOT
     // computeVertexNormals on this non-indexed merge (flat bands)
@@ -1103,15 +1140,27 @@
   function hairGeometry(style, p) {
     p = baseParams(p);
     var hd = headDims(p), r = hd.r0, cy = hd.cy;
-    var cap = hairShell(p, { teeth: 0.14, teethSeed: 1, lobe: 0.028 }); // APPEAL iter 2: deeper fringe teeth (iter-1 close-ups read the fringe as one straight helmet line); FX6: clumpier lobe
+    var cap = hairShell(p, { teeth: 0.17, teethSeed: 1, lobe: 0.028 }); // APPEAL iter 2: deeper fringe teeth (iter-1 close-ups read the fringe as one straight helmet line); FX6: clumpier lobe; CHARPOLISH: teeth 0.14 -> 0.17 — longer irregular nape/side strands, the back rim must cut the silhouette as strands (the combat camera's main view)
     var layer2 = hairShell(p, { padA: 0.15, rimF: 1.08, peak: 0.34, front: 0.42, temple: 0.34,
-      side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.13, teethSeed: 2, jit: 0.045 }); // FX6: teeth 0.07->0.13 — the front hairline must break, not shelf
+      side: 0.16, back: 0.06, levels: [[0.55, 1.05], [0.80, 0.85], [0.97, 0.48]], teeth: 0.16, teethSeed: 2, jit: 0.045 }); // FX6: teeth 0.07->0.13 — the front hairline must break, not shelf; CHARPOLISH: 0.13 -> 0.16 so the layer STEP edge at the back steps as strands too
     var fringe = hairShell(p, { padA: 0.085, rimF: 1.06, peak: 0.26, front: 0.30, temple: 0.26,
       side: 0.24, back: 0.30, levels: [[0.34, 1.03], [0.48, 0.99], [0.62, 0.94], [0.78, 0.88]], teeth: 0.15, teethSeed: 3, phiMax: 1.05, jit: 0.02 }); // FX6: teeth 0.09->0.15
     var parts = [];
     switch (style) {
       case 'bald': return null;
-      case 'short': parts.push(cap, layer2); break;
+      case 'short':
+        // CHARPOLISH: 'short' gains the FRINGE BAND the layered
+        // styles already wear — a front-sector shell (phiMax crop)
+        // sitting ~7 mm proud of the cap, its own rim HIGHER than
+        // the cap's edge (front 0.42 vs 0.36) with longer irregular
+        // teeth, so the hairline reads as two staggered STRAND
+        // rows over the forehead instead of one smooth shelf.
+        // Teeth tips land at ny ~0.33-0.39: they graze the brow
+        // arch's top edge at the deepest single column, never
+        // cover the blades (the iter-3 brow-clearance rule).
+        parts.push(cap, layer2, hairShell(p, { padA: 0.105, rimF: 1.05, peak: 0.38, front: 0.42, temple: 0.40,
+          side: 0.32, back: 0.34, levels: [[0.48, 1.02], [0.66, 0.96], [0.84, 0.86]], teeth: 0.22, teethSeed: 11, phiMax: 1.02, jit: 0.018, lobe: 0.02 }));
+        break;
       case 'quiff':
         parts.push(cap, layer2, fringe);
         // swept wedge, tilted forward and flattened — a plain
