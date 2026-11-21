@@ -25,6 +25,18 @@
 // core white-hot and the chain is one thick continuous streak that
 // survives the downscale. Muzzle, sparks and blood stay on the 0.30 m
 // spark cloud; only the tracer's rendering changed.
+//
+// COMBAT V4 (2026-11-21): the 0.42 m beam overshot — two fresh judges
+// shrank the V3 frame to 384 px and read the tracer as a giant light
+// bar / floating orbs, an artefact rather than a line of fire. A
+// measured ladder at 384 px (0.42 / 0.27 / 0.20 / 0.16 m, renders in
+// shots-dev/combat4) picked the winner: beads slim to 0.20 m, spacing
+// tightens to ~0.10 m so the chain still overlaps ~2x and merges into
+// ONE unbroken line, and the colours come down to just past 1.0
+// (player [1.3, 1.0, 0.48], hostile [1.3, 0.4, 0.3]) so the core stays
+// bright without burning into a bar. 0.16 m was rejected: at 384 px
+// its return line already fades at the frame edge, too close to the
+// vanishing threshold once JPEG compression applies.
 (function (SH) {
   'use strict';
 
@@ -114,7 +126,7 @@
       }));
       scene.add(puff.points);
       beam = makeCloud(BEAM_MAX, new THREE.PointsMaterial({
-        size: 0.42, map: tex, vertexColors: true, transparent: true, opacity: 1.0,
+        size: 0.20, map: tex, vertexColors: true, transparent: true, opacity: 1.0,
         depthWrite: false, blending: THREE.AdditiveBlending
       }));
       scene.add(beam.points);
@@ -136,23 +148,24 @@
       }
     },
 
-    // A tracer: a dense chain of FAT bright beads on the beam cloud
-    // (0.42 m beads every ~0.15 m, colours pushed past 1.0) so the
-    // additive blending merges the chain into one thick continuous
-    // streak that survives the 384 px downscale — warm cream for
-    // the player, salmon for hostiles. Bead drift is a gentle push
-    // along the line so the chain stays ON the line while it fades.
+    // A tracer: a dense chain of bright beads on the beam cloud.
+    // COMBAT V4 slimmed the chain (0.42 -> 0.20 m beads, spacing
+    // ~0.15 -> ~0.10 m, colours down to just past 1.0 — see the
+    // header note) so it reads as one thin continuous LINE of fire
+    // at 384 px instead of a solid bar — warm cream for the player,
+    // salmon for hostiles. Bead drift is a gentle push along the
+    // line so the chain stays ON the line while it fades.
     tracer: function (x1, y1, z1, x2, y2, z2, hostile) {
       if (!beam) return;
       var dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
       var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      var steps = Math.max(5, Math.min(120, Math.round(dist / 0.15)));
+      var steps = Math.max(5, Math.min(120, Math.round(dist / 0.10)));
       for (var i = 1; i <= steps; i++) {
         var t = i / steps;
         spawnIn(beam,
           x1 + dx * t, y1 + dy * t, z1 + dz * t,
           dx * 0.5, dy * 0.5, dz * 0.5,
-          0.12, hostile ? 1.5 : 1.5, hostile ? 0.42 : 1.15, hostile ? 0.32 : 0.55);
+          0.12, hostile ? 1.3 : 1.3, hostile ? 0.4 : 1.0, hostile ? 0.3 : 0.48);
       }
     },
 

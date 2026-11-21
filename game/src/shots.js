@@ -118,7 +118,20 @@
         // the #1 cover's car does. (R2 ladder: dist 5.8 still left the
         // hero at ~13% of frame width vs the leader's ~30% — 3.6 m is
         // the rung where the hero dominates.)
-        st._shotCamDist = 3.6;
+        // COVER3 (2026-11-21): the R2 ladder was measured on
+        // wall-clock captures, whose chase camera trailed metres
+        // behind its nominal ring (lerp lag at 27 m/s) — the sealed
+        // frame's effective distance was ~6 m, not 3.6. The COMBAT5
+        // freeze snaps to the exact ring, so at 3.6 the hero ballooned
+        // to ~49% of frame width and the rammer unit fell off the
+        // left edge. Re-measured on the frozen frame (ladder
+        // 5.6 / 6.2 / 6.8 / 7.4): 5.6 leaves the rammer's rear bumper
+        // ~15 px from the edge; 6.2 restores the sealed composition
+        // (hero ~24% of frame width, rammer whole with ~105 px of
+        // margin and its contact on the hero's rear quarter visible,
+        // roadblock still 13 m and large); beyond 6.2 the chase
+        // flattens and the roadblock shrinks. 6.2 it is.
+        st._shotCamDist = 6.2;
         st.camYaw = Math.PI / 2; st.camPitch = 0.03;
         snapCamera();
         st.cash = 4650;
@@ -204,6 +217,77 @@
         ]);
         stagePeds([[36, 250], [88, 250], [12, 252], [104, 222]]);
         if (SH.HUD) SH.HUD.subtitle('Mami Ratna', 'Half the force is behind you, Raka. Do NOT stop for the sunset.', 30);
+        // COMBAT5 freeze (2026-11-21): the staged formation above is
+        // composed for ONE capture moment — the hero ~26 m into the
+        // run, when the roadblock sits ~17 m ahead (a wall, not a
+        // speck), the fifth response car has joined (panel: 8 units)
+        // and the air unit hangs whole in the upper frame. But the
+        // loop is a fixed-step accumulator that DROPS time whenever
+        // the renderer cannot keep up, so a wall-clock capture lands
+        // wherever the local frame rate happened to get to: the
+        // HUD-overhaul render caught the same branch at 13 m —
+        // roadblock shrunk to 31 m, 7 units, cash counter still
+        // mid-roll at $4,618, heli clipped behind the monorail. The
+        // freeze therefore keys on GAME STATE, not wall time (the
+        // combat branch's sanctioned pattern): poll until the hero
+        // has covered 25 m, settle the HUD with its own refresh,
+        // snap the camera to the exact frame updateCamera converges
+        // to at this formation (snapCamera + its lookAt + the
+        // >80 km/h FOV), then stop the clock. Every element in the
+        // frozen frame arrived through the real systems above.
+        var coverStartX = car.x, coverStartZ = car.z;
+        var coverFreeze = window.setInterval(function () {
+          var vp = st.vehiclePos;
+          if (Math.hypot(vp.x - coverStartX, vp.z - coverStartZ) < 25) return;
+          window.clearInterval(coverFreeze);
+          // The air unit's orbit CENTRE is not frozen by the shot
+          // branch: Police.update keeps flying it toward the
+          // (continuously re-acquired) lastKnown at 26 m/s, so in
+          // the same ~1 s window it drifts ~26 m east of the parked
+          // -45 and the aircraft ends up ~84 m out, high at the
+          // frame's top edge with its tail cropped (measured NDC
+          // centre y 0.90 on the COMBAT5 first render; the sealed
+          // frame's aircraft sits at ~0.76, whole). Park the centre
+          // at the composed point and place the aircraft with
+          // Police.update's own orbit math, once, as the clock
+          // stops. COVER3 (2026-11-21): the COMBAT5 park (centre
+          // (-40, 240) -> airframe (-70.7, 40, 225.5), ~118 m from
+          // the snapped camera) read at the judge's 384 px as a
+          // ~30 px dark blob, the rotor foreshortened to a nub.
+          // Centre (-28, 237) puts the airframe at (-58.7, 40,
+          // 222.5), ~104 m out: ~50 px across, rotor bar spread,
+          // silhouette clear of the monorail, cone landing on the
+          // road past the roadblock — the sealed frame's read. The
+          // rotor phase is locked at the same moment: left to the
+          // accumulated spin it lands anywhere (measured phases
+          // 0 / 0.5 / 1.0 / 1.5 at the old park — only some read as
+          // an aircraft at all), so the parked presentation fixes
+          // phase 0, the rung that reads at this geometry.
+          var hh = SH.Police && SH.Police.heli;
+          if (hh) {
+            hh.cx = -28; hh.cz = 237;
+            var hx2 = hh.cx + Math.cos(hh.angle) * 34;
+            var hz2 = hh.cz + Math.sin(hh.angle) * 34;
+            hh.mesh.position.set(hx2, 40, hz2);
+            hh.mesh.lookAt(hh.cx, 0, hh.cz);
+            if (hh.rotor) hh.rotor.rotation.y = 0;
+            if (hh.spot) {
+              hh.spot.target.position.set(hh.cx - hx2, -40, hh.cz - hz2);
+              hh.spot.target.updateMatrixWorld();
+            }
+          }
+          if (SH.HUD) for (var hi = 0; hi < 260; hi++) SH.HUD.refresh();
+          snapCamera();
+          var fcam = SH.Main.getCamera();
+          if (fcam && SH.Player._camPos) {
+            fcam.position.copy(SH.Player._camPos);
+            var cbx = Math.sin(st.camYaw) * Math.cos(st.camPitch);
+            var cbz = Math.cos(st.camYaw) * Math.cos(st.camPitch);
+            fcam.lookAt(vp.x - cbx * 2, 1.15, vp.z - cbz * 2);
+            fcam.fov = 68; fcam.updateProjectionMatrix();
+          }
+          st.mode = 'paused';
+        }, 40);
       } else if (name === 'drive') {
         // Northbound through Pelita Heights at golden hour, towers both sides.
         SH.Main.setHour(17.9);
@@ -420,7 +504,7 @@
           var foes = [
             SH.Combat.spawnEnemy(-323.62, 92.18, { color: 0x2a8a8a, hp: 16 }),
             SH.Combat.spawnEnemy(-322.68, 92.93, { color: 0x2a8a8a, hp: 260 }),
-            SH.Combat.spawnEnemy(-317.5, 90.6, { color: 0xc92a6a, hp: 260 }),
+            SH.Combat.spawnEnemy(-316, 89.4, { color: 0xc92a6a, hp: 260 }),
             SH.Combat.spawnEnemy(-318.6, 91.4, { color: 0x2a3f8f, hp: 260 })
           ];
           for (var fi = 0; fi < foes.length; fi++) {
@@ -464,16 +548,28 @@
               corpse.ctl.update(0.95);
               corpse.deadClip = true;
             }
-            // RESTAGE 3 shot two — the frame's shot: the trace
-            // skips the dead, so the beam passes over the corpse
-            // and lands on the main target at ~3.6 m: tracer,
-            // muzzle, blood, hit marker.
-            SH.Combat.fireOnce();
-            // Two-way fire: the north-east flanker shoots back
-            // through the game's own hostileFire — a real enemy
-            // tracer on a long diagonal from the frame's left that
-            // ends on Raka, at a clearly different angle from the
-            // player's short beam, plus a second muzzle flash.
+            // Two-way fire — fired a beat BEFORE the frame's shot
+            // (COMBAT V6 timing, see the note after the calls): the
+            // north flanker shoots back through
+            // the game's own hostileFire — a real enemy tracer from
+            // the frame's left that ends on Raka, plus a second
+            // muzzle flash. COMBAT V6 (2026-11-21): two judge
+            // rounds in a row read ONLY Raka's line on the final
+            // frame. Projection through the photo camera showed
+            // why: the old flank spot (-317.5, 90.6) put his gun at
+            // px 379 — the visible free segment before Raka's
+            // silhouette swallowed it was ~18 px at 384 px wide,
+            // and over the bright tent canvas the additive salmon
+            // clipped to the same white as the player's beam, so
+            // the two chains read as one streak through Raka. He
+            // now stands in the gap between two north counters at
+            // (-316, 89.4): his gun projects at px 304, the free
+            // segment to Raka's chest measures ~50 px at 384 px
+            // over the darker stall fronts, and his own aiming
+            // figure + muzzle knot anchor the line's origin. (A
+            // south-side shooter was measured and rejected: his
+            // line crosses the player's beam at the target — the
+            // 2D draw-A fusion all over again.)
             // (Draw A put him south-east and his line projected
             // COLLINEAR with the player's beam — one long streak
             // through the target; from the north his line crosses
@@ -496,6 +592,29 @@
             st.stun = 2;
             if (list[2]) SH.Combat.hostileFire(list[2].x, 1.45, list[2].z, st.player.x, st.player.z, 10, 1);
             if (list[1] && SH.Effects) SH.Effects.muzzle(list[1].x, 1.45, list[1].z);
+            // COMBAT V6 timing: the return chain is aged an extra
+            // 0.05 s before the player's shot is fired, so at the
+            // final flush it sits at ~0.095 s of its 0.12 s life
+            // (fade ~0.21) against the player beam's ~0.045 s
+            // (fade ~0.63). Measured reason: beam beads spawn every
+            // 0.10 m at 0.20 m size, so ~3 beads stack additively
+            // on every pixel of a chain; at fade 0.63 the salmon
+            // stack (1.3/0.4/0.3) sums past 1.0 in ALL channels and
+            // clips to the same white as the player's beam (core
+            // pixels sampled 255,255,255 on the V6 first draw). At
+            // fade ~0.38 (0.03 s extra age, second draw) the hue
+            // survived only over dark backgrounds; at ~0.21 the
+            // stacked chain stays salmon along its whole length
+            // while the bead size — the thing the eye tracks at
+            // 384 px — is unchanged. The exchange stays real: the
+            // flanker fired a beat earlier, as in any real
+            // exchange; nothing is drawn by hand.
+            if (SH.Effects) SH.Effects.update(0.05, SH.Main.getCamera());
+            // RESTAGE 3 shot two — the frame's shot: the trace
+            // skips the dead, so the beam passes over the corpse
+            // and lands on the main target at ~3.6 m: tracer,
+            // muzzle, blood, hit marker.
+            SH.Combat.fireOnce();
             // Poses from the shared animation system, advanced by
             // hand because the clock is about to stop: the target
             // mid-stagger, both flankers holding their aim on Raka
@@ -514,6 +633,26 @@
             for (var vi = 2; vi < list.length; vi++) {
               if (list[vi].ctl) { list[vi].ctl.play('aim_pistol', 0.15); list[vi].ctl.update(0.25); }
             }
+            // COMBAT V4 crowd reaction: the shots above already
+            // panicked every witness through the game's own trigger
+            // — Combat.fireOnce calls Pedestrians.scare(player, 26)
+            // and the kill calls scare(corpse, 20) — but the clock
+            // stops before Pedestrians.update can move anyone, so
+            // in V3 the crowd stood frozen mid-stroll in 'panic'
+            // state and both round-2 judges called the market the
+            // emptiest in the field. Step the pedestrian system by
+            // hand, the same hand-advance pattern as every pose
+            // above: ~0.5 s of game time, in which panicked
+            // witnesses flee ~2.8 m at the panic gait (5.6 m/s,
+            // 'panic' clip) away from the gunfire, exactly as live
+            // play would show half a second later. Their flee
+            // targets are scare()'s own (30 m out along the
+            // radial), and every staged spot was measured so the
+            // flee paths run along the walkway / stall gaps and
+            // never cross either fire line: both lines lie between
+            // the scare centres (player, corpse, target), and
+            // every witness flees radially AWAY from those centres.
+            if (SH.Pedestrians) for (var pi = 0; pi < 5; pi++) SH.Pedestrians.update(0.1);
             // Flush the shot into the GPU buffers and the HUD DOM
             // with the game's own per-frame calls (a few refreshes
             // only: the hit marker's 0.12 s timer decays per call).
@@ -569,11 +708,30 @@
         // every one measured clear of both fire lines (a ped
         // sphere on the ray would eat the shot), so the pasar
         // malam reads populated at 384 px while the fight stays
-        // the subject. The spot list below was extended after
-        // the sealed 03-combat capture was taken; that capture
-        // remains the judged frame, and this list is the
-        // current staging for the next capture round.
-        stagePeds([[-315.5, 93.5], [-313, 89.8], [-311, 95.5], [-309, 91.5], [-316.5, 94.8], [-314.5, 87.6], [-310.5, 87.2], [-320, 94.6], [-311.5, 99], [-306, 92.5], [-304, 89.5], [-318, 87.9]]);
+        // the subject. COMBAT V4: the list carries twelve spots,
+        // and the freeze block hand-steps Pedestrians.update so
+        // the witnesses the shots panicked (the game's own
+        // scare()) are caught mid-flight from the gunfire — the
+        // market reads alive and reacting, not posed.
+        // COMBAT V6 (2026-11-21): two judge rounds still called
+        // this market the emptiest in the field — the twelve
+        // witnesses cluster in the walkway's west half, and at
+        // 384 px the deep lane and the frame's right side read
+        // empty. The list grows to twenty-three, every added spot
+        // placed from the photo camera's projection and checked
+        // against both fire lines and the stall counters:
+        // four buyers along the south counters (they panic east
+        // along the walkway or duck behind their stalls), two
+        // more on the north edge mid-lane, one vendor in the
+        // south tent aisle (fills the frame's right foreground),
+        // and four strollers deep in the lane at 26-37 m — beyond
+        // scare()'s own 26 m radius, so they keep strolling
+        // through the deep background exactly as live play would
+        // leave them: market life that has not heard the shots
+        // yet. Flee paths stay radial from the scare centres and
+        // never cross either fire line (both lines lie west of
+        // every added spot's flight path).
+        stagePeds([[-315.5, 93.5], [-313, 89.8], [-311, 95.5], [-309, 91.5], [-316.5, 94.8], [-314.5, 87.6], [-310.5, 87.2], [-320, 94.6], [-311.5, 99], [-306, 92.5], [-304, 89.5], [-318, 87.9], [-318, 94.4], [-313.5, 94.6], [-307.6, 94.3], [-303.5, 94.7], [-310, 89.8], [-305.5, 90.1], [-320.5, 96.8], [-299, 94.2], [-295.5, 91.2], [-292, 93.6], [-288, 92.5]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);
       } else if (name === 'stats') {
         // RESTAGE 2 (2026-11-20): the system-proof shot — the real

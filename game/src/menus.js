@@ -112,17 +112,25 @@
       el.controls.classList.toggle('hidden', which !== 'controls');
     },
 
-    // Career panel inside the pause menu (v2: hero tiles + taxonomy).
+    // Career panel inside the pause menu (v3: hero tiles + taxonomy +
+    // syndicate + city services).
     // Every value is a live field the game really tracks — cash,
     // stats.missionsDone / carsStolen, the mission list + currentIndex,
     // Combat.owned, Config.weapons labels, Config.shops prices,
     // State.time (real accumulated play seconds) and Save.hasSave().
-    // The only derived number is STORY COMPLETION % = missionsDone /
-    // Missions.list.length x 100 — a direct ratio of two tracked
-    // values, labelled as such. Nothing else is derived from anything
-    // the code does not record (distanceKm stays excluded: the field
-    // exists but no system ever updates it; the game tracks no races,
-    // stunts or collectibles, so no such categories are shown).
+    // The only derived numbers are direct ratios/sums of tracked
+    // values, labelled as such: STORY COMPLETION % = missionsDone /
+    // Missions.list.length x 100, and the SYNDICATE rows (jobs and
+    // contract totals summed over Missions.list per giver). CITY
+    // SERVICES lists Economy.places verbatim with the service each
+    // kind really sells (Economy.catalog is the source of truth;
+    // prices are read from Config.shops, never typed twice). Nothing
+    // else is derived from anything the code does not record
+    // (distanceKm stays excluded: the field exists but no system ever
+    // updates it; the game tracks no races, stunts or collectibles,
+    // so no such categories are shown). The v2 RECORD block is gone:
+    // the hero tiles, the mission markers and the ARSENAL head
+    // already carry every line it repeated.
     refreshStats: function () {
       if (!el.stats) return;
       var st = SH.State;
@@ -164,14 +172,43 @@
         else status = '<b class="lock">LOCKED</b>';
         ars += '<div class="stat-row"><span>' + w.label + '</span>' + status + '</div>';
       }
-      var rec = '';
-      rec += '<div class="stat-row"><span>Story</span><b>' + (st.storyComplete ? 'Complete' : 'In progress') + '</b></div>';
-      rec += '<div class="stat-row"><span>Current job</span><b>' + (cur < list.length ? list[cur].title : '—') + '</b></div>';
-      rec += '<div class="stat-row"><span>Weapons owned</span><b>' + wOwned + ' / ' + wTotal + '</b></div>';
+      // SYNDICATE — the job givers behind the story list: jobs and
+      // contract totals summed straight over Missions.list.
+      var crewOrder = [], crewBy = {};
+      for (var ci = 0; ci < list.length; ci++) {
+        var gv = list[ci].giver;
+        if (!crewBy[gv]) { crewBy[gv] = { jobs: 0, total: 0 }; crewOrder.push(gv); }
+        crewBy[gv].jobs++;
+        crewBy[gv].total += list[ci].reward || 0;
+      }
+      var crew = '';
+      for (var cj = 0; cj < crewOrder.length; cj++) {
+        var cg = crewOrder[cj];
+        crew += '<div class="stat-row"><span>' + cg + '</span><b>' + crewBy[cg].jobs +
+          (crewBy[cg].jobs === 1 ? ' job' : ' jobs') + ' · ' + fmtCash(crewBy[cg].total) + '</b></div>';
+      }
+      // CITY SERVICES — Economy.places verbatim; the tag names the
+      // service Economy.catalog really sells at that kind of place,
+      // priced from Config.shops (workshop respray clears wanted,
+      // warung meal heals 45, safehouse rest + save are free).
+      var P = SH.Config.shops;
+      var svcTag = {
+        guns: 'WEAPONS + ARMOUR',
+        workshop: 'RESPRAY ' + fmtCash(P.spray) + ' CLEARS HEAT',
+        food: 'MEAL ' + fmtCash(P.meal) + ' · HEAL 45',
+        clothes: 'OUTFIT ' + fmtCash(P.outfit),
+        safehouse: 'REST + SAVE · FREE'
+      };
+      var places = (SH.Economy && SH.Economy.places) || [];
+      var svc = '';
+      for (var si = 0; si < places.length; si++) {
+        svc += '<div class="stat-row"><span>' + places[si].name + '</span><b>' + (svcTag[places[si].kind] || '') + '</b></div>';
+      }
       el.stats.innerHTML = '<h2>CAREER — RAKA PRAMUDYA</h2>' + hero + '<div class="stat-cols">' +
-        '<div class="stat-rows"><div class="stat-head">STORY MISSIONS — ' + done + ' / ' + list.length + ' DONE</div>' + msn + '</div>' +
+        '<div class="stat-rows"><div class="stat-head">STORY MISSIONS — ' + done + ' / ' + list.length + ' DONE</div>' + msn +
+        '<div class="stat-head rec">THE SYNDICATE — JOB GIVERS</div>' + crew + '</div>' +
         '<div class="stat-rows"><div class="stat-head">ARSENAL — ' + wOwned + ' / ' + wTotal + ' OWNED</div>' + ars +
-        '<div class="stat-head rec">RECORD</div>' + rec + '</div></div>';
+        '<div class="stat-head rec">CITY SERVICES — ' + places.length + ' PLACES</div>' + svc + '</div></div>';
     },
 
     newGame: function () {

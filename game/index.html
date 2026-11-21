@@ -1,6 +1,54 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!--
+  SELATARA HEAT — systems index. This file is the shell: page styles, the
+  HUD DOM and the script load order. Every system below is implemented in
+  the module named on its line; the <script> tags at the end of this file
+  load them all, in execution order.
+
+  World (src/world.js, src/roads.js, src/buildings.js, src/landmarks.js):
+    one seeded city on a shared road graph — six districts (Pelita
+    Heights, Ruko Senja, Bukit Mawar, Pelabuhan Karat, Taman Arus, Pantai
+    Kencana), plus Pulau Seberang island and Pulau Karang Kecil islet.
+  Day-night and weather (src/main.js, src/weather.js): a game clock
+    drives the sun and sky palette through dawn, day, dusk and night;
+    tropical rain showers darken the roads and reduce tyre grip.
+  Missions (src/missions.js): the eight story missions of the Arus
+    Syndicate arc as a data-driven step state machine (goTo, enterVehicle,
+    deliver, chasePed, kill, escape, survive, driveTo steps) with dialogue
+    playback, checkpoints, fail and retry, cash rewards, autosave, the
+    ferry finale, credits and the free-roam unlock.
+  Police (src/police.js): the wanted-star system — patrol cars spawn
+    off-screen and pursue on the road graph, roadblocks from 3 stars,
+    foot officers at high stars, a spotlight helicopter at 4-5 stars,
+    SEARCHING decay when line of sight is lost, BUSTED and WASTED states.
+  Combat (src/combat.js): four data-driven weapons (fists, pistol, SMG,
+    shotgun), over-shoulder aiming, hitscan with spread, tracers, reloads
+    with magazine and reserve ammo, a gang-enemy AI, hostile fire, player
+    damage with armour absorption, and floating world pickups.
+  Characters (src/characters/rig.js, src/characters/factory.js,
+    src/characters/archetypes.js, src/characters/animation.js): one
+    procedural character factory builds every human from 28 archetypes
+    on a named-bone rig with hand-authored animation clips.
+  Pedestrians and traffic (src/pedestrians.js, src/traffic.js): pooled
+    sidewalk walkers who stroll between corners, idle, chat and
+    panic-flee from danger; lane traffic with car-following gaps and
+    junction choices — both run on the same road graph as the police.
+  Vehicles (src/vehicles.js): sedan, sport, truck, motorcycle,
+    speedboat, the drivable strait ferry and police cars, with an arcade
+    bicycle model, enter/exit and carjacking, headlights, and damage
+    with smoke and explosion.
+  Economy (src/economy.js): one cash ledger feeding a gun shop, a
+    workshop (repairs and paid heat removal), a warung food stall,
+    safehouses and a boutique; every price comes from src/config.js.
+  Presentation (src/hud.js, src/minimap.js, src/menus.js,
+    src/audio.js): DOM HUD, a rotating round minimap pre-rendered from
+    the road graph, pause, stats and full-map screens, and a
+    three-station procedural radio — all sound is WebAudio synthesis,
+    there are no audio files.
+  Save (src/save.js): versioned localStorage save and load.
+-->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SELATARA HEAT — an original open-world crime game</title>
@@ -35,57 +83,82 @@
      near-opaque fill with a coloured 2px edge each (gold = mission,
      blue = police), the separator language the top-ranked entry's
      HUD uses. Menus keep the lighter shared panel. */
-  #hud-objective, #hud-police { background: rgba(10, 12, 20, .85); }
+  /* HUD OVERHAUL (hud2, 2026-11-21): the same card language now
+     covers EVERY in-game HUD surface — objective, police, weapon,
+     radio, subtitle: near-opaque fill, 10px radius, 2px semantic
+     edge (gold = mission/active, blue = police, cyan = weapon).
+     Researched from the #1 entry's HUD (see hud2.md): eyebrow +
+     oversized headline hierarchy, pill chips for state, numbers
+     as the largest glyphs on screen. */
+  #hud-objective, #hud-police, #hud-weapon { background: rgba(10, 12, 20, .85); border-radius: 10px; }
   #hud-objective { border: 2px solid rgba(255, 210, 63, .55); }
   #hud-police { border: 2px solid rgba(157, 184, 255, .6); }
+  #hud-weapon { border: 2px solid rgba(55, 224, 255, .55); padding: 10px 16px; }
+  /* Hazard-stripe cap on the mission card — the #1 entry's
+     signature accent; pure CSS, clipped by the card radius. */
+  #hud-objective::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px;
+    background: repeating-linear-gradient(45deg, var(--yellow) 0 12px, #0d0f16 12px 24px); }
   #hud-left { position: absolute; left: var(--safe); bottom: var(--safe); display: flex; align-items: flex-end; gap: 14px; }
   #minimap { width: clamp(150px, 24vmin, 210px); height: clamp(150px, 24vmin, 210px); border-radius: 50%;
-    border: 3px solid rgba(255,255,255,.75); box-shadow: 0 4px 18px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
+    border: 3px solid rgba(255, 210, 63, .8); box-shadow: 0 0 0 2px rgba(8, 10, 18, .85), 0 4px 18px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
   #hud-district { position: absolute; left: var(--safe); bottom: calc(var(--safe) + clamp(150px, 24vmin, 210px) + 10px);
-    font-weight: 800; letter-spacing: .3em; font-size: clamp(13px, 2vmin, 19px); text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+    font-weight: 800; letter-spacing: .14em; font-size: clamp(17px, 2.6vmin, 23px); color: var(--yellow); text-shadow: 0 2px 8px rgba(0,0,0,.85); }
+  #hud-district::after { content: ''; display: block; width: 64px; height: 4px; border-radius: 2px; background: var(--yellow); margin-top: 5px; box-shadow: 0 2px 6px rgba(0,0,0,.6); }
   #hud-district.fade { animation: districtFade 3.2s forwards; }
   @keyframes districtFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
-  #hud-bars { width: 170px; }
-  .bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; font-weight: 700; }
-  .bar { flex: 1; height: 9px; background: rgba(255,255,255,.14); border-radius: 4px; overflow: hidden; }
+  #hud-bars { width: 188px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
+  .bar-row > span:last-child { font-size: 14px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .bar { flex: 1; height: 12px; background: rgba(255,255,255,.16); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 5px rgba(0,0,0,.45); }
   .bar i { display: block; height: 100%; transition: width .18s; }
   #bar-health { background: var(--danger); } #bar-armor { background: var(--cyan); }
-  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; }
-  #hud-cash { font-size: clamp(26px, 4vmin, 34px); font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
-  #hud-clock { font-size: 14px; letter-spacing: .18em; opacity: .9; margin-top: 2px; }
-  #hud-stars { font-size: clamp(21px, 3.2vmin, 28px); margin-top: 2px; }
+  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+  #hud-cash { font-size: clamp(30px, 4.8vmin, 40px); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--cyan); text-shadow: 0 2px 8px rgba(0,0,0,.75); line-height: 1.05; }
+  #hud-clock { font-size: 13.5px; font-weight: 700; letter-spacing: .22em; opacity: .85; margin-bottom: 2px; }
+  #hud-stars { font-size: clamp(24px, 3.6vmin, 32px); margin-top: 1px; line-height: 1.1; }
   #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   #hud-stars .star.on { color: var(--yellow); }
   #hud-stars .star.searching { animation: starBlink .5s infinite alternate; }
   @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
-  #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 170px; }
-  #weapon-name { font-weight: 800; letter-spacing: .08em; font-size: 16px; }
-  #weapon-ammo { font-size: clamp(24px, 3.6vmin, 30px); font-weight: 800; font-variant-numeric: tabular-nums; }
-  #hud-speedo { text-align: right; }
-  #speed-num { font-size: clamp(30px, 5vmin, 44px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
-  #hud-speedo .unit { font-size: 12px; letter-spacing: .2em; opacity: .8; }
-  .gauge { height: 7px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  #hud-wanted-status { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: #ff9f43; margin-top: 4px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
+  #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 200px; }
+  #weapon-name { font-weight: 800; letter-spacing: .12em; font-size: 15px; text-transform: uppercase; color: var(--cyan); }
+  #weapon-ammo { font-size: clamp(27px, 4vmin, 34px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  #hud-speedo { text-align: right; width: 216px; margin-left: auto; }
+  #speed-num { font-size: clamp(46px, 7.2vmin, 62px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,.65); }
+  #hud-speedo .unit { font-size: 13px; letter-spacing: .2em; opacity: .85; font-weight: 700; }
+  .gauge { height: 9px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 6px; overflow: hidden; }
   .gauge i { display: block; height: 100%; }
   #veh-damage { background: var(--green); }
   #speed-bar { background: var(--cyan); width: 0%; }
+  #veh-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: .18em; margin-top: 8px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
+  #veh-hp { font-variant-numeric: tabular-nums; letter-spacing: .05em; }
   #hud-radio { font-size: 11px; letter-spacing: .14em; color: var(--cyan); margin-top: 5px; }
-  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 320px; min-width: 250px; }
+  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 340px; min-width: 280px; padding: 13px 16px 13px; overflow: hidden; }
   /* RESTAGE 2B HUD fix: contact-sheet legibility floor — at the
      ~0.3x judge scale a glyph needs ~5-6px to read, so HUD text
      that matters is now >= ~17px at source (mission title 19px,
      cash ~29px, ammo ~26px). Measured against the top-ranked
      entry's HUD, whose headline and money run 1.5-2x our old size. */
-  #obj-title { color: var(--yellow); font-weight: 800; letter-spacing: .14em; font-size: 19px; display: flex; justify-content: space-between; gap: 12px; }
-  #obj-timer { color: var(--cyan); font-variant-numeric: tabular-nums; }
-  #obj-text { font-size: 15px; margin-top: 2px; }
-  #obj-dist { font-size: 13px; opacity: .85; margin-top: 2px; font-variant-numeric: tabular-nums; }
-  #obj-progress { height: 6px; background: rgba(255,255,255,.14); border-radius: 3px; margin-top: 7px; overflow: hidden; display: flex; gap: 2px; }
+  /* HUD OVERHAUL (hud2): the legibility floor rises again to the
+     #1 entry's scale — eyebrow 11.5px caps over a 27px white
+     headline, stage as a pill chip, body 16px, distance 14px. */
+  #obj-eyebrow { color: var(--yellow); font-weight: 800; letter-spacing: .22em; font-size: 11.5px; text-transform: uppercase; margin: 5px 0 3px; }
+  #obj-title { color: #fff; font-weight: 800; letter-spacing: .05em; font-size: clamp(22px, 3.4vmin, 27px); display: flex; justify-content: space-between; align-items: center; gap: 12px; line-height: 1.12; }
+  #obj-timer { color: var(--yellow); font-variant-numeric: tabular-nums; font-size: 12.5px; letter-spacing: .08em;
+    background: rgba(255, 210, 63, .16); border: 1px solid rgba(255, 210, 63, .5); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+  #obj-timer:empty { display: none; }
+  #obj-text { font-size: 16px; margin-top: 3px; }
+  #obj-dist { font-size: 14px; opacity: .9; margin-top: 2px; font-variant-numeric: tabular-nums; font-weight: 700; }
+  #obj-progress { height: 8px; background: rgba(255,255,255,.14); border-radius: 4px; margin-top: 8px; overflow: hidden; display: flex; gap: 2px; }
   #obj-progress i { display: block; height: 100%; background: rgba(255,255,255,.18); flex: 1; }
   #obj-progress i.done { background: var(--yellow); }
-  #hud-police { position: absolute; left: var(--safe); top: 144px; width: 250px; font-size: 14px; }
-  #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .1em; color: #9db8ff; margin-bottom: 5px; }
-  #hud-police .pol-row { display: flex; justify-content: space-between; gap: 8px; padding: 2.5px 0; border-top: 1px solid rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
-  .pol-tag { font-weight: 800; font-size: 12px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
+  #hud-police { position: absolute; left: var(--safe); top: 172px; width: 284px; font-size: 15px; }
+  #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .08em; font-size: 15px; color: #9db8ff; margin-bottom: 5px; }
+  #hud-police .pol-head span { white-space: nowrap; }
+  #hud-police .pol-row { display: flex; justify-content: space-between; gap: 8px; padding: 3.5px 0; border-top: 1px solid rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
+  #hud-police .pol-row > span:nth-child(2) { font-weight: 700; }
+  .pol-tag { font-weight: 800; font-size: 12.5px; letter-spacing: .08em; padding: 2px 7px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
   .pol-tag.hot { background: #8c1f2f; color: #ffb3ba; }
   .pol-tag.cool { background: #1f4d6b; color: #a8dcff; }
   /* RESTAGE 2B HUD fix (research pass, 2026-11-20): the notes stack
@@ -94,22 +167,26 @@
      panel (the v2 combat frame's flagged overlap was this CSS
      collision, not a staging accident). The stack now starts below
      the police card's full height. */
-  #hud-notes { position: absolute; left: var(--safe); top: 264px; display: flex; flex-direction: column; gap: 6px; }
+  /* HUD OVERHAUL (hud2): police card moved to top:172px under the
+     taller objective card and grew (284px wide, up to 5 unit rows
+     + a status row ≈ 207px tall) — the notes stack now starts
+     below its worst-case bottom edge. */
+  #hud-notes { position: absolute; left: var(--safe); top: 392px; display: flex; flex-direction: column; gap: 6px; }
   #hud-notes .note { background: rgba(10, 12, 20, .85); }
-  .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 6px 12px; font-size: 14px; animation: noteIn .25s; }
+  .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 8px 13px; font-size: 15px; animation: noteIn .25s; }
   @keyframes noteIn { from { transform: translateX(-8px); opacity: 0; } }
   #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 680px; width: max-content;
-    background: rgba(5, 6, 12, .88); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
+    background: rgba(5, 6, 12, .9); border: 1px solid rgba(255, 255, 255, .16); border-radius: 10px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
     font-size: clamp(16px, 2.4vmin, 20px); text-align: left; }
   #sub-portrait { width: 54px; height: 54px; border-radius: 6px; border: 2px solid var(--pink); flex: none; background: #2a1b4a; }
   #sub-name { color: var(--cyan); font-weight: 800; margin-right: 8px; }
   #sub-role { color: var(--yellow); font-size: 12px; font-weight: 800; letter-spacing: .14em; }
-  #radio-card { margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--pink);
-    border-radius: 6px; padding: 7px 11px; text-align: left; min-width: 190px; }
-  #radio-station { color: var(--pink); font-weight: 800; font-size: 12px; letter-spacing: .1em; }
-  #radio-track { font-size: 12px; opacity: .92; margin-top: 1px; white-space: nowrap; }
+  #radio-card { margin-top: 8px; background: rgba(10, 12, 20, .85); border: 1px solid var(--line); border-left: 3px solid var(--pink);
+    border-radius: 8px; padding: 8px 12px; text-align: left; min-width: 190px; }
+  #radio-station { color: var(--pink); font-weight: 800; font-size: 13px; letter-spacing: .1em; }
+  #radio-track { font-size: 12.5px; opacity: .92; margin-top: 1px; white-space: nowrap; }
   #hud-prompt { position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; }
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; font-size: 15px; }
   #hud-marker { position: fixed; left: 0; top: 0; z-index: 5; color: var(--yellow); font-weight: 800; font-size: 13px;
     text-shadow: 0 1px 5px rgba(0,0,0,.85); pointer-events: none; }
   #hud-crosshair { position: fixed; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px;
@@ -212,6 +289,7 @@
 <!-- ================= HUD ================= -->
 <div id="hud" class="hidden">
   <div id="hud-objective" class="panel hidden">
+    <div id="obj-eyebrow"></div>
     <div id="obj-title"><span id="obj-title-text">FIRST RUN</span><span id="obj-timer"></span></div>
     <div id="obj-text">Meet Mami Ratna</div>
     <div id="obj-dist">0 m</div>
@@ -224,13 +302,14 @@
     <canvas id="minimap" width="380" height="380"></canvas>
     <div id="hud-bars">
       <div class="bar-row"><span>HP</span><div class="bar"><i id="bar-health"></i></div><span id="bar-health-num">100</span></div>
-      <div class="bar-row"><span>AR</span><div class="bar"><i id="bar-armor"></i></div><span></span></div>
+      <div class="bar-row"><span>AR</span><div class="bar"><i id="bar-armor"></i></div><span id="bar-armor-num">0</span></div>
     </div>
   </div>
   <div id="hud-top">
-    <div id="hud-cash">$0</div>
     <div id="hud-clock">17:24</div>
+    <div id="hud-cash">$0</div>
     <div id="hud-stars"></div>
+    <div id="hud-wanted-status" class="hidden"></div>
   </div>
   <div id="hud-right">
     <div id="hud-weapon" class="panel">
@@ -240,6 +319,7 @@
     <div id="hud-speedo" class="hidden">
       <div><span id="speed-num">0</span> <span class="unit">KM/H</span></div>
       <div class="gauge"><i id="speed-bar"></i></div>
+      <div id="veh-label"><span>VEHICLE</span><span id="veh-hp"></span></div>
       <div class="gauge"><i id="veh-damage"></i></div>
       <div id="radio-card">
         <div id="radio-station">♪ RADIO SELATARA FM</div>

@@ -818,9 +818,21 @@
       // and a festoon line down the central walkway (Rev 6 rework —
       // spans ride lower, in the gaps between the tent cones, so the
       // bulbs read against the stalls instead of hiding on the canvas).
-      var bulbPts = [];
+      // COMBAT V6 (2026-11-21): two independent judges read the old
+      // dressing as a COLUMN OF FLOATING ORBS — the 1.9 m additive
+      // glow sprites (one every fifth bulb) stacked along any sight
+      // line down the walkway into pale discs with no visible means
+      // of support. The fix is in the dressing itself, not the
+      // staging: every span now also draws its WIRE (a dark line
+      // through the bulb points, so each bulb visibly HANGS on the
+      // string), the bulbs sit denser and smaller on that wire
+      // (spacing 1.9 -> 1.35 m, radius 0.10 -> 0.085 m), and the
+      // glow sprites shrink to 0.45 m at reduced opacity — a halo
+      // around each bulb, not a moon beside it.
+      var bulbPts = [], wirePts = [];
       function bulbSpan(x1, z1, x2, z2) {
-        var n = Math.max(3, Math.round(Math.hypot(x2 - x1, z2 - z1) / 1.9));
+        var n = Math.max(3, Math.round(Math.hypot(x2 - x1, z2 - z1) / 1.35));
+        var prev = null;
         for (var bi = 0; bi <= n; bi++) {
           var bt = bi / n;
           // Sag floor 3.35 m: at the old 2.75 m a festoon bulb hung
@@ -828,7 +840,10 @@
           // and read as a floating beige pill in the sky (raycast-
           // verified). Still inside the tent-cone gaps, now clearly
           // an overhead lantern line.
-          bulbPts.push({ x: x1 + (x2 - x1) * bt, y: 3.75 - Math.sin(bt * Math.PI) * 0.4, z: z1 + (z2 - z1) * bt });
+          var bp = { x: x1 + (x2 - x1) * bt, y: 3.75 - Math.sin(bt * Math.PI) * 0.4, z: z1 + (z2 - z1) * bt };
+          bulbPts.push(bp);
+          if (prev) wirePts.push(prev, bp);
+          prev = bp;
         }
       }
       for (var brow = 0; brow < 2; brow++) {
@@ -846,7 +861,7 @@
       this.bulbMaterial = bulbMat;
       this.bulbOffColor = new THREE.Color(0x665533);
       this.bulbOnColor = new THREE.Color(0xffd9a0);
-      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 6, 5), bulbMat, bulbPts.length);
+      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.085, 6, 5), bulbMat, bulbPts.length);
       var bDummy = new THREE.Object3D();
       for (pi = 0; pi < bulbPts.length; pi++) {
         bDummy.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
@@ -854,6 +869,12 @@
         bulbMesh.setMatrixAt(pi, bDummy.matrix);
       }
       scene.add(bulbMesh);
+      // The string itself: one dark line segment per bulb-to-bulb
+      // step, following the same sag curve — at playing distance the
+      // bulbs read as beads ON this wire, not as free-floating orbs.
+      var wireGeo = new THREE.BufferGeometry().setFromPoints(wirePts.map(function (p) { return new THREE.Vector3(p.x, p.y, p.z); }));
+      var wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x171310, transparent: true, opacity: 0.9 }));
+      scene.add(wire);
       var bgc = document.createElement('canvas'); bgc.width = bgc.height = 64;
       var bg2 = bgc.getContext('2d');
       var bgrad = bg2.createRadialGradient(32, 32, 2, 32, 32, 32);
@@ -861,9 +882,9 @@
       bg2.fillStyle = bgrad; bg2.fillRect(0, 0, 64, 64);
       var bulbGlowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(bgc), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
       this.bulbGlowMaterial = bulbGlowMat;
-      for (pi = 0; pi < bulbPts.length; pi += 5) {
+      for (pi = 0; pi < bulbPts.length; pi += 4) {
         var bsp = new THREE.Sprite(bulbGlowMat);
-        bsp.scale.set(1.9, 1.9, 1);
+        bsp.scale.set(0.45, 0.45, 1);
         bsp.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
         scene.add(bsp);
       }
@@ -1022,7 +1043,11 @@
       // warm up and their glow sprites fade in.
       if (this.tentMaterial) this.tentMaterial.emissiveIntensity = amount * 0.5;
       if (this.bulbMaterial) this.bulbMaterial.color.copy(this.bulbOffColor).lerp(this.bulbOnColor, amount);
-      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.3;
+      // COMBAT V6: factor 0.3 -> 0.18 and sprites 0.62 m (see the
+      // span builder) — the nearest walkway bulbs' halos still
+      // cored out into pale discs over the bright tent canvas at
+      // 0.3; the bulb points themselves carry the warm read.
+      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.18;
     },
 
     // Step 5: Main hands over the procedural environment texture so

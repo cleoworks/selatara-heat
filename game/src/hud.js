@@ -27,6 +27,8 @@
       el.speedBar = byId('speed-bar'); el.objective = byId('hud-objective');
       el.objTitle = byId('obj-title-text'); el.objText = byId('obj-text'); el.objDist = byId('obj-dist');
       el.objTimer = byId('obj-timer'); el.objProgress = byId('obj-progress');
+      el.objEyebrow = byId('obj-eyebrow'); el.armorNum = byId('bar-armor-num');
+      el.wantedStatus = byId('hud-wanted-status'); el.vehHp = byId('veh-hp');
       el.police = byId('hud-police');
       el.subPortrait = byId('sub-portrait'); el.subRole = byId('sub-role');
       el.notes = byId('hud-notes'); el.subtitle = byId('hud-subtitle');
@@ -231,10 +233,25 @@
       }
       if (el.stars._last !== stars) { el.stars.innerHTML = stars; el.stars._last = stars; }
 
+      // Wanted status line under the stars (real police state:
+      // air unit up, search in progress, or units responding).
+      if (el.wantedStatus) {
+        var wtxt = '';
+        if (st.wanted > 0 && SH.Police) {
+          wtxt = SH.Police.heli ? 'AIR UNIT DEPLOYED' : (SH.Police.searching ? 'SEARCHING' : 'UNITS RESPONDING');
+        }
+        if (el.wantedStatus._last !== wtxt) {
+          el.wantedStatus._last = wtxt;
+          el.wantedStatus.textContent = wtxt;
+          el.wantedStatus.classList.toggle('hidden', !wtxt);
+        }
+      }
+
       // Health / armour.
       el.health.style.width = Math.max(0, st.player.health) + '%';
       el.armor.style.width = Math.max(0, st.player.armor) + '%';
       el.healthNum.textContent = Math.ceil(st.player.health);
+      if (el.armorNum) el.armorNum.textContent = Math.ceil(st.player.armor);
 
       // Weapon box vs speedometer.
       if (st.driving) {
@@ -243,6 +260,7 @@
         el.speedNum.textContent = st.speedKmh;
         if (el.speedBar) el.speedBar.style.width = Math.min(100, st.speedKmh / 180 * 100) + '%';
         if (el.vehDamage && st.vehicle) el.vehDamage.style.width = Math.max(0, st.vehicle.hp) + '%';
+        if (el.vehHp && st.vehicle) el.vehHp.textContent = Math.round(st.vehicle.hp) + '%';
         if (el.radioStation) {
           var info = SH.Audio && SH.Audio.trackInfo ? SH.Audio.trackInfo() : { station: st.radioStation, title: '', artist: '' };
           el.radioStation.textContent = '♪ ' + info.station;
@@ -266,6 +284,16 @@
         el.objDist.textContent = Math.round(dist) + ' m';
         this.updateMarker(st.objective, dist);
         var act = SH.Missions && SH.Missions.active;
+        // Eyebrow over the headline: "MISSION n · GIVER" from the
+        // live mission def (the #1 entry's card hierarchy).
+        if (el.objEyebrow) {
+          var eb = act ? ('MISSION ' + (SH.Missions.currentIndex + 1) + (act.def.giver ? ' · ' + String(act.def.giver).toUpperCase() : '')) : '';
+          if (el.objEyebrow._last !== eb) {
+            el.objEyebrow._last = eb;
+            el.objEyebrow.textContent = eb;
+            el.objEyebrow.style.display = eb ? 'block' : 'none';
+          }
+        }
         if (el.objProgress) el.objProgress.style.display = act ? 'flex' : 'none';
         if (act && el.objProgress) {
           var total = act.def.steps.length, key = total + ':' + act.stepIndex;

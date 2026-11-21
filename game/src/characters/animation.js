@@ -240,10 +240,26 @@
     { t: 0.42, p: { pelvis: [0, 0, -6], thighL: [5, 0, 6], thighR: [-9, 0, -6], uArmL: [-8, 0, 26], uArmR: [-16, 0, -24], head: [3, 0, -5] }, dy: -0.045 },
     { t: 0.85, p: { pelvis: [0, 0, 0], thighL: [0, 0, 2], thighR: [0, 0, -2], uArmL: [0, 0, 6], uArmR: [0, 0, -6], head: [0, 0, 0], spine1: [1, 0, 0] }, dy: 0 }
   ], false);
+  // COMBAT5 root fix (2026-11-21): the old final keyframe was not a
+  // lying pose — the pelvis pitched 74 deg and dropped to lying height
+  // (dy -0.78), but the thighs counter-pitched only -18/-8 deg, so the
+  // legs still angled ~56-66 deg down from the hip and everything from
+  // the knees down speared through the floor (measured on the built
+  // rig: shin bones at y -0.09/-0.04, feet at -0.25/-0.17, skinned box
+  // bottom -0.52). Every corpse in the game — enemies, officers, peds,
+  // and the staged combat-shot body — read as a waist-up figure sunk
+  // into the ground. The clip is now authored as one consistent fall:
+  // the mid key crumples with buckled knees and the feet still planted
+  // (pelvis drop halved, thighs counter-pitched further), and the
+  // final key lies FLAT — pelvis 86 deg, spine nearly straight so the
+  // torso continues the pelvis line, thighs pitched WITH the pelvis
+  // (+4/+12 local) so the legs extend flat along the ground instead of
+  // against it, shins near-straight. Verified by bone probe: every
+  // bone of the final pose sits at y >= 0.
   def('death', 0.95, [
     { t: 0, p: { spine1: [-6, 0, 0], uArmL: [-30, 0, 20], uArmR: [-24, 0, -22] }, dy: -0.05 },
-    { t: 0.45, p: { pelvis: [52, 0, 0], spine1: [-24, 0, 0], spine2: [-14, 0, 0], thighL: [-24, 0, 4], thighR: [-12, 0, -4], shinL: [20, 0, 0], shinR: [10, 0, 0], uArmL: [-40, 0, 44], uArmR: [14, 0, -40], head: [-16, 0, 0] }, dy: -0.52, dz: -0.22 },
-    { t: 0.95, p: { pelvis: [74, 0, 0], spine1: [-20, 0, 0], spine2: [-10, 0, 0], thighL: [-18, 0, 4], thighR: [-8, 0, -4], shinL: [14, 0, 0], shinR: [8, 0, 0], uArmL: [-30, 0, 52], uArmR: [20, 0, -48], head: [-12, 0, 0] }, dy: -0.78, dz: -0.34 }
+    { t: 0.45, p: { pelvis: [46, 0, 0], spine1: [-16, 0, 0], spine2: [-8, 0, 0], thighL: [-6, 0, 4], thighR: [-2, 0, -4], shinL: [16, 0, 0], shinR: [10, 0, 0], uArmL: [-40, 0, 44], uArmR: [14, 0, -40], head: [-16, 0, 0] }, dy: -0.34, dz: -0.20 },
+    { t: 0.95, p: { pelvis: [86, 0, 0], spine1: [-2, 0, 0], spine2: [3, 0, 0], thighL: [4, 0, 4], thighR: [12, 0, -4], shinL: [6, 0, 0], shinR: [2, 0, 0], uArmL: [-24, 0, 48], uArmR: [20, 0, -48], head: [-8, 0, 0] }, dy: -0.78, dz: -0.34 }
   ], false);
   def('enter_car', 0.8, [
     { t: 0, p: { thighR: [-38, 0, -3], shinR: [30, 0, 0], spine2: [4, -14, 0], uArmR: [-30, 0, -8], fArmR: [-30, 0, 0] } },
