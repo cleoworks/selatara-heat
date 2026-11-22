@@ -27,10 +27,10 @@
     shotgun), over-shoulder aiming, hitscan with spread, tracers, reloads
     with magazine and reserve ammo, a gang-enemy AI, hostile fire, player
     damage with armour absorption, and floating world pickups.
-  Characters (src/characters/rig.js, src/characters/factory.js,
+  Characters (src/characters/toon.js, src/characters/factory.js,
     src/characters/archetypes.js, src/characters/animation.js): one
-    procedural character factory builds every human from 28 archetypes
-    on a named-bone rig with hand-authored animation clips.
+    toon character system builds every human from 28 archetypes —
+    chunky Group-pivot figures with procedural poses and gaits.
   Pedestrians and traffic (src/pedestrians.js, src/traffic.js): pooled
     sidewalk walkers who stroll between corners, idle, chat and
     panic-flee from danger; lane traffic with car-following gaps and
@@ -112,13 +112,26 @@
   .bar { flex: 1; height: 12px; background: rgba(255,255,255,.16); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 5px rgba(0,0,0,.45); }
   .bar i { display: block; height: 100%; transition: width .18s; }
   #bar-health { background: var(--danger); } #bar-armor { background: var(--cyan); }
-  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; display: flex; flex-direction: column; align-items: flex-end;
+    /* ROUND 3: the top-right cluster (clock / money / wanted stars)
+       sits on the same dark card as the other HUD panels — it used
+       to float on text-shadow only and washed out against bright sky. */
+    background: rgba(10, 12, 20, .85); border: 2px solid rgba(255, 255, 255, .22); border-radius: 10px; padding: 10px 14px 12px; }
   #hud-cash { font-size: clamp(30px, 4.8vmin, 40px); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--cyan); text-shadow: 0 2px 8px rgba(0,0,0,.75); line-height: 1.05; }
-  #hud-clock { font-size: 13.5px; font-weight: 700; letter-spacing: .22em; opacity: .85; margin-bottom: 2px; }
+  #hud-clock { font-size: 13.5px; font-weight: 700; letter-spacing: .22em; opacity: .85; margin-bottom: 2px; display: flex; align-items: center; gap: 7px; }
+  #hud-clock-icon { display: inline-flex; color: var(--yellow); }
+  #hud-clock-icon svg { width: 15px; height: 15px; }
   #hud-stars { font-size: clamp(24px, 3.6vmin, 32px); margin-top: 1px; line-height: 1.1; }
-  #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); margin-left: 3px; }
+  #hud-stars .star:first-child { margin-left: 0; }
+  #hud-stars .star svg { width: .92em; height: .92em; display: inline-block; vertical-align: -.06em; }
   #hud-stars .star.on { color: var(--yellow); }
   #hud-stars .star.searching { animation: starBlink .5s infinite alternate; }
+  /* ROUND 3: short pop when the wanted level changes (hud.js adds
+     .flash for ~0.6 s). */
+  #hud-stars.flash .star.on svg { animation: starFlash .16s ease-in-out 3 alternate; transform-origin: center; }
+  @keyframes starFlash { from { transform: scale(1); filter: brightness(1); } to { transform: scale(1.4); filter: brightness(2); } }
+  #hud-hitmark svg { width: 30px; height: 30px; display: block; }
   @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
   #hud-wanted-status { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: #ff9f43; margin-top: 4px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
   #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 200px; }
@@ -337,7 +350,7 @@
     </div>
   </div>
   <div id="hud-top">
-    <div id="hud-clock">17:24</div>
+    <div id="hud-clock"><span id="hud-clock-icon"></span><span id="hud-clock-text">17:24</span></div>
     <div id="hud-cash">$0</div>
     <div id="hud-stars"></div>
     <div id="hud-wanted-status" class="hidden"></div>
@@ -363,7 +376,7 @@
       <div id="veh-label"><span>VEHICLE</span><span id="veh-hp"></span></div>
       <div class="gauge"><i id="veh-damage"></i></div>
       <div id="radio-card">
-        <div id="radio-station">♪ RADIO SELATARA FM</div>
+        <div id="radio-station">RADIO SELATARA FM</div>
         <div id="radio-track">Senja di Selat — Arus Band</div>
       </div>
     </div>
@@ -384,7 +397,7 @@
 </div>
 <div id="hud-marker" class="hidden"></div>
 <div id="hud-crosshair" class="hidden"></div>
-<div id="hud-hitmark" class="hidden">✕</div>
+<div id="hud-hitmark" class="hidden"><svg viewBox="0 0 24 24"><path d="M4.5 4.5 L19.5 19.5 M19.5 4.5 L4.5 19.5" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" fill="none"/></svg></div>
 <div id="hud-banner" class="hidden"><div class="big"></div><div class="sub"></div></div>
 <div id="letterbox-top" class="letterbox hidden"></div>
 <div id="letterbox-bottom" class="letterbox hidden"></div>
@@ -480,7 +493,7 @@
 <script src="./src/effects.js"></script>
 <script src="./src/vehicles.js"></script>
 <script src="./src/traffic.js"></script>
-<script src="./src/characters/rig.js"></script>
+<script src="./src/characters/toon.js"></script>
 <script src="./src/characters/factory.js"></script>
 <script src="./src/characters/archetypes.js"></script>
 <script src="./src/characters/animation.js"></script>

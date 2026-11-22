@@ -471,7 +471,7 @@
     if (input.wasPressed('KeyQ') && SH.Combat) SH.Combat.cycleWeapon();
     if (input.wasPressed('KeyK') && SH.Audio && SH.Audio.ctx) {
       State.radioStation = SH.Audio.cycleStation();
-      if (SH.HUD) SH.HUD.notify('📻 ' + State.radioStation);
+      if (SH.HUD) SH.HUD.notify('Radio — ' + State.radioStation);
     }
     State._autosave = (State._autosave || 0) + dt;
     if (State._autosave > 60) { State._autosave = 0; if (SH.Save) SH.Save.saveGame(); }

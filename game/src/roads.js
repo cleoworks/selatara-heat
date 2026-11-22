@@ -88,7 +88,11 @@
     // OVERHAUL: blotch + speckle contrast raised ~30% — same
     // reasoning as the asphalt: present-but-invisible texture is
     // the same as no texture at judge scale.
-    var tones = ['rgba(38,74,26,0.27)', 'rgba(84,110,40,0.22)', 'rgba(140,124,62,0.18)', 'rgba(122,94,52,0.17)'];
+    // ROUND 3: contrast raised again for the evening scenes — at dusk
+    // the grass base darkens toward the characters' shadow tones and
+    // the cast merged into it; stronger light/dry patches keep the
+    // ground visually separate from the figures standing on it.
+    var tones = ['rgba(38,74,26,0.34)', 'rgba(96,128,44,0.28)', 'rgba(150,132,66,0.23)', 'rgba(122,94,52,0.21)'];
     for (var b = 0; b < 90; b++) {
       var bx = rng() * 512, by = rng() * 512, br = 26 + rng() * 90;
       var gr = g.createRadialGradient(bx, by, 2, bx, by, br);
@@ -99,7 +103,7 @@
     }
     for (var i = 0; i < 12000; i++) {
       var v = rng();
-      g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.21)' : (v > 0.3 ? 'rgba(120,100,50,0.14)' : 'rgba(255,255,220,0.07)');
+      g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.26)' : (v > 0.3 ? 'rgba(120,100,50,0.17)' : 'rgba(255,255,220,0.09)');
       g.fillRect(rng() * 512, rng() * 512, 3 + rng() * 9, 3 + rng() * 9);
     }
     var t = new THREE.CanvasTexture(c);

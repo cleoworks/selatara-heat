@@ -264,6 +264,40 @@ async function waitGame(page, sec, timeoutWall) {
   await waitGame(page, 0.5);
   await page.evaluate(() => window.SH.Police.clearWanted());
   await waitGame(page, 0.8);
+  // FIX MISI (synced from tooling/functest2.cjs — the CI copy was stale and
+  // could never complete M8): M8 no longer ends at the escape — the finale
+  // now sails the moored ferry to Pulau Seberang. Drive that tail (real
+  // F-key boarding, keyboard sailing, F-key exit, then the ashore point)
+  // so the completion assertions below run against the full new flow.
+  // 2026-11-22: the stale CI copy failed m8 (done=7) on a tree that was
+  // innocent — missions/combat/vehicles/police byte-identical to the seal.
+  await page.evaluate(() => { const S = window.SH.State; S.player.x = 54; S.player.z = 392; });
+  await waitGame(page, 0.4);
+  await page.keyboard.press('KeyF');
+  await waitGame(page, 0.5);
+  await page.keyboard.down('KeyW');
+  let ft2step = 6, ft2guard = 0;
+  while (ft2step === 6 && ft2guard < 240) {
+    ft2guard++;
+    const s = await page.evaluate(() => {
+      const run = window.SH.Missions.active;
+      const f = run ? run.eventFlags.ferry : null;
+      return f ? { step: run.stepIndex, x: f.x, z: f.z, heading: f.heading } : { step: -1 };
+    });
+    if (s.step !== 6) { ft2step = s.step; break; }
+    const desired = Math.atan2(324 - s.x, 452 - s.z);
+    const err = ((desired - s.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    if (err > 0.06) { await page.keyboard.down('KeyA'); await page.keyboard.up('KeyD'); }
+    else if (err < -0.06) { await page.keyboard.down('KeyD'); await page.keyboard.up('KeyA'); }
+    else { await page.keyboard.up('KeyA'); await page.keyboard.up('KeyD'); }
+    await waitGame(page, 0.3);
+    ft2step = await page.evaluate(() => window.SH.Missions.active ? window.SH.Missions.active.stepIndex : -1);
+  }
+  await page.keyboard.up('KeyW'); await page.keyboard.up('KeyA'); await page.keyboard.up('KeyD');
+  await page.keyboard.press('KeyF');
+  await waitGame(page, 0.6);
+  await page.evaluate(() => { const S = window.SH.State; S.player.x = 348; S.player.z = 452; });
+  await waitGame(page, 0.8);
   const m8c = await page.evaluate(() => ({
     done: window.SH.State.stats.missionsDone, active: !!window.SH.Missions.active,
     story: window.SH.State.storyComplete,

@@ -36,7 +36,7 @@
         // instead of bathing them in even light.
         sun: 0xffa040, sunIntensity: 1.22, hemiSky: 0xa9bde0, hemiGround: 0x59463a,
         hemiIntensity: 0.82, ambient: 0.3, water: 0x2a6a9e, sand: 0xe0af7c,
-        asphalt: 0x3a3638, sidewalk: 0x8a7264, grass: 0x3f7a3a
+        asphalt: 0x3a3638, sidewalk: 0x8a7264, grass: 0x4f9440
       },
       night: {
         skyTop: 0x040814, skyBand: 0x0c1730, skyMid: 0x152540, skyLow: 0x1e324e, fog: 0x111e30,
@@ -135,7 +135,7 @@
     },
 
     // ---- Loop / performance ----
-    loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 34, activeRadius: 340, despawnRadius: 420 },
+    loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 48, activeRadius: 340, despawnRadius: 420 },
     day: { startHour: 17.4, minutesPerSecond: 1.6 }
   };
 

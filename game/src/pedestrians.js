@@ -18,6 +18,20 @@
   var MARKET_ARCHS = ['pedagang', 'warung', 'ibuBelanja', 'pasangan', 'turis', 'musisi', 'nelayan', 'ibuHijab'];
   var PANIC_REF = (SH.CharAnim && SH.CharAnim.clips.panic && SH.CharAnim.clips.panic.userData.refSpeed) || 2.8;
 
+  // ROUND 3 crowd distribution (user spec): gathering anchors. The
+  // pool is 48 strong, but round 2 scattered it uniformly over every
+  // intersection in the city, so a park or plaza frame showed ~3
+  // people. Recycled walkers now often re-enter at a hotspot near
+  // the player and stroll locally inside it (see respawn/pickTarget),
+  // which keeps plazas/parks/promenades populated at 15-25 visible.
+  var HOTSPOTS = [
+    { x: 20, z: 120, r: 48 },    // Taman Arus park paths
+    { x: 0, z: 230, r: 64 },     // Pantai Kencana promenade
+    { x: -420, z: -120, r: 38 }, // Ruko Senja plaza blocks
+    { x: 300, z: 120, r: 36 },   // Pelabuhan Karat apron
+    { x: -120, z: -180, r: 40 }  // Pelita Heights plaza sidewalks
+  ];
+
   function makeCtl(char) {
     var arch = char.archetype;
     return SH.CharAnim.create(char, {
@@ -42,6 +56,11 @@
           x: 0, z: 0, heading: 0, speed: 0, cycle: this.rng() * 6,
           tx: 0, tz: 0, state: 'walk', timer: this.rng() * 3, panic: 0, down: 0,
           deadClip: false,
+          // Per-ped walk-speed jitter (±15%): nobody strolls at the
+          // same speed, so the crowd never walks in sync. (Gait phase
+          // is seeded per character in toon.js createCharacter.)
+          speedJ: 0.85 + this.rng() * 0.3,
+          hot: null, // ROUND 3: gathering hotspot this ped belongs to
           market: i < 8 // Rev 6: the first eight walkers belong to the night market
         };
         this.list.push(ped);
@@ -65,6 +84,31 @@
       }
       var g = SH.World.graph;
       var focus = SH.State.player;
+      // ROUND 3: about half of recycled walkers re-enter at a
+      // gathering hotspot within reach of the player instead of a
+      // random intersection city-wide, so gathering areas stay full.
+      ped.hot = null;
+      if (!anywhere && this.rng() < 0.5) {
+        var near = [];
+        for (var hi = 0; hi < HOTSPOTS.length; hi++) {
+          if (Math.hypot(HOTSPOTS[hi].x - focus.x, HOTSPOTS[hi].z - focus.z) < 170) near.push(HOTSPOTS[hi]);
+        }
+        for (var ht = 0; ht < 8 && near.length; ht++) {
+          var hh = near[(this.rng() * near.length) | 0];
+          var hx = hh.x + (this.rng() - 0.5) * 2 * hh.r * 0.8;
+          var hz = hh.z + (this.rng() - 0.5) * 2 * hh.r * 0.8;
+          if (!SH.World.isLand(hx, hz) || SH.World.inWater(hx, hz)) continue;
+          var hdd = Math.hypot(hx - focus.x, hz - focus.z);
+          if (hdd < 25 || hdd > 300) continue;
+          ped.x = hx; ped.z = hz; ped.hot = hh; ped.down = 0; ped.state = 'walk';
+          ped.mesh.rotation.x = 0;
+          ped.deadClip = false;
+          ped.ctl.setSpeed(0);
+          this.pickTarget(ped);
+          ped.mesh.visible = true;
+          return;
+        }
+      }
       for (var tries = 0; tries < 10; tries++) {
         var node = g.nodes[(this.rng() * g.nodes.length) | 0];
         if (node.overWater) continue; // never spawn a walker mid-bridge
@@ -95,6 +139,17 @@
         ped.tx = -352 + this.rng() * 96;
         ped.tz = bands[bi] + (this.rng() - 0.5) * 5;
         return;
+      }
+      // ROUND 3: hotspot locals mostly stroll INSIDE their gathering
+      // area (short local targets), so a cluster stays a cluster
+      // instead of dispersing to far intersections within a minute.
+      if (ped.hot) {
+        if (Math.hypot(ped.x - ped.hot.x, ped.z - ped.hot.z) > 140) ped.hot = null;
+        else if (this.rng() < 0.65) {
+          var lx = ped.hot.x + (this.rng() - 0.5) * 2 * ped.hot.r * 0.85;
+          var lz = ped.hot.z + (this.rng() - 0.5) * 2 * ped.hot.r * 0.85;
+          if (SH.World.isLand(lx, lz) && !SH.World.inWater(lx, lz)) { ped.tx = lx; ped.tz = lz; return; }
+        }
       }
       // Walk to a point near another intersection, offset to a sidewalk.
       var g = SH.World.graph;
@@ -139,6 +194,11 @@
           continue;
         }
 
+        // ROUND 3 state-return guarantee: a LIVE ped never holds the
+        // corpse clip. If a 'death' pose is showing while down<=0 (a
+        // missed transition anywhere upstream), force back to idle.
+        if (ped.ctl.current() === 'death') { ped.deadClip = false; ped.ctl.setSpeed(0); }
+
         // Hit by the player's vehicle?
         if (st.driving && st.vehicle && Math.abs(st.vehicle.speed) > 3.5 && distP < 1.5) {
           ped.down = 6;
@@ -154,7 +214,13 @@
 
         var dx = ped.tx - ped.x, dz = ped.tz - ped.z;
         var dist = Math.hypot(dx, dz);
-        var speed = ped.state === 'panic' ? 5.6 : 1.5;
+        // ROUND 3: cruise speed comes from the ARCHETYPE (jogger 2.6
+        // crosses CharAnim's run threshold, kakek 0.7 ambles), still
+        // jittered per ped. It used to be a flat 1.5 for everyone,
+        // which is why the "jogger" strolled and everyone marched at
+        // one pace.
+        var cruise = (ped.char.archetype && ped.char.archetype.walkSpeed) || 1.3;
+        var speed = ped.state === 'panic' ? 5.6 : Math.min(3.2, cruise * (ped.speedJ || 1));
         if (ped.state === 'idle') {
           ped.timer -= dt;
           speed = 0;
