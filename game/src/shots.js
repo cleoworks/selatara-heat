@@ -770,7 +770,7 @@
           { from: [-240, -180], to: [-120, -180], t: 0.5 }
         ]);
         stagePeds([[-127.5, -150], [-112.5, -96]]);
-        if (SH.HUD) SH.HUD.subtitle('Raka', 'Four stars. Great. Hold on—', 30);
+        if (SH.HUD) SH.HUD.subtitle('Raka', 'Four stars. Great. Hold on—', 30, 'scared');
       } else if (name === 'combat') {
         // On-foot shootout staging INSIDE the Ruko Senja night market.
         // RESTAGE 3 (2026-11-21): two independent judges shrank the
@@ -1164,19 +1164,23 @@
               // stays level on Raka instead of climbing.
               if (mb3 && mb3.handR) mb3.handR.rotation.x -= 0.15;
               if (main.char && main.char._pistolMesh) main.char._pistolMesh.scale.multiplyScalar(1.3);
-              // FIXVISUAL2 (2026-11-21): panel round 11 — BOTH judges
-              // STILL read the target's pistol as no weapon at all at
-              // full frame ("beam mulai dari tangan kosong"). Two
-              // more staging moves on the same licence: the gun grows
-              // another 1.25x (2.11x true size in total), and its
-              // material swaps from the shared gunmetal to a bright
-              // near-white steel (mesh-local swap — the shared gunMat
-              // and every other character's gun are untouched), so
-              // the L-profile prints against the dark stall front
-              // behind him instead of merging with his wristband.
+              // COMBATFIX (2026-11-22, Bos's order) — supersedes
+              // FIXVISUAL2's prescription for this gun. Round 11's
+              // near-white steel (0xe9eff5) washed out against the
+              // bright tent canvas behind him and read as a plain
+              // white box in the hand (Bos, on the sealed frame:
+              // "pisto ga jelas"). The staged gun is now dark
+              // gunmetal (0x23272e, metalness 0.65, roughness 0.45)
+              // so the L-profile prints as a silhouette, and it
+              // grows a touch more: 1.42x here on top of the 1.3x
+              // above and the factory's own 1.3x base in
+              // attachPistolTo = ~2.40x true size in total
+              // (FIXVISUAL2 totalled 2.11x). Mesh-local swap — the
+              // shared gunMat and every other character's gun are
+              // untouched.
               if (main.char && main.char._pistolMesh) {
-                main.char._pistolMesh.scale.multiplyScalar(1.25);
-                main.char._pistolMesh.material = new THREE.MeshStandardMaterial({ color: 0xe9eff5, metalness: 0.85, roughness: 0.28 });
+                main.char._pistolMesh.scale.multiplyScalar(1.42);
+                main.char._pistolMesh.material = new THREE.MeshStandardMaterial({ color: 0x23272e, metalness: 0.65, roughness: 0.45 });
               }
             }
             for (var vi = 2; vi < list.length; vi++) {
@@ -1270,7 +1274,19 @@
               // re-sets the camera explicitly afterwards.)
               SH.Effects.update(0, SH.Main.getCamera());
             }
-            if (SH.HUD) { SH.HUD.refresh(); SH.HUD.refresh(); }
+            // COMBATFIX (2026-11-22, Bos's order): the frame used
+            // to freeze with the HUD hit marker (the yellow ✕)
+            // still showing on the target's chest — the two
+            // refreshes this line used to make decay its 0.12 s
+            // timer by only 2/60 s, so at capture it read as a
+            // sticker on his shirt, not a hit flash (Bos, on the
+            // sealed frame: "Kenapa ada tanda x"). The marker is a
+            // real gameplay element; the photo simply waits it
+            // out — ten refreshes decay the timer 10/60 s > 0.12 s,
+            // so HUD.refresh itself hides the element before the
+            // freeze. The hit still reads (blood burst, stagger
+            // pose, the beam); only the UI glyph is gone.
+            if (SH.HUD) for (var hi = 0; hi < 10; hi++) SH.HUD.refresh();
             // FIXVISUAL (2026-11-21): RAKA'S OWN STANCE — the
             // defect the user named outright ("combat santai
             // banget, gada pistol gada apa"): through every round
@@ -1303,24 +1319,35 @@
                 if (pb.shinR) pb.shinR.rotation.x += 0.14;
               }
               if (SH.Player.char._pistolMesh) SH.Player.char._pistolMesh.scale.multiplyScalar(1.3);
-              // FIXVISUAL2 (2026-11-21): the same round-11 verdict
-              // hit RAKA's gun — "pistol di tangan Raka tidak
-              // terbaca sebagai senjata bahkan di ukuran penuh".
-              // Same prescription as the target's (above): another
-              // 1.25x (2.11x total) in bright near-white steel, and
-              // his muzzle star reinforced — a second Effects.muzzle
-              // at his posed gun hand, flushed at full strength with
-              // a zero-dt update (the target's sanctioned pattern),
-              // so the flash sits on the enlarged barrel instead of
-              // only at the beam's +0.8 m knot.
+              // COMBATFIX (2026-11-22, Bos's order): the same
+              // prescription as the target's gun above — round 11's
+              // near-white steel read as a white box in his fist
+              // against the bright market (Bos: "pisto ga jelas").
+              // Dark gunmetal (0x23272e, metalness 0.65, roughness
+              // 0.45) for the silhouette, 1.42x here = ~2.40x true
+              // size in total with the 1.3x above and the factory
+              // base. His muzzle star below still spawns at the
+              // posed gun hand, so the flash crowns the dark barrel.
               if (SH.Player.char._pistolMesh) {
-                SH.Player.char._pistolMesh.scale.multiplyScalar(1.25);
-                SH.Player.char._pistolMesh.material = new THREE.MeshStandardMaterial({ color: 0xe9eff5, metalness: 0.85, roughness: 0.28 });
+                SH.Player.char._pistolMesh.scale.multiplyScalar(1.42);
+                SH.Player.char._pistolMesh.material = new THREE.MeshStandardMaterial({ color: 0x23272e, metalness: 0.65, roughness: 0.45 });
               }
               if (SH.Effects && pb && pb.handR) {
                 var phw = pb.handR.getWorldPosition(new THREE.Vector3());
-                SH.Effects.muzzle(phw.x, phw.y, phw.z);
-                SH.Effects.update(0, SH.Main.getCamera());
+                // COMBATFIX (2026-11-22): FIXVISUAL2 spawned an
+                // extra muzzle star on this hand; with the gun now
+                // dark gunmetal the star's full-strength glow sits
+                // exactly on the grip and buries the silhouette it
+                // was meant to crown (measured on the first
+                // combatfix render's native hand crop: white streak
+                // + ring over the fist, no gun). The star is NOT
+                // spawned for the player any more — the beam's own
+                // muzzle knot at +0.8 m still marks the shot's
+                // origin, and the dark L-profile now prints against
+                // his sleeve. (The target keeps his stars: his gun
+                // projects clear of them.) phw is still read so the
+                // hand position stays part of the staging record.
+                void phw;
               }
             }
             st.mode = 'paused';
@@ -1424,7 +1451,7 @@
         // path crosses either line. The in-frame crowd now reads
         // 20+ figures at 384 px, the Top 1 market's density.
         stagePeds([[-315.5, 93.5], [-313, 89.8], [-311, 95.5], [-309, 91.5], [-316.5, 94.8], [-314.5, 87.6], [-310.5, 87.2], [-320, 94.6], [-311.5, 99], [-306, 92.5], [-304, 89.5], [-318, 87.9], [-318, 94.4], [-313.5, 94.6], [-307.6, 94.3], [-303.5, 94.7], [-310, 89.8], [-305.5, 90.1], [-320.5, 96.8], [-299, 94.2], [-295.5, 91.2], [-292, 93.6], [-288, 92.5], [-322.5, 96.6], [-319.5, 97.2], [-314, 96.8], [-310.5, 97.5], [-307, 96.2], [-321, 87.3], [-315.5, 86.9], [-309, 87.4], [-302, 90.8], [-298.5, 95.8]]);
-        if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30);
+        if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30, 'scared');
       } else if (name === 'stats') {
         // RESTAGE 2 (2026-11-20): the system-proof shot — the real
         // pause menu over the Pantai Kencana pier at sunset, its career

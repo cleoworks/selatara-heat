@@ -135,7 +135,7 @@
     },
 
     // ---- Loop / performance ----
-    loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 34, activeRadius: 340, despawnRadius: 420 },
+    loop: { step: 1 / 60, maxSteps: 5, trafficCount: 42, pedCount: 48, activeRadius: 340, despawnRadius: 420 },
     day: { startHour: 17.4, minutesPerSecond: 1.6 }
   };
 

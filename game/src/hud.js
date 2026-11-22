@@ -85,7 +85,7 @@
       el.district.classList.add('fade');
     },
 
-    subtitle: function (name, text, seconds) {
+    subtitle: function (name, text, seconds, expr) {
       if (!el.subtitle) return;
       el.subName.textContent = name;
       el.subText.textContent = text;
@@ -95,97 +95,133 @@
         'Dario Latu': 'RIVAL BOSS', 'Bengkel Arus': 'WORKSHOP', 'Unknown': 'UNKNOWN CALLER'
       };
       if (el.subRole) el.subRole.textContent = roles[name] || '';
-      this.drawPortrait(name);
+      this.drawPortrait(name, expr);
       el.subtitle.classList.remove('hidden');
       subtitleTimer = seconds || 3.4;
     },
 
-    // Procedural portrait (smoothness pass): a real little face drawn
-    // with ellipses, arcs and soft gradients on a 216 px canvas (shown
-    // at 54 px), colours and hair hashed from the speaker's name so
-    // every character differs — no more flat blocks.
-    drawPortrait: function (name) {
+    // TOON portrait (character rebuild): a flat 2D face in the same
+    // language as the 3D toon characters — chunky round head, flat
+    // colours, thin dark outline, round eyes with a white highlight,
+    // thin separated brows, small nose, simple mouth. The named
+    // cast uses a fixed table matching their 3D look (Raka's beanie
+    // + orange jacket, Mami's grey bun + glasses, Varga's police
+    // cap + yellow badge, Dario's cream fedora); other speakers
+    // fall back to a name hash in the same style. drawPortrait
+    // takes an expression (neutral/happy/angry/scared/hurt) that
+    // moves brow angle, eye scale and mouth, like the 3D faces.
+    drawPortrait: function (name, expr) {
       if (!el.subPortrait) return;
       var cv = el.subPortrait;
       if (cv.width !== 216) { cv.width = 216; cv.height = 216; }
       var g = cv.getContext('2d');
-      var h = 0;
-      for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-      var skins = ['#c98a5e', '#a8763e', '#8a5a34', '#e0aa72'];
-      var hairs = ['#14100c', '#3a2415', '#5e3a1e', '#c9c9c9', '#7a1f3d'];
-      var bgs = ['#ff4fa3', '#37e0ff', '#ffd23f', '#9a6ac9', '#37b24d'];
-      var shirts = ['#c94f4f', '#2a6ac9', '#37b24d', '#e8862a', '#7a4fa3', '#2a8a8a'];
-      var skin = skins[h % skins.length], hair = hairs[(h >> 3) % hairs.length], bg = bgs[(h >> 5) % bgs.length];
-      var shirt = shirts[(h >> 7) % shirts.length];
+      var CAST = {
+        'Raka': { skin: '#c9824e', hair: '#17130f', hat: 'beanie', hatColor: '#1c1e24', shirt: '#d8622a', accent: '#f2b13c', def: 'neutral' },
+        'Mami Ratna': { skin: '#e8b184', hair: '#b8b0a4', hat: 'bun', shirt: '#51606e', glasses: true, def: 'happy' },
+        'Commissioner Varga': { skin: '#c9824e', hair: '#2b2b2e', hat: 'police', hatColor: '#24303e', shirt: '#24303e', mustache: true, def: 'angry' },
+        'Dario Latu': { skin: '#f2c89b', hair: '#1b1e28', hat: 'fedora', hatColor: '#e9e2d0', shirt: '#e9e2d0', def: 'happy' },
+        'Courier': { skin: '#db9a68', hair: '#3a2415', hat: 'cap', hatColor: '#3868b8', shirt: '#3868b8', def: 'scared' }
+      };
+      var P = CAST[name];
+      if (!P) {
+        var h = 0;
+        for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+        var skins = ['#f7d7b5', '#e8b184', '#c9824e', '#a96638'];
+        var hairs = ['#1b1e28', '#3a2415', '#77572c', '#b8b0a4'];
+        var shirts = ['#d8542e', '#2e7d6b', '#f2b13c', '#3a6ea5', '#7a4a5e'];
+        P = { skin: skins[h % 4], hair: hairs[(h >> 3) % 4], shirt: shirts[(h >> 5) % 5], hat: 'none', def: 'neutral' };
+      }
+      var EX = {
+        neutral: { brow: 0, eye: 1.0, mouth: 'flat' },
+        happy: { brow: -5, eye: 0.62, mouth: 'smile' },
+        angry: { brow: 24, eye: 0.78, mouth: 'frown' },
+        scared: { brow: -20, eye: 1.28, mouth: 'open' },
+        hurt: { brow: -13, eye: 0.30, mouth: 'frown' }
+      };
+      var E = EX[expr] || EX[P.def] || EX.neutral;
+      var OUT = '#2a1a12';
       function ell(x, y, rx, ry, fill) {
         g.fillStyle = fill; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
       }
-      // Backdrop: flat colour with a soft pool of light and a sheen.
-      g.fillStyle = bg; g.fillRect(0, 0, 216, 216);
-      var bgGlow = g.createRadialGradient(86, 74, 12, 108, 108, 165);
-      bgGlow.addColorStop(0, 'rgba(255,255,255,0.20)'); bgGlow.addColorStop(1, 'rgba(0,0,0,0.14)');
-      g.fillStyle = bgGlow; g.fillRect(0, 0, 216, 216);
-      // Shoulders + collar (rounded mass, not a slab).
-      g.fillStyle = shirt;
-      g.beginPath(); g.moveTo(38, 216); g.quadraticCurveTo(40, 168, 76, 158);
-      g.lineTo(140, 158); g.quadraticCurveTo(176, 168, 178, 216); g.closePath(); g.fill();
-      g.fillStyle = 'rgba(0,0,0,0.16)';
-      g.beginPath(); g.moveTo(88, 160); g.lineTo(128, 160); g.lineTo(108, 182); g.closePath(); g.fill();
-      ell(108, 152, 15, 14, skin); // neck
-      g.fillStyle = 'rgba(0,0,0,0.13)'; g.fillRect(94, 138, 28, 10); // neck shadow
-      // Head: an ellipse lit from the upper left, edges feathered by
-      // the radial falloff instead of a hard outline.
-      var headGrad = g.createRadialGradient(88, 66, 18, 108, 96, 86);
-      headGrad.addColorStop(0, skin); headGrad.addColorStop(0.78, skin); headGrad.addColorStop(1, 'rgba(40,16,4,0.28)');
-      ell(72, 96, 7, 11, skin); ell(144, 96, 7, 11, skin); // ears
-      g.fillStyle = headGrad;
-      g.beginPath(); g.ellipse(108, 94, 37, 45, 0, 0, Math.PI * 2); g.fill();
-      // Hair: a swept cap over the crown; styles vary by hash.
-      g.fillStyle = hair;
-      g.beginPath(); g.ellipse(108, 66, 38.5, 30, 0, Math.PI * 0.98, Math.PI * 2.02); g.fill();
-      g.beginPath(); g.moveTo(70, 74); g.quadraticCurveTo(104, 44, 147, 70); g.quadraticCurveTo(120, 58, 96, 64); g.quadraticCurveTo(78, 68, 70, 74); g.closePath(); g.fill();
-      if (h % 3 === 0 || name === 'Mami Ratna') { // long sides
-        g.fillRect(66, 66, 11, 52); g.fillRect(139, 66, 11, 52);
+      function ring(x, y, r, fill, lw) {
+        ell(x, y, r + lw, r + lw, OUT); ell(x, y, r, r, fill);
       }
-      if (h % 5 === 4) ell(108, 34, 10, 8, hair); // top bun
-      // Face: brows, eyes with glints, a soft nose, a real mouth.
-      g.strokeStyle = 'rgba(30,18,10,0.85)'; g.lineCap = 'round'; g.lineWidth = 5;
-      g.beginPath(); g.moveTo(84, 88); g.quadraticCurveTo(93, 84, 101, 87); g.stroke();
-      g.beginPath(); g.moveTo(115, 87); g.quadraticCurveTo(123, 84, 132, 88); g.stroke();
-      [93, 123].forEach(function (ex) {
-        ell(ex, 100, 6.4, 7.6, '#f3ead9');
-        ell(ex, 101, 3.6, 5.2, '#241208');
-        ell(ex + 1.6, 97.5, 1.4, 1.4, 'rgba(255,255,255,0.95)');
+      // flat backdrop in the shirt's family + shoulders
+      g.fillStyle = '#22303e'; g.fillRect(0, 0, 216, 216);
+      g.fillStyle = P.shirt;
+      g.beginPath(); g.moveTo(30, 216); g.quadraticCurveTo(36, 168, 74, 158);
+      g.lineTo(142, 158); g.quadraticCurveTo(180, 168, 186, 216); g.closePath(); g.fill();
+      g.strokeStyle = OUT; g.lineWidth = 5; g.stroke();
+      if (P.accent) { g.fillStyle = P.accent; g.fillRect(66, 178, 84, 9); }
+      ell(108, 150, 15, 13, P.skin); // neck
+      // head: chunky round, flat fill, thin outline
+      ell(70, 98, 8, 12, P.skin); ell(146, 98, 8, 12, P.skin);
+      g.fillStyle = P.skin;
+      g.beginPath(); g.ellipse(108, 96, 40, 44, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = OUT; g.lineWidth = 4.5; g.stroke();
+      // hair / hats, matching the 3D silhouettes
+      g.fillStyle = P.hair;
+      if (P.hat === 'beanie') {
+        g.beginPath(); g.ellipse(108, 66, 41, 30, 0, Math.PI, Math.PI * 2); g.fill();
+        g.fillStyle = P.hatColor; g.fillRect(66, 58, 84, 13);
+        g.fillStyle = P.hair; g.beginPath(); g.ellipse(108, 60, 41, 26, 0, Math.PI, Math.PI * 2); g.fill();
+        g.fillStyle = P.hatColor; g.fillRect(66, 60, 84, 11);
+      } else if (P.hat === 'bun') {
+        g.beginPath(); g.ellipse(108, 64, 40, 29, 0, Math.PI, Math.PI * 2); g.fill();
+        ell(108, 30, 13, 10, P.hair);
+      } else if (P.hat === 'police') {
+        g.fillStyle = P.hatColor;
+        g.fillRect(68, 38, 80, 24);
+        g.beginPath(); g.ellipse(108, 40, 40, 12, 0, Math.PI, Math.PI * 2); g.fill();
+        g.fillStyle = '#14161c'; g.beginPath(); g.ellipse(108, 64, 44, 7, 0, 0, Math.PI * 2); g.fill();
+        ell(108, 50, 5, 6, '#f2b13c'); // the yellow badge
+      } else if (P.hat === 'fedora') {
+        g.fillStyle = P.hatColor;
+        g.beginPath(); g.ellipse(108, 62, 56, 9, 0, 0, Math.PI * 2); g.fill();
+        g.fillRect(82, 30, 52, 30);
+        g.fillStyle = 'rgba(42,26,18,0.85)'; g.fillRect(82, 52, 52, 7);
+      } else if (P.hat === 'cap') {
+        g.fillStyle = P.hatColor;
+        g.beginPath(); g.ellipse(108, 62, 40, 27, 0, Math.PI, Math.PI * 2); g.fill();
+        g.beginPath(); g.ellipse(122, 66, 30, 6, 0, 0, Math.PI * 2); g.fill();
+      } else {
+        g.beginPath(); g.ellipse(108, 65, 40.5, 29, 0, Math.PI * 0.95, Math.PI * 2.05); g.fill();
+      }
+      // brows: thin, separated; the inner ends drop when angry and
+      // rise when scared/happy, mirroring the 3D brow pivots
+      g.strokeStyle = OUT; g.lineCap = 'round'; g.lineWidth = 5;
+      var bSin = Math.sin(E.brow * Math.PI / 180) * 13;
+      var bLift = E.brow < 0 ? 3 : 0;
+      [[88, 1], [128, -1]].forEach(function (b) {
+        var cx = b[0], inDir = b[1];
+        g.beginPath();
+        g.moveTo(cx - inDir * 14, 92 - bSin - bLift);
+        g.lineTo(cx + inDir * 14, 92 + bSin - bLift);
+        g.stroke();
       });
-      g.strokeStyle = 'rgba(70,35,15,0.4)'; g.lineWidth = 3.4;
-      g.beginPath(); g.moveTo(109, 104); g.lineTo(106, 116); g.stroke();
-      var cheek = g.createRadialGradient(84, 116, 1, 84, 116, 13);
-      cheek.addColorStop(0, 'rgba(255,110,80,0.16)'); cheek.addColorStop(1, 'rgba(255,110,80,0)');
-      g.fillStyle = cheek; g.beginPath(); g.arc(84, 116, 13, 0, Math.PI * 2); g.fill();
-      g.fillStyle = cheek; g.beginPath(); g.arc(132, 116, 13, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#6e3524'; g.lineWidth = 4.4;
-      if (h % 3 === 1) { g.beginPath(); g.moveTo(99, 130); g.lineTo(117, 130); g.stroke(); }        // flat
-      else if (h % 3 === 2) {                                                                        // grin
-        g.fillStyle = '#5e2a1c'; g.beginPath(); g.ellipse(108, 129, 9.5, 6.8, 0, 0, Math.PI * 2); g.fill();
-        g.fillStyle = '#f5ede2'; g.fillRect(100, 124.5, 16, 4.6);
-      } else { g.beginPath(); g.arc(108, 124, 9, Math.PI * 0.2, Math.PI * 0.8); g.stroke(); }       // smile
-      // Signature pieces for the named cast.
-      if (name === 'Mami Ratna') { // her gold band across the hairline
-        g.strokeStyle = '#ffd23f'; g.lineWidth = 7;
-        g.beginPath(); g.ellipse(108, 62, 37, 27, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+      // eyes: round whites, pupil, white highlight; scaleY = mood
+      [88, 128].forEach(function (ex) {
+        var ry = 8.5 * E.eye;
+        ell(ex, 106, 7.5, ry, '#f7f3ea');
+        if (E.eye > 0.4) { ell(ex, 107, 3.8, 4.6 * E.eye, '#241a12'); ell(ex + 1.6, 104, 1.5, 1.5, '#ffffff'); }
+      });
+      if (P.glasses) {
+        g.strokeStyle = 'rgba(20,18,22,0.9)'; g.lineWidth = 3.5;
+        [88, 128].forEach(function (ex) { g.beginPath(); g.arc(ex, 106, 12.5, 0, Math.PI * 2); g.stroke(); });
+        g.beginPath(); g.moveTo(100, 104); g.lineTo(116, 104); g.stroke();
       }
-      if (name === 'Raka') { // his shades
-        g.fillStyle = 'rgba(16,14,18,0.92)';
-        g.beginPath(); g.moveTo(80, 94); g.lineTo(104, 94); g.lineTo(102, 108); g.lineTo(83, 108); g.closePath(); g.fill();
-        g.beginPath(); g.moveTo(112, 94); g.lineTo(136, 94); g.lineTo(133, 108); g.lineTo(114, 108); g.closePath(); g.fill();
-        g.fillRect(102, 96, 12, 3.4);
-        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(84, 96.5, 9, 3);
-      }
-      if (name === 'Commissioner Varga') { // peaked police cap
-        g.fillStyle = '#2a3f8f';
-        g.beginPath(); g.ellipse(108, 58, 39, 17, 0, Math.PI, Math.PI * 2); g.fill();
-        g.fillStyle = '#1c2030'; g.beginPath(); g.ellipse(108, 60, 42, 7, 0, 0, Math.PI * 2); g.fill();
-        ell(108, 47, 4.4, 4.4, '#ffd23f');
+      // small nose + mouth by expression
+      g.strokeStyle = 'rgba(90,50,25,0.55)'; g.lineWidth = 3.4;
+      g.beginPath(); g.moveTo(109, 110); g.lineTo(106, 120); g.stroke();
+      g.strokeStyle = '#5e2a1c'; g.lineWidth = 4.6;
+      if (E.mouth === 'smile') { g.beginPath(); g.arc(108, 126, 10, Math.PI * 0.15, Math.PI * 0.85); g.stroke(); }
+      else if (E.mouth === 'frown') { g.beginPath(); g.arc(108, 140, 9, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
+      else if (E.mouth === 'open') { ell(108, 134, 6.5, 8.5, '#5e2a1c'); }
+      else { g.beginPath(); g.moveTo(100, 133); g.lineTo(116, 133); g.stroke(); }
+      if (P.mustache) { // small, and only for Varga
+        g.fillStyle = P.hair;
+        g.beginPath(); g.ellipse(100, 126, 8, 3.4, 0.25, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.ellipse(116, 126, 8, 3.4, -0.25, 0, Math.PI * 2); g.fill();
       }
     },
 

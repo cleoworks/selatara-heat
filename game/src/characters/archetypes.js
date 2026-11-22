@@ -42,22 +42,27 @@
       face: { eyes: 'narrow', mouth: 'flat' },
       hair: { style: 'short', color: 0x17130f },
       wear: {
-        top: { type: 'jacket', sleeve: 'long', color: 0x6e1423 },
+        // TOON REBUILD cast lock (Bos spec mapping): dark beanie,
+        // orange jacket, yellow accent, brown backpack.
+        top: { type: 'jacket', sleeve: 'long', color: 0xd8622a, color2: 0xf2b13c },
         bottom: { type: 'long', color: 0x23242c },
-        shoes: 0x1c1c20
+        shoes: 0xe8e4da, hat: 'beanie', hatColor: 0x1c1e24,
+        accessories: ['backpack']
       },
       idle: 'idle', walkSpeed: 1.5,
       line: 'Satu antar terakhir. Habis itu gue berhenti. Mungkin.'
     },
     {
       id: 'mami', label: 'Mami Ratna (fixer)', kind: 'story', lead: true,
-      body: { H: 1.62, hips: 1.12, waist: 0.92, skin: 2 },
+      body: { H: 1.62, hips: 1.12, waist: 0.92, skin: 2, handColor: 0x4a3826 },
       head: { jaw: 'taper' },
       face: { wrinkles: true, mouth: 'smile' },
       hair: { style: 'bun', color: 0xb8b0a4 },
       wear: {
-        top: { type: 'blouse', color: 0xb83a4a },
-        bottom: { type: 'skirt', color: 0x4a2440 },
+        // TOON REBUILD cast lock: mechanic jacket (slate), work
+        // trousers; oil-stained hands via body.handColor above.
+        top: { type: 'jacket', sleeve: 'long', color: 0x51606e },
+        bottom: { type: 'long', color: 0x2c3038 },
         shoes: 0x3a2c22, accessories: ['glasses', 'jewelry']
       },
       idle: 'talk', walkSpeed: 1.1,
@@ -175,7 +180,7 @@
       face: { eyes: 'narrow', mouth: 'flat', stubble: 0.7 },
       hair: { styles: ['slick', 'undercut', 'short'] },
       wear: {
-        top: { type: 'jacket', sleeve: 'long', color: 0x2b2320, rough: 0.5 },
+        top: { type: 'jacket', sleeve: 'long', color: 0x2b2320, color2: 0xc23b2e, rough: 0.5 },
         bottom: { type: 'long', colors: [0x23242a, 0x1d1f26] },
         shoes: [0x1c1a16, 0x2a2019], accessories: ['armTattoo', 'pistol']
       },
@@ -188,7 +193,7 @@
       face: { mouth: 'flat', randomEyes: true, stubble: 0.5 },
       hair: { style: 'cap', color: 0x2e3a2e },
       wear: {
-        top: { type: 'tee', colors: [0x4c5548, 0x3c4652, 0x554e42] },
+        top: { type: 'tee', color2: 0xc23b2e, colors: [0x4c5548, 0x3c4652, 0x554e42] },
         bottom: { type: 'long', colors: [0x2e3238, 0x3a352c] },
         shoes: [0x1c1e24, 0x2a2019], accessories: ['pistol']
       },
@@ -213,7 +218,7 @@
       face: { mouth: 'stern', eyes: 'narrow', stubble: 0.9 },
       hair: { styles: ['buzz', 'bald', 'undercut'] },
       wear: {
-        top: { type: 'vest', colors: [0x33302c, 0x402e28, 0x2c3436] },
+        top: { type: 'vest', color2: 0xc23b2e, colors: [0x33302c, 0x402e28, 0x2c3436] },
         bottom: { type: 'shorts', colors: [0x3a3f45, 0x4a4038] },
         shoes: [0x2a2c33, 0x54443a], accessories: ['armTattoo', 'pistol']
       },

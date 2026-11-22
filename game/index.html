@@ -27,10 +27,10 @@
     shotgun), over-shoulder aiming, hitscan with spread, tracers, reloads
     with magazine and reserve ammo, a gang-enemy AI, hostile fire, player
     damage with armour absorption, and floating world pickups.
-  Characters (src/characters/rig.js, src/characters/factory.js,
+  Characters (src/characters/toon.js, src/characters/factory.js,
     src/characters/archetypes.js, src/characters/animation.js): one
-    procedural character factory builds every human from 28 archetypes
-    on a named-bone rig with hand-authored animation clips.
+    toon character system builds every human from 28 archetypes —
+    chunky Group-pivot figures with procedural poses and gaits.
   Pedestrians and traffic (src/pedestrians.js, src/traffic.js): pooled
     sidewalk walkers who stroll between corners, idle, chat and
     panic-flee from danger; lane traffic with car-following gaps and
@@ -480,7 +480,7 @@
 <script src="./src/effects.js"></script>
 <script src="./src/vehicles.js"></script>
 <script src="./src/traffic.js"></script>
-<script src="./src/characters/rig.js"></script>
+<script src="./src/characters/toon.js"></script>
 <script src="./src/characters/factory.js"></script>
 <script src="./src/characters/archetypes.js"></script>
 <script src="./src/characters/animation.js"></script>
