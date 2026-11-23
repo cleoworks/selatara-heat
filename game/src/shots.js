@@ -111,7 +111,10 @@
       if (!post.hunch && SH.Archetypes && SH.Archetypes[m.arch] && SH.Archetypes[m.arch].posture) post = SH.Archetypes[m.arch].posture;
       var ctl = SH.CharAnim.create(ch, { start: action || 'idle', idle: 'idle', posture: post });
       if (scene) scene.add(ch.group);
-      ch.group.position.set(m.x, 0, m.z);
+      // LEGFIX A: staged members are never moved by a live system,
+      // so the row itself must stand on the real surface.
+      var gyS = SH.World.groundHeightAt ? SH.World.groundHeightAt(m.x, m.z) : 0;
+      ch.group.position.set(m.x, gyS + 0.005, m.z);
       ch.group.rotation.y = (heading != null ? heading : 0) + (m.dyaw || 0);
       if (expr && ch.setExpression) ch.setExpression(expr);
       ctl.play(action || 'idle', 0, true);
@@ -1757,6 +1760,38 @@
           place(15, -233.1, -89.5, -233.9, -88.5, 'idle', 60);
         })();
         stageCastRow([{ arch: 'patrol', seed: 900007, x: -234.0, z: -93.5 }], 0, 'idle', 'neutral');
+      } else if (name === 'chars-group') {
+        // PROPFIX (Bos point 11): the cast as a NATURAL group, not
+        // a parade row — uneven spacing and depths, mixed builds
+        // and heights (Varga stocky, a sekolah kid on his phone),
+        // a talk pair turned toward each other, one member frozen
+        // mid-stride walking through, the rest idling at varied
+        // yaw. Camera: slight LOW-angle 3/4 (camPitch -0.10) at
+        // 5.6 m on the chars-34 avenue spot, same evening light.
+        SH.Main.setHour(17.85);
+        st.player.x = -234.3; st.player.z = -92.0;
+        st.player.heading = -0.95;
+        st.camYaw = -0.95; st.camPitch = -0.08;
+        st._shotCamDist = 4.8;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — the cast, off-duty', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'varga', phase: 3, dyaw: 0.30, x: -233.6, z: -94.3 },
+          { arch: 'patrol', seed: 900007, phase: 11, dyaw: -0.50, x: -235.2, z: -93.2 },
+          { arch: 'dario', phase: 6, dyaw: 0.15, x: -234.6, z: -95.6 }
+        ], -0.95, 'idle', 'neutral');
+        stageCastRow([
+          { arch: 'mami', phase: 5, dyaw: 0.90, x: -233.6, z: -90.4 },
+          { arch: 'kantoran', phase: 9, dyaw: -2.20, x: -232.9, z: -90.8 }
+        ], -0.95, 'talk', 'neutral');
+        stageCastRow([
+          { arch: 'sindikatKulit', seed: 900022, phase: 9, dyaw: -0.15, x: -234.4, z: -89.9 }
+        ], -0.95, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: 0.40, x: -233.0, z: -88.9 }
+        ], -0.95, 'idle_phone', 'neutral');
+        clearCrowd(-234.3, -92.0, 9);
       } else if (name === 'chars-side') {
         // BODYFIX round 4: the cast row in PROFILE — same anchor
         // as chars-front, but everyone (player anchor included)
@@ -1907,6 +1942,286 @@
           if (++rbTicks > 300) window.clearInterval(rbPin);
         }, 100);
         clearCrowd(-233.0, -92.0, 7);
+      } else if (name === 'legfix-lineup') {
+        // LEGFIX (a): cast row ON the east sidewalk slab (centre
+        // x=-232.8, slab top 0.14) of the x=-240 avenue — the
+        // BEFORE frame must show feet sunk into the pavement,
+        // the AFTER frame soles flush on it. Low camera
+        // (camPitch -0.30) so legs + shoes fill the lower frame.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.30;
+        st._shotCamDist = 3.0;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — leg check', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -232.8, z: -94.3 },
+          { arch: 'pekerjaDermaga', seed: 900051, phase: 3, dyaw: 0.06, x: -232.8, z: -93.2 },
+          { arch: 'mami', phase: 13, dyaw: 0.09, x: -232.8, z: -90.9 },
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: -0.06, x: -232.8, z: -89.9 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'legfix-walk') {
+        // LEGFIX (b): REAL pedestrians walking the east sidewalk
+        // both directions, tight low camera — stride, foot plant
+        // and sole contact mid-gait are the subject.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -88;
+        st.player.heading = Math.PI;
+        st.camYaw = 0; st.camPitch = -0.15;
+        st._shotCamDist = 4.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — sidewalk gait', x: -240, z: -88 };
+        (function () {
+          var list = SH.Pedestrians.list;
+          function place(i, x, z, tx, tz, state, timer) {
+            var p = list[i]; if (!p) return;
+            p.x = x; p.z = z; p.tx = tx; p.tz = tz;
+            p.state = state; if (timer) p.timer = timer;
+            p.heading = Math.atan2(tx - x, tz - z);
+            p.mesh.position.set(x, 0, z);
+            p.mesh.rotation.y = p.heading;
+          }
+          place(8, -232.8, -94, -232.8, -103, 'walk');
+          place(14, -233.0, -102, -233.0, -93, 'walk');
+          place(16, -232.6, -90, -232.6, -99, 'walk');
+          place(18, -232.9, -97, -232.9, -88, 'walk');
+          place(22, -232.7, -92, -232.7, -101, 'walk');
+          place(24, -233.1, -100, -233.1, -91, 'walk');
+        })();
+      } else if (name === 'legfix-road') {
+        // LEGFIX (c): the same cast on bare asphalt (road centre
+        // x=-240, ground y=0) — control surface: soles must sit
+        // exactly on the tarmac, no float, no sink.
+        SH.Main.setHour(17.85);
+        st.player.x = -240.0; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.25;
+        st._shotCamDist = 3.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — road contact', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -240.0, z: -93.9 },
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.05, x: -240.0, z: -90.1 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-240.0, -92.0, 8);
+      } else if (name === 'legfix-cross') {
+        // LEGFIX (d): two figures standing ON the zebra bars of
+        // the (-240,-60) junction's north leg (bars at z=-68.4,
+        // top 0.035; nodeR 5.95 + 2.45 along the leg) plus one
+        // on the asphalt just short of them.
+        SH.Main.setHour(17.85);
+        st.player.x = -240.0; st.player.z = -63.5;
+        st.player.heading = 0;
+        st.camYaw = 0; st.camPitch = -0.10;
+        st._shotCamDist = 5.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — crosswalk', x: -240, z: -60 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -241.8, z: -68.4 },
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.05, x: -238.2, z: -68.4 },
+          { arch: 'ojek', seed: 900031, phase: 10, dyaw: 0.0, x: -240.0, z: -65.8 }
+        ], 0, 'idle', 'neutral');
+        clearCrowd(-240.0, -65.8, 9);
+      } else if (name === 'legfix-curb') {
+        // LEGFIX (e): the curb itself — one figure up on the slab,
+        // one down on the asphalt, one frozen mid-stride stepping
+        // DOWN across the edge (x=-234.4), plus the player anchor
+        // standing on the edge line. Feet must split levels: the
+        // high foot on the slab, the low foot on the road.
+        SH.Main.setHour(17.85);
+        st.player.x = -234.4; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.30;
+        st._shotCamDist = 3.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — curb step', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.0, x: -232.9, z: -93.6 },
+          { arch: 'pekerjaDermaga', seed: 900051, phase: 3, dyaw: 0.0, x: -235.9, z: -93.6 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        stageCastRow([
+          { arch: 'ojek', seed: 900031, phase: 14, dyaw: 0.0, x: -234.4, z: -90.4 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        clearCrowd(-234.4, -92.0, 8);
+      } else if (name === 'legfix-run') {
+        // LEGFIX (f) RESTAGE 2: the subject is RAKA himself, in
+        // profile at centre frame, frozen at a measured run phase.
+        // R1 froze two joggers beside the idle player anchor and
+        // the still read "standing": the player (centre, facing
+        // the camera) dominated the frame in an idle pose. Now the
+        // real player is hidden (onFoot=false: Player.update keeps
+        // the mesh invisible, and updateCamera is a separate
+        // method, so the anchor and framing are unchanged) and a
+        // factory Raka (seed 1 = the player's own build) is staged
+        // at the anchor spot, heading +z in full profile.
+        // STANCEFIX phase correction: the old comment's phase
+        // arithmetic (from the 1/60 s runphase probe) did NOT
+        // match stageCastRow's 1/30 s stepping — phases 13-18 all
+        // froze the same stride-split contact pose and the still
+        // kept reading "walking". Re-measured with the exact
+        // stageCastRow path (tooling/stancephase-stancefix.cjs,
+        // cycle = 20 phases): knee-drive peaks (73.8 deg) at
+        // phase 0/10, true flight (both soles off the surface,
+        // min +0.011 / max +0.049, drive knee 59 deg) at phase
+        // 19 — the default now. ?runphase= / ?rundyaw= override
+        // for phase hunting without code edits.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = 0;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.20;
+        st._shotCamDist = 4.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — run cycle', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        var runPhase = parseInt(params.get('runphase'), 10);
+        if (isNaN(runPhase)) runPhase = 19;
+        var runDyaw = parseFloat(params.get('rundyaw'));
+        if (isNaN(runDyaw)) runDyaw = 0;
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: runPhase, dyaw: runDyaw, x: -232.8, z: -92.0 }
+        ], 0, 'run', 'neutral');
+        // Context runners from the R1 staging, unchanged: both
+        // ON the z axis in profile, two jogger builds in sneakers.
+        stageCastRow([
+          { arch: 'jogger', seed: 900077, phase: 14, dyaw: 0.0, x: -232.8, z: -89.4 }
+        ], Math.PI, 'run', 'neutral');
+        stageCastRow([
+          { arch: 'jogger', seed: 900131, phase: 35, dyaw: 0.0, x: -232.8, z: -95.2 }
+        ], 0, 'run', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-lineup') {
+        // STANCEFIX: the cast row from the FRONT, tighter and
+        // lower than legfix-lineup — the subject is the thigh
+        // pivots, the crotch gap and whether the legs stay
+        // inside the pelvis line. Same sidewalk slab (x=-232.8,
+        // top 0.14), same hour; only the framing closes in.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.36;
+        st._shotCamDist = 2.6;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — stance check', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.03, x: -232.8, z: -94.2 },
+          { arch: 'mami', phase: 13, dyaw: 0.05, x: -232.8, z: -93.1 },
+          { arch: 'varga', phase: 4, dyaw: -0.05, x: -232.8, z: -90.9 },
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: 0.04, x: -232.8, z: -89.9 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-walkfront') {
+        // STANCEFIX: three walkers frozen mid-gait FACING the
+        // camera — the lateral foot track and any knee splay
+        // read directly from the front. Real player hidden
+        // (same trick as legfix-run); a factory Raka walks at
+        // centre frame.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.22;
+        st._shotCamDist = 3.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — walk track, front', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 3, dyaw: 0.0, x: -232.8, z: -93.8 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: 12, dyaw: 0.0, x: -232.8, z: -92.0 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'mami', phase: 21, dyaw: 0.0, x: -232.8, z: -90.2 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-walkside') {
+        // STANCEFIX: the same gait in PROFILE — stride length,
+        // knee lift and heel/toe sequence from the side, feet
+        // tracking along the sidewalk line.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = 0;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.16;
+        st._shotCamDist = 3.8;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — walk stride, side', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        stageCastRow([
+          { arch: 'jogger', seed: 900077, phase: 16, dyaw: 0.0, x: -232.8, z: -94.8 }
+        ], 0, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: 6, dyaw: 0.0, x: -232.8, z: -92.0 }
+        ], 0, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'jogger', seed: 900131, phase: 24, dyaw: 0.0, x: -232.8, z: -89.2 }
+        ], Math.PI, 'walk', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'polish-face') {
+        // POLISH: face close-up, three heads at 3/4 angles —
+        // eyes / brows / nose / mouth readability, hair silhouette
+        // variety and skin-tone unity are the subject. Player
+        // hidden (legfix-run trick). The on-foot follow camera
+        // ALWAYS sits 6.1 m behind the anchor (player.js — the
+        // _shotCamDist/_shotAimDist branches do not survive the
+        // live input/camera loop), so the close framing is staged
+        // geometrically: the anchor parks 6.1 m EAST of the row
+        // and the subjects stand on the view axis ~1.5 m in
+        // front of the lens, on the sidewalk slab. Spacing via
+        // ?facegap= (lens distance), pitch via ?facepitch=.
+        SH.Main.setHour(17.85);
+        st.player.x = -228.4; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2;
+        var fpitch = parseFloat(params.get('facepitch'));
+        st.camPitch = isNaN(fpitch) ? 0.02 : fpitch;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — face check', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        var fgap = parseFloat(params.get('facegap'));
+        if (isNaN(fgap)) fgap = 1.5;
+        var figX = -228.4 - 6.1 + fgap;
+        stageCastRow([
+          { arch: 'turis', seed: 900201, phase: 9, dyaw: 0.50, x: figX, z: -92.55 },
+          { arch: 'raka', seed: 1, phase: 5, dyaw: -0.55, x: figX, z: -91.80 },
+          { arch: 'mami', phase: 13, dyaw: 0.45, x: figX, z: -91.05 }
+        ], -Math.PI / 2, 'idle', null);
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'polish-lineup') {
+        // POLISH: full-body front lineup across archetypes —
+        // palette harmony, outline consistency, hair variety and
+        // ground separation are the subject. The player (Raka)
+        // holds the centre slot, as in stancefix-lineup.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.13;
+        st._shotCamDist = 4.6;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — polish lineup', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.03, x: -232.8, z: -94.6 },
+          { arch: 'mami', phase: 13, dyaw: 0.05, x: -232.8, z: -93.55 },
+          { arch: 'ibuHijab', seed: 900301, phase: 4, dyaw: -0.05, x: -232.8, z: -90.95 },
+          { arch: 'jogger', seed: 900077, phase: 11, dyaw: 0.04, x: -232.8, z: -89.9 },
+          { arch: 'kakek', seed: 900401, phase: 2, dyaw: -0.02, x: -232.8, z: -88.85 }
+        ], -Math.PI / 2, 'idle', null);
+        clearCrowd(-232.8, -92.0, 9);
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
         st.mode = 'map';

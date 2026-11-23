@@ -121,7 +121,15 @@
       // by the camera. (The old rig's lean layer has no equivalent;
       // the gait clips carry their own forward lean.)
       var spd = Math.hypot(p.vx, p.vz);
-      this.mesh.position.set(p.x, p.y, p.z);
+      // LEGFIX A: Raka's root rides the same surface lookup as
+      // everyone else (tracked through jumps too, so a landing on
+      // a slab or a zebra bar is flush); p.y is the jump arc on
+      // top of the ground line.
+      var gT = SH.World.groundHeightAt(p.x, p.z);
+      if (this._gy === undefined) this._gy = gT;
+      var gStep = (gT > this._gy ? 2.2 : 3.4) * dt;
+      this._gy += Math.max(-gStep, Math.min(gStep, gT - this._gy));
+      this.mesh.position.set(p.x, this._gy + 0.005 + p.y, p.z);
       this.mesh.rotation.y = p.heading;
       var ctl = this.ctl;
       if (this._lockT > 0) {

@@ -69,6 +69,7 @@
     },
 
     respawn: function (ped, anywhere) {
+      ped.gy = undefined; // LEGFIX A: snap to the new spot's surface
       // Market regulars always (re)spawn inside the market block, so
       // the stalls keep their crowd at any hour (Rev 6).
       if (ped.market) {
@@ -239,7 +240,15 @@
           ped.cycle += dt * speed * 2.6;
         }
         ped.speed = speed;
-        ped.mesh.position.set(ped.x, 0, ped.z);
+        // LEGFIX A: the root rides the real surface (slab 0.14,
+        // zebra 0.035, cap 0.012, road 0, grass -0.08), lerped at
+        // step rates so a curb crossing reads as a step, never a
+        // teleport or a sink.
+        var gT = SH.World.groundHeightAt(ped.x, ped.z);
+        if (ped.gy === undefined) ped.gy = gT;
+        var gStep = (gT > ped.gy ? 1.5 : 2.6) * dt;
+        ped.gy += Math.max(-gStep, Math.min(gStep, gT - ped.gy));
+        ped.mesh.position.set(ped.x, ped.gy + 0.005, ped.z);
         ped.mesh.rotation.y = ped.heading;
         // Shared animation: gait is speed-synced by CharAnim; panic
         // has its own clip (played at its stride rate); idle walkers

@@ -64,6 +64,17 @@
     }
     var H = body.H != null ? body.H
       : (arch.heightRange ? arch.heightRange[0] + r() * (arch.heightRange[1] - arch.heightRange[0]) : 1.72);
+    // PROPFIX (Bos point 9): per-seed body variation for the
+    // crowd archetypes — height +-5%, width +-4% — so the avg
+    // build stops reading as clones in a crowd. Story cast
+    // (fixed H, no heightRange) is untouched: their heights and
+    // widths stay exactly as authored. Drawn from the same rng
+    // stream every other archetype roll consumes.
+    var widthK = 1;
+    if (arch.heightRange) {
+      widthK = 0.96 + r() * 0.08;
+      H = H * (0.95 + r() * 0.10);
+    }
     // Semi-realistic build map (2026-11-22): belly / shoulder / hips
     // hints plus the archetype's own posture (kakek's hunch) and
     // headScale (sekolah's bigger head) pick the new builds.
@@ -78,6 +89,17 @@
     var cfg = {
       height: H,
       build: build,
+      // PROPFIX (Bos point 6): the female profile is decided by
+      // the ARCHETYPE's explicit flag when it declares one —
+      // inference from skirt/bun/hijab (isMaleCfg) is only the
+      // fallback for undeclared/mixed crowd archetypes.
+      female: arch.female != null ? !!arch.female : null,
+      // PROPFIX (Bos point 9): forward the body proportion
+      // overrides (dead inputs until now) + the variation factor.
+      waistK: body.waist != null ? body.waist : null,
+      thighK: body.thigh != null ? body.thigh : null,
+      legFrac: body.legFrac != null ? body.legFrac : null,
+      widthK: widthK,
       skin: body.skin != null ? SKIN_TONES[body.skin % 8] : SKIN_TONES[Math.floor(r() * 8) % 8],
       top: top.color != null ? top.color : 0xd8542e,
       accent: top.color2 != null ? top.color2 : null,
@@ -99,6 +121,19 @@
       seed: seed
     };
     if (cfg.backpack != null) acc.splice(acc.indexOf('backpack'), 1);
+    // LEGFIX D: shoe family per archetype — duty boots for the
+    // uniformed and the dockyard trades, sandals for the shore
+    // and market crowd, heels for some women, sneakers for the
+    // rest. Rolled LAST from the rng stream so no earlier pick
+    // in this function moves.
+    var shoeType = 'sneaker';
+    if (arch.id === 'patrol' || arch.id === 'swat' ||
+        arch.id === 'pekerjaDermaga' || arch.id === 'penjagaGudang' || acc.indexOf('policePatch') >= 0) shoeType = 'boot';
+    else if (arch.id === 'nelayan' || arch.id === 'pedagang' || arch.id === 'warung' ||
+             arch.id === 'turis' || arch.id === 'pasangan') shoeType = 'sandal';
+    else if (cfg.female && r() < 0.35) shoeType = 'heel';
+    else if (cfg.bottomType === 'shorts' && r() < 0.4) shoeType = 'sandal';
+    cfg.shoeType = shoeType;
     return cfg;
   }
 
@@ -111,7 +146,10 @@
   function ensureFar() {
     if (farMesh) return;
     var pts = [];
-    var prof = [[0.001, 0], [0.088, 0], [0.073, 0.08], [0.058, 0.30], [0.104, 0.50], [0.130, 0.55], [0.140, 0.72], [0.118, 0.82], [0.035, 0.86], [0.058, 0.93], [0.055, 1.0], [0.001, 1.0]];
+    // PROPFIX: silhouette landmarks follow the new skeleton —
+    // legs 47% (waist line at 0.47, hip mass wider at ~0.53,
+    // shoulder mass at 0.70).
+    var prof = [[0.001, 0], [0.092, 0], [0.077, 0.08], [0.062, 0.28], [0.112, 0.47], [0.136, 0.53], [0.146, 0.70], [0.122, 0.81], [0.035, 0.85], [0.058, 0.92], [0.055, 1.0], [0.001, 1.0]];
     for (var i = 0; i < prof.length; i++) pts.push(new THREE.Vector2(prof[i][0], prof[i][1]));
     var g = new THREE.LatheGeometry(pts, 7);
     farMesh = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff }), FAR_MAX);
@@ -133,7 +171,10 @@
       if (level === 2) { char.group.visible = false; return; }
       char.group.visible = true;
       var simple = level === 1;
-      for (var i = 0; i < char.outlines.length; i++) char.outlines[i].visible = !simple;
+      // PROPFIX (Bos point 10): outlines stay VISIBLE at LOD 1 —
+      // the silhouette line must read at medium distance too.
+      // (LOD 2 hides the whole group anyway.)
+      for (var i = 0; i < char.outlines.length; i++) char.outlines[i].visible = true;
       for (var j = 0; j < char.lod1Hide.length; j++) char.lod1Hide[j].visible = !simple;
       if (char.blob) char.blob.visible = true;
     };

@@ -597,9 +597,16 @@
         } else {
           e.ctl.setSpeed(spd);
         }
-        e.ctl.update(dt);
-        e.mesh.position.set(e.x, 0, e.z);
+        // LEGFIX A: enemies ride the surface lookup; position is
+        // set BEFORE the pose update so the foot-ground layer
+        // reads this frame's root, not last frame's.
+        var egT = SH.World.groundHeightAt(e.x, e.z);
+        if (e.gy === undefined) e.gy = egT;
+        var egStep = (egT > e.gy ? 1.8 : 2.8) * dt;
+        e.gy += Math.max(-egStep, Math.min(egStep, egT - e.gy));
+        e.mesh.position.set(e.x, e.gy + 0.005, e.z);
         e.mesh.rotation.y = e.state === 'attack' || e.state === 'alert' ? Math.atan2(f.x - e.x, f.z - e.z) : e.heading;
+        e.ctl.update(dt);
       }
     },
 
