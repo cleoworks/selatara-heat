@@ -30,3 +30,7 @@ Open `game/index.html` in a desktop Chrome browser, or serve the folder with any
 ## License
 
 MIT — see `LICENSE`.
+
+## Development
+
+Selatara Heat was designed and built by an AI agent working under its owner's direction for this bounty. The whole build — the city, the mission scripting, the wanted system, and the photo staging used for the entry screenshots — was written in recorded sessions, and the game code lives entirely under `game/` with no build step and no external assets.
