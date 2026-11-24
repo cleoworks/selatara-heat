@@ -149,6 +149,26 @@
       g.fillStyle = v > 0.6 ? 'rgba(60,42,22,0.16)' : (v > 0.3 ? 'rgba(255,244,220,0.10)' : 'rgba(30,20,10,0.10)');
       g.fillRect(rng() * 512, rng() * 512, 2.4, 2.4);
     }
+    // VISUAL POLISH step 1: a second, coarser variation pass — the
+    // first speckle sits at 2.4 px and vanishes at gameplay
+    // distance, leaving the pad reading as one flat brown in the
+    // night frame. Larger soft blotches (worn patches, swept-clean
+    // arcs, damp darkening) at 6-14 px give the surface a grain
+    // the new walkway light pools can model against.
+    // FIX03 (user item 3): step 1's blotches were still too
+    // faint to model under the pools (alpha 0.13/0.09 at 6-20 px
+    // on a 512 canvas stretched over 108 m). Bigger (8-30 px)
+    // and stronger (0.20/0.14): the pad now has a mottled grain
+    // at the scale the light pools actually resolve.
+    for (var ci = 0; ci < 260; ci++) {
+      var cx2 = rng() * 512, cy2 = rng() * 512, cr = 8 + rng() * 22;
+      var cg = g.createRadialGradient(cx2, cy2, 1, cx2, cy2, cr);
+      var cv = rng();
+      cg.addColorStop(0, cv > 0.55 ? 'rgba(52,36,18,0.20)' : 'rgba(255,240,214,0.14)');
+      cg.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = cg;
+      g.fillRect(cx2 - cr, cy2 - cr, cr * 2, cr * 2);
+    }
     var t = new THREE.CanvasTexture(c);
     if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -856,6 +876,17 @@
       marketPad.position.set(-303, 0.035, 91);
       marketPad.receiveShadow = true;
       scene.add(marketPad);
+      // FIX03 (user item 2): the pad is a REAL floor — register
+      // its top (+0.070) as a walkable surface. Until now
+      // groundHeightAt returned the buried grass level (-0.08)
+      // everywhere in the market, so every root, the LEGFIX
+      // foot-ground layer and every blob shadow targeted a plane
+      // 0.15 m under the visible floor (probe-measured: soles
+      // -0.071/-0.108 and blob discs at -0.066 against the pad
+      // top's +0.070). Roads.registerSurface exists for exactly
+      // this late-built floor (the grid is indexed before
+      // Buildings.build runs).
+      if (SH.Roads && SH.Roads.registerSurface) SH.Roads.registerSurface({ cx: -303, cz: 91, ux: 1, uz: 0, hl: 54, hw: 29, top: 0.07 });
       var counters = [], stallGoods = [], stallCrates = [];
       var goodsColors = [0xff5a4e, 0xffc93c, 0x7dd069, 0xff8c42, 0x4ecdc4, 0xff6b9d];
       for (pi = 0; pi < 26; pi++) {
@@ -879,6 +910,38 @@
       makeInstanced(box, stallMat, counters, scene, false);
       makeInstanced(box, stallMat, stallGoods, scene, false);
       makeInstanced(box, stallMat, stallCrates, scene, false);
+
+      // VISUAL POLISH step 3: a THIRD stall row on the pad's north
+      // edge (z=68) — the market's north half was open dirt behind
+      // the z=77 walking band, so the block read two-rows thin and
+      // the frame's left/right ends emptied out. Same tent, poles,
+      // counter, interior table, goods and crates as the two
+      // standing rows; counters face +z onto the z=77 band, which
+      // is where the market crowd already strolls (pedestrians.js
+      // band 77), so the new stalls have their browsers built in.
+      var tents3 = [], poles3 = [], counters3 = [], goods3 = [], crates3 = [];
+      for (pi = 0; pi < 13; pi++) {
+        var t3x = -352 + pi * 7.6, t3z = 68;
+        tents3.push({ x: t3x, y: 1.85, z: t3z, sx: 6.4, sy: 2.15, sz: 6.4, color: tentColors[(rng() * tentColors.length) | 0] });
+        [[-2.95, -2.95], [2.95, -2.95], [2.95, 2.95], [-2.95, 2.95]].forEach(function (pc3) {
+          poles3.push({ x: t3x + pc3[0], y: 0.925, z: t3z + pc3[1], sx: 1, sy: 1.85, sz: 1 });
+        });
+        poles3.push({ x: t3x, y: 1.0, z: t3z, sx: 1.3, sy: 2.0, sz: 1.3 });
+        counters3.push({ x: t3x, y: 0.45, z: t3z + 5.1, sx: 3.4, sy: 0.9, sz: 0.95, color: 0x8a6844 });
+        counters3.push({ x: t3x, y: 0.42, z: t3z, sx: 3.8, sy: 0.84, sz: 1.3, color: 0x8a6844 });
+        for (var g3 = 0; g3 < 3; g3++) {
+          goods3.push({ x: t3x - 1.2 + g3 * 1.2, y: 1.0, z: t3z, sx: 0.36, sy: 0.32, sz: 0.36, color: goodsColors[(rng() * goodsColors.length) | 0] });
+          goods3.push({ x: t3x - 1.1 + g3 * 1.1, y: 1.06, z: t3z + 5.1, sx: 0.34, sy: 0.3, sz: 0.34, color: goodsColors[(rng() * goodsColors.length) | 0] });
+        }
+        crates3.push({ x: t3x + 3.6, y: 0.3, z: t3z + (rng() - 0.5) * 2, sx: 0.6, sy: 0.6, sz: 0.6, color: rng() < 0.5 ? 0xa8763e : 0x7d5a38 });
+        if (rng() < 0.6) crates3.push({ x: t3x + 3.6, y: 0.9, z: t3z + (rng() - 0.5) * 2, sx: 0.52, sy: 0.52, sz: 0.52, color: 0xa8763e });
+        if (rng() < 0.5) crates3.push({ x: t3x - 3.6, y: 0.3, z: t3z + (rng() - 0.5) * 2, sx: 0.6, sy: 0.6, sz: 0.6, color: 0x5f7a8a });
+      }
+      makeInstanced(tentCanopyGeo(), tentMat, tents3, scene, false);
+      makeInstanced(new THREE.CylinderGeometry(0.045, 0.045, 1, 5), new THREE.MeshLambertMaterial({ color: 0x6e5133 }), poles3, scene, false);
+      makeInstanced(box, stallMat, counters3, scene, false);
+      makeInstanced(box, stallMat, goods3, scene, false);
+      makeInstanced(box, stallMat, crates3, scene, false);
 
       // SPECTACLE (2026-11-21): the pad alone read as one flat brown
       // sheet at judge scale — two panels in a row named the market
@@ -906,7 +969,23 @@
         mats.push({ x: mpx, y: 0.082, z: 89.2 + (floorRng() - 0.5) * 0.6, sx: 2.6, sy: 0.024, sz: 1.5, rotY: (floorRng() - 0.5) * 0.3, color: matColors[(floorRng() * matColors.length) | 0] });
         mats.push({ x: mpx + 4, y: 0.082, z: 94.9 + (floorRng() - 0.5) * 0.6, sx: 2.6, sy: 0.024, sz: 1.5, rotY: (floorRng() - 0.5) * 0.3, color: matColors[(floorRng() * matColors.length) | 0] });
       }
-      makeInstanced(box, stallMat, mats, scene, false);
+      // FIX03 (user item 2): the mats get their own material with
+      // a polygon offset (they sit +0.024 over the pad — top
+      // 0.094 vs pad 0.070 — and the offset wins any depth tie at
+      // glancing angles), and every mat registers as a walkable
+      // surface at its real top, so a character standing on a mat
+      // stands ON it (feet and blob shadow included) instead of
+      // sinking to the pad or the buried grass plane. The mat's
+      // surface frame follows its rotY: u along the box's long
+      // axis, hl/hw the half extents.
+      var matMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      makeInstanced(box, matMat, mats, scene, false);
+      if (SH.Roads && SH.Roads.registerSurface) {
+        for (var mri = 0; mri < mats.length; mri++) {
+          var mm = mats[mri], mrt = mm.rotY || 0;
+          SH.Roads.registerSurface({ cx: mm.x, cz: mm.z, ux: Math.cos(mrt), uz: -Math.sin(mrt), hl: mm.sx / 2, hw: mm.sz / 2, top: 0.094 });
+        }
+      }
       // Puddles: flat phong discs — the specular streak off the low
       // sun is what makes them read as water at judge scale.
       var puddleMat = new THREE.MeshPhongMaterial({ color: 0x2e4256, specular: 0xffd9a8, shininess: 110, transparent: true, opacity: 0.9 });
@@ -953,6 +1032,41 @@
       toppledCrate(-311.8, 88.1, -0.3, 0.85, 0x5f7a8a);
       toppledCrate(-300.4, 96.4, 0.9, 0.45, 0xa8763e);
 
+      // VISUAL POLISH step 3: food carts (gerobak) along the pad's
+      // south edge (z=114.5), fronts on the z=110 walking band —
+      // the south side was the second empty edge. Body, counter
+      // top, canopy on four poles, legs, bright goods and a
+      // hanging front board, all in the market's instanced-box
+      // vocabulary; every cart registers a steam vent with
+      // Effects, so a thin cook-smoke wisp rises off each one
+      // (the puff cloud the explosions already use).
+      var cartBodies = [], cartTops = [], cartRoofs = [], cartLegs = [], cartGoods = [], cartBoards = [];
+      var cartColors = [0xb5522e, 0x2e7d6b, 0xc9a227, 0x7a3b4f, 0x38618c, 0xa4442f, 0x51683c, 0x8a5a2e];
+      for (var cti = 0; cti < 8; cti++) {
+        var ctx = -346 + cti * 12.2, ctz = 114.5;
+        var ccol = cartColors[cti % cartColors.length];
+        cartBodies.push({ x: ctx, y: 0.82, z: ctz, sx: 2.3, sy: 1.05, sz: 1.25, color: ccol });
+        cartTops.push({ x: ctx, y: 1.38, z: ctz, sx: 2.5, sy: 0.07, sz: 1.45, color: 0xd8cfc0 });
+        cartRoofs.push({ x: ctx, y: 2.32, z: ctz, sx: 2.7, sy: 0.06, sz: 1.9, rotY: (rng() - 0.5) * 0.06, color: ccol });
+        [[-1.15, -0.75], [1.15, -0.75], [1.15, 0.75], [-1.15, 0.75]].forEach(function (clp) {
+          cartLegs.push({ x: ctx + clp[0], y: 1.85, z: ctz + clp[1], sx: 0.07, sy: 0.95, sz: 0.07, color: 0x4a3a2e });
+        });
+        [[-0.95, 0], [0.95, 0], [-0.95, 0.45], [0.95, 0.45], [0, -0.45], [0, 0.45]].forEach(function (clg) {
+          cartLegs.push({ x: ctx + clg[0], y: 0.16, z: ctz + clg[1], sx: 0.09, sy: 0.32, sz: 0.09, color: 0x4a3a2e });
+        });
+        for (var cg2 = 0; cg2 < 4; cg2++) {
+          cartGoods.push({ x: ctx - 0.9 + cg2 * 0.6, y: 1.55, z: ctz + (rng() - 0.5) * 0.5, sx: 0.3, sy: 0.26, sz: 0.3, color: goodsColors[(rng() * goodsColors.length) | 0] });
+        }
+        cartBoards.push({ x: ctx, y: 1.05, z: ctz - 0.68, sx: 1.7, sy: 0.5, sz: 0.05, color: ccol });
+        if (SH.Effects && SH.Effects.steamVent) SH.Effects.steamVent(ctx + (rng() - 0.5) * 0.8, 1.62, ctz);
+      }
+      makeInstanced(box, stallMat, cartBodies, scene, false);
+      makeInstanced(box, stallMat, cartTops, scene, false);
+      makeInstanced(box, stallMat, cartRoofs, scene, false);
+      makeInstanced(box, stallMat, cartLegs, scene, false);
+      makeInstanced(box, stallMat, cartGoods, scene, false);
+      makeInstanced(box, stallMat, cartBoards, scene, false);
+
       // String bulbs over the market: instanced warm bulbs on sagging
       // spans between the tent tops of both rows, three cross spans,
       // and a festoon line down the central walkway (Rev 6 rework —
@@ -994,14 +1108,44 @@
       bulbSpan(-306.4, 84, -306.4, 100);
       bulbSpan(-276.0, 84, -276.0, 100);
       for (var bfi = 0; bfi < 12; bfi++) bulbSpan(-352 + bfi * 7.6, 92, -352 + (bfi + 1) * 7.6, 92);
+      // VISUAL POLISH step 3: the north row (z=68) gets its own
+      // festoon line + a cross span tying it to the middle row, so
+      // the new stalls hang in the same web of light.
+      for (var b3i = 0; b3i < 12; b3i++) bulbSpan(-352 + b3i * 7.6, 68, -352 + (b3i + 1) * 7.6, 68);
+      bulbSpan(-306.4, 68, -306.4, 84);
       // Polish c2: one bulb hangs under each tent apex, so at night
       // every stall glows from inside its own canopy.
-      for (pi = 0; pi < 26; pi++) bulbPts.push({ x: -352 + (pi % 13) * 7.6, y: 3.05, z: 84 + ((pi / 13) | 0) * 16 });
+      // POLISH03 (user item 4): those apex bulbs were the one
+      // group NOT on any wire — the festoon passes 0.3-0.7 m
+      // above them (probe-polish03: wireDist 0.7 on every apex
+      // bulb in frame), so on the frame's right side they read
+      // as white dots floating under the tents. Each apex bulb
+      // now gets a DROP WIRE: a short vertical segment from the
+      // bulb up to the festoon line above its own x, drawn in
+      // the same wire geometry below — the bulb visibly hangs
+      // from the string.
+      function festoonY(x) {
+        var ft = ((x + 352) / 7.6) % 1;
+        return 3.75 - Math.sin(ft * Math.PI) * 0.4;
+      }
+      for (pi = 0; pi < 26; pi++) {
+        var abx = -352 + (pi % 13) * 7.6, abz = 84 + ((pi / 13) | 0) * 16;
+        bulbPts.push({ x: abx, y: 3.05, z: abz });
+        wirePts.push({ x: abx, y: 3.05, z: abz }, { x: abx, y: festoonY(abx) + 0.02, z: abz });
+      }
+      for (pi = 0; pi < 13; pi++) {
+        var abx2 = -352 + pi * 7.6;
+        bulbPts.push({ x: abx2, y: 3.05, z: 68 });
+        wirePts.push({ x: abx2, y: 3.05, z: 68 }, { x: abx2, y: festoonY(abx2) + 0.02, z: 68 });
+      }
       var bulbMat = new THREE.MeshBasicMaterial({ color: 0x665533 });
       this.bulbMaterial = bulbMat;
       this.bulbOffColor = new THREE.Color(0x665533);
       this.bulbOnColor = new THREE.Color(0xffd9a0);
-      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.085, 6, 5), bulbMat, bulbPts.length);
+      // POLISH2B (item 5): bulbs shrink to the spec radius 0.06 m —
+      // at 0.085 they read as baubles; the 0.45 m glow sprites stay
+      // as the soft halo around each one.
+      var bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.06, 6, 5), bulbMat, bulbPts.length);
       var bDummy = new THREE.Object3D();
       for (pi = 0; pi < bulbPts.length; pi++) {
         bDummy.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
@@ -1012,8 +1156,14 @@
       // The string itself: one dark line segment per bulb-to-bulb
       // step, following the same sag curve — at playing distance the
       // bulbs read as beads ON this wire, not as free-floating orbs.
+      // POLISH03 (user item 4): the old near-black 0x171310 at 0.9
+      // was invisible against the night sky — the right-side span
+      // bulbs ARE on this wire (probe: wireDist 0) yet read as
+      // floating dots where the line crosses open sky. The cable
+      // lifts to a warm dark grey at full opacity so the string
+      // itself stays perceptible against sky and canvas alike.
       var wireGeo = new THREE.BufferGeometry().setFromPoints(wirePts.map(function (p) { return new THREE.Vector3(p.x, p.y, p.z); }));
-      var wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x171310, transparent: true, opacity: 0.9 }));
+      var wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x38322a, transparent: true, opacity: 1.0 }));
       scene.add(wire);
       var bgc = document.createElement('canvas'); bgc.width = bgc.height = 64;
       var bg2 = bgc.getContext('2d');
@@ -1028,6 +1178,120 @@
         bsp.position.set(bulbPts[pi].x, bulbPts[pi].y, bulbPts[pi].z);
         scene.add(bsp);
       }
+      // VISUAL POLISH step 3: hanging cloth — bright cloth lengths
+      // pinned along the walkway festoon and the cross spans, the
+      // pasar malam's laundry-line colour overhead. Thin instanced
+      // boxes at wire height (tops at the sagging line, bodies
+      // hanging to ~2.6 m — clear of every head), seeded sway
+      // angles so no two hang alike.
+      // FIX03 (user item 1): the gold colourway (0xffc93c) leaves
+      // the palette — probe-identified as the "thin gold planks"
+      // floating in the combat frame's sky. They were legitimate
+      // dressing (these cloths), but a rigid flat box in the
+      // objective marker's own gold, at uniform 0.62 x 0.78 m,
+      // read as a rendering artifact. Gold is now the marker's
+      // colour alone; the cloths take a deep blue instead and
+      // vary in size (0.55-0.80 wide, 0.60-0.95 long) so no two
+      // read as cut from the same plank.
+      // POLISH03 (user item 3): the cloths still read as floating
+      // rectangles — flat boxes at a FIXED y=3.02 whose tops stopped
+      // short of the sagging wire, at sizes that print huge near
+      // the lens (probe-polish03: the pink walkway cloth 4.2 m
+      // from the hero camera spans 121 px of frame height).
+      // Three fixes: (a) every cloth shrinks (0.45-0.62 wide,
+      // 0.45-0.68 long, was 0.55-0.80 x 0.60-0.95); (b) each
+      // cloth's TOP is anchored to the festoon wire above its own
+      // position (same sag curve as bulbSpan / the cross spans),
+      // so it visibly HANGS from the rope; (c) the largest pink
+      // one — walkway cloth cli=5 at x=-326.5, the panel that
+      // dominates the combat frame's sky — is removed outright
+      // (its RNG draws are still consumed, so every other cloth
+      // keeps its seeded size/colour/place).
+      var cloths = [];
+      var clothColors = [0xff5a4e, 0x3a6ea5, 0x37e0ff, 0xff4fa3, 0x7dd069, 0xff8c42, 0xf2ead8];
+      var clothRng = SH.World.makeRng(4242);
+      for (var cli = 0; cli < 21; cli++) {
+        var clx2 = -349 + cli * 4.5;
+        var clz2 = 92 + (clothRng() - 0.5) * 0.5;
+        var csx = 0.45 + clothRng() * 0.17, csy = 0.45 + clothRng() * 0.23;
+        var crot = (clothRng() - 0.5) * 0.35;
+        var ccol = clothColors[(clothRng() * clothColors.length) | 0];
+        if (cli === 5) continue; // POLISH03: the big pink panel — removed
+        var ct5 = ((clx2 + 352) / 7.6) % 1;
+        var cwy = 3.75 - Math.sin(ct5 * Math.PI) * 0.4;
+        cloths.push({
+          x: clx2, y: cwy - csy / 2 + 0.04, z: clz2,
+          sx: csx, sy: csy, sz: 0.03, rotY: crot,
+          color: ccol
+        });
+      }
+      [-336.8, -306.4, -276.0].forEach(function (clx) {
+        for (var clj = 0; clj < 3; clj++) {
+          var clz3 = 87 + clj * 4.6;
+          var cx3 = clx + (clothRng() - 0.5) * 0.4;
+          var csx3 = 0.45 + clothRng() * 0.17, csy3 = 0.45 + clothRng() * 0.23;
+          var crot3 = Math.PI / 2 + (clothRng() - 0.5) * 0.35;
+          var ccol3 = clothColors[(clothRng() * clothColors.length) | 0];
+          var ct3 = (clz3 - 84) / 16;
+          var cwy3 = 3.75 - Math.sin(ct3 * Math.PI) * 0.4;
+          cloths.push({
+            x: cx3, y: cwy3 - csy3 / 2 + 0.04, z: clz3,
+            sx: csx3, sy: csy3, sz: 0.03, rotY: crot3,
+            color: ccol3
+          });
+        }
+      });
+      makeInstanced(box, stallMat, cloths, scene, false);
+
+      // FIX03 (user item 3): the neon-halo export used to sit
+      // HERE — `this.signGlowMats = signGlowMats` — but the array
+      // is only created in the billboard section ~100 lines
+      // below, so the export captured the hoisted var while it
+      // was still undefined and setNightGlow's halo driver has
+      // silently skipped every sign since step 1 (probe-verified:
+      // Buildings.signGlowMats undefined in the live scene). The
+      // export now happens right after the billboards are built.
+
+      // ---- VISUAL POLISH step 1: REAL market light pools -----------
+      // Until now the pasar malam was lit only by emissive canvas,
+      // bulb points and additive halos — nothing actually fell on
+      // the ground, the tables or the people, so the floor read as
+      // one flat level between the stalls. Six warm point lights
+      // now hang over the central walkway (the festoon line's own
+      // height), spaced so their pools overlap slightly down the
+      // aisle: stalls, goods, mats and figures standing in the
+      // aisle catch real warm light and the pad's texture finally
+      // models. Intensity is driven by setNightGlow (the lamp
+      // curve), so the market warms up from golden hour exactly
+      // like its bulbs do; by day the lights are off. Physical
+      // falloff (decay 1.7): ~4.0 at the ground 3 m below, ~1.2
+      // at 6 m — a pool, not a flood.
+      var marketLights = [];
+      var marketLightPos = [
+        [-345, 92], [-328, 92], [-311, 92], [-294, 92], [-277, 92], [-262, 92], // walkway (step 1)
+        [-336, 70], [-303, 70], [-270, 70], // VISUAL POLISH step 3: the new north row's aisle
+        // FIX03 (user item 3): walkway midpoints. Step 1's 17 m
+        // spacing left the duel spot (x -322..-325) in the dark
+        // gap BETWEEN two lights — probe-measured all 9 lamps at
+        // full intensity while the frame's centre read flat. At
+        // 8.5 m spacing every point of the aisle sits within
+        // ~5.3 m of a lamp, so the pools overlap into a lit
+        // corridor with visible falloff between them. Plus two
+        // lamps over the south cart row (z 110), the frame's
+        // foreground band, which had no light of its own at all.
+        [-336.5, 92], [-319.5, 92], [-302.5, 92], [-285.5, 92], [-270.5, 92],
+        [-328, 110], [-294, 110]
+      ];
+      for (var mli = 0; mli < marketLightPos.length; mli++) {
+        // FIX03: decay 1.7 -> 1.55 widens each pool (at 5.3 m the
+        // falloff factor goes 1/16.9 -> 1/13.2) so neighbouring
+        // pools meet instead of leaving dark seams.
+        var ml = new THREE.PointLight(0xffa04e, 0, 16, 1.55);
+        ml.position.set(marketLightPos[mli][0], 3.1, marketLightPos[mli][1]);
+        scene.add(ml);
+        marketLights.push(ml);
+      }
+      this.marketLights = marketLights;
 
       // ---- Boardwalk + pier at Pantai Kencana (Rev 6: real planks) ----
       // The promenade is ~700 individual planks laid across the curve
@@ -1101,6 +1365,7 @@
       SH.World.colliders.push({ x: 472, z: 474, hx: 7, hz: 6 });
 
       // ---- Billboards in Pelita Heights (canvas sign textures, invented brands) ----
+      var signGlowMats = [];
       var signs = [
         { text: 'SELATARA', sub: 'KOTA SELAT • PORT CITY', color: '#ff4fa3', x: -120, z: -308 },
         { text: 'KOPI SENJA', sub: 'KOPI PAGI • KOPI MALAM', color: '#ffd23f', x: 118, z: -188 },
@@ -1145,10 +1410,14 @@
         halo.rotation.y = sm.rotation.y;
         halo.translateZ(-0.4);
         scene.add(halo);
+        signGlowMats.push(halo.material);
         var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 12, 5), new THREE.MeshLambertMaterial({ color: 0x3a3f4a }));
         pole.position.set(s.x, 6, s.z);
         scene.add(pole);
       }
+      // FIX03 (user item 3): export the neon halos HERE, after
+      // they exist (see the note at the market cloths above).
+      this.signGlowMats = signGlowMats;
 
       // ---- Power poles + sagging wires along the old-town / downtown avenues ----
       var ppoles = [], parms = [], wirePts = [];
@@ -1199,7 +1468,23 @@
       // span builder) — the nearest walkway bulbs' halos still
       // cored out into pale discs over the bright tent canvas at
       // 0.3; the bulb points themselves carry the warm read.
-      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.18;
+      // FIX03 (user item 3): 0.18 -> 0.24 — with the denser real
+      // light pools the corridor no longer needs the halos to
+      // carry the warm read alone, and the user asked for visible
+      // bloom on the bulbs; 0.24 stays under the 0.3 that cored
+      // out in the V6 staging.
+      if (this.bulbGlowMaterial) this.bulbGlowMaterial.opacity = amount * 0.24;
+      // VISUAL POLISH step 1: the market's real light pools ride
+      // the same lamp curve, and the neon signs' fake-bloom halos
+      // bloom after dark (0.08 base by day -> 0.30 at full night)
+      // — the same additive-halo approach as the daytime chase
+      // frame's glow sprites, in each sign's own colour.
+      // FIX03 (user item 3): lamp curve 26 -> 30 with the wider
+      // 1.55 decay — each pool's core reads ~4.6 at the ground
+      // under its lamp and ~2.3 midway between lamps 8.5 m apart,
+      // a visible pool rhythm instead of a flat wash.
+      if (this.marketLights) for (var mli2 = 0; mli2 < this.marketLights.length; mli2++) this.marketLights[mli2].intensity = amount * 30;
+      if (this.signGlowMats) for (var sgi = 0; sgi < this.signGlowMats.length; sgi++) this.signGlowMats[sgi].opacity = 0.08 + amount * 0.22;
     },
 
     // Step 5: Main hands over the procedural environment texture so

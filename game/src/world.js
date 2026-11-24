@@ -748,6 +748,14 @@
     bridgeClosest: bridgeClosest,
     inWater: inWater,
     waterPush: waterPush,
+    // LEGFIX A: the ONE ground-height lookup every character root
+    // and foot uses (sidewalk slabs 0.14, junction caps 0.012,
+    // zebra bars 0.035, bridge decks 0.03, everything else 0).
+    // Roads registers its surfaces during build; world.js loads
+    // first, so the lookup delegates lazily at call time.
+    groundHeightAt: function (x, z) {
+      return (SH.Roads && SH.Roads.groundHeightAt) ? SH.Roads.groundHeightAt(x, z) : 0;
+    },
     waterData: WaterData,
     diagCells: diagCells,
     graph: { nodes: nodes, edges: edges },

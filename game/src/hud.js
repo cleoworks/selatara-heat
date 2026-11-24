@@ -13,6 +13,14 @@
   var notifications = [];
   var subtitleTimer = 0, bannerTimer = 0, hitmarkTimer = 0;
   var projV = null;
+  // HUD REDESIGN (2026-11-23) display-side fade state: the arsenal
+  // strip shows for 2 s after a switch, the weapon cluster dims to
+  // 35% after 4 s without a change, the HP/armour arcs dim while
+  // health sits full, the radio line fades 4 s after a track change.
+  // All timers run on the same 1/60 refresh step as the others and
+  // touch nothing but classes/opacity — no game state is read or
+  // written beyond what refresh already read.
+  var slotsTimer = 0, weapSig = null, weapIdle = 0, hpIdle = 0, radioSig = null, radioTimer = 0;
 
   function byId(id) { return document.getElementById(id); }
 
@@ -42,28 +50,71 @@
   var ICON_CLOCK = '<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.14em;margin-right:4px"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.5V12l3 2"/></g></svg>';
   var ICON_TRI = '<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.1em;margin-right:3px"><path fill="currentColor" d="M12 20L2.5 5.5h19z"/></svg>';
   var lastWanted = -1, starsFlash = 0;
+  // VISUAL POLISH step 1: the in-world objective marker — a floating
+  // gold diamond + additive halo that hovers over the objective
+  // point (over the courier's head during the chase step), so the
+  // target reads IN the scene, not only as the DOM projection
+  // (which hides under 6 m, exactly where the chase ends). Built
+  // lazily into the main scene; display only.
+  // FIX03 (user item 1): the first build read as a rendering
+  // artifact in the market frame — a 0.34 m gem stretched 1.5x
+  // riding 3.05 m over the objective under a 2.4 m halo, ~1.5 m
+  // above the courier's head (probe-measured: marker centre
+  // y 3.00 vs head 1.42). The gem is now palm-sized (0.15 m,
+  // 1.4x), the halo a tight 0.85 m at 0.6 opacity, and
+  // updateMarker3d anchors it just over head height with a
+  // subtle bob — a marker, not a monument.
+  // POLISH03 (user item 2): overshot — at the FIX03 camera the
+  // 0.15 m gem printed 29 px tall and washed out against the
+  // stalls (probe-polish03). The middle the user asked for:
+  // gem 0.15 -> 0.27 m (about 52 px at the courier's depth),
+  // a hotter high-contrast gold (0xffd23e), halo 0.85 -> 1.5 m
+  // at 0.75 opacity, bob kept subtle (+-0.07 m). Still anchored
+  // over the head — its lower tip clears the courier's crown.
+  var marker3d = null;
+  function buildMarker3d(scene) {
+    var grp = new THREE.Group();
+    var gem = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.27),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e })
+    );
+    gem.scale.y = 1.4;
+    grp.add(gem);
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var g = c.getContext('2d');
+    var grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(245,197,66,0.9)'); grad.addColorStop(0.4, 'rgba(245,197,66,0.28)'); grad.addColorStop(1, 'rgba(245,197,66,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+    var halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.scale.set(1.5, 1.5, 1);
+    grp.add(halo);
+    grp.visible = false;
+    scene.add(grp);
+    return grp;
+  }
 
   var HUD = {
     init: function () {
       el.hud = byId('hud'); el.cash = byId('hud-cash'); el.clock = byId('hud-clock');
       el.clockIcon = byId('hud-clock-icon'); el.clockText = byId('hud-clock-text');
-      el.stars = byId('hud-stars'); el.health = byId('bar-health'); el.armor = byId('bar-armor');
-      el.healthNum = byId('bar-health-num'); el.weaponBox = byId('hud-weapon');
-      el.weaponName = byId('weapon-name'); el.weaponAmmo = byId('weapon-ammo');
-      el.weaponState = byId('weapon-state'); el.weaponIcon = byId('weapon-icon');
-      el.weaponReserve = byId('weapon-reserve'); el.weaponReserveBox = byId('weapon-reserve-box');
-      el.weaponMagbar = byId('weapon-magbar'); el.weaponReload = byId('weapon-reload');
-      el.weaponReloadFill = byId('weapon-reload-fill'); el.weaponSlots = byId('weapon-slots');
+      el.stars = byId('hud-stars'); el.health = byId('arc-health'); el.armor = byId('arc-armor');
+      el.arcs = byId('minimap-arcs'); el.ring = byId('minimap-ring');
+      el.weaponBox = byId('hud-weapon');
+      el.weaponAmmo = byId('weapon-ammo');
+      el.weaponIcon = byId('weapon-icon');
+      el.weaponSlots = byId('weapon-slots');
       el.speedo = byId('hud-speedo'); el.speedNum = byId('speed-num');
       el.radioStation = byId('radio-station'); el.radioTrack = byId('radio-track');
+      el.radioCard = byId('radio-card');
       el.speedBar = byId('speed-bar'); el.objective = byId('hud-objective');
       el.objTitle = byId('obj-title-text'); el.objText = byId('obj-text'); el.objDist = byId('obj-dist');
       el.objTimer = byId('obj-timer'); el.objProgress = byId('obj-progress');
-      el.objEyebrow = byId('obj-eyebrow'); el.armorNum = byId('bar-armor-num');
+      el.objEyebrow = byId('obj-eyebrow');
       el.wantedStatus = byId('hud-wanted-status'); el.vehHp = byId('veh-hp');
       el.police = byId('hud-police');
       el.subPortrait = byId('sub-portrait'); el.subRole = byId('sub-role');
       el.notes = byId('hud-notes'); el.subtitle = byId('hud-subtitle');
+      el.speedLines = byId('speed-lines');
       el.subName = byId('sub-name'); el.subText = byId('sub-text');
       el.prompt = byId('hud-prompt'); el.district = byId('hud-district');
       el.marker = byId('hud-marker'); el.crosshair = byId('hud-crosshair');
@@ -72,6 +123,12 @@
       el.dmgFlash = byId('damage-flash');
       displayedCash = SH.State.cash;
       projV = new THREE.Vector3();
+      // SCREENSHOT MODE (redesign): P toggles the body's hud-clean
+      // class; CSS hides everything but the minimap, cash and stars.
+      // Display only — no game state is touched.
+      window.addEventListener('keydown', function (e) {
+        if (e.code === 'KeyP' && !e.repeat) document.body.classList.toggle('hud-clean');
+      });
     },
 
     notify: function (text) {
@@ -89,7 +146,20 @@
 
     setPrompt: function (text) {
       if (!el.prompt) return;
-      if (text) { el.prompt.textContent = text; el.prompt.classList.remove('hidden'); }
+      if (text) {
+        // Redesign: "F — Enter Sedan" style prompts render as a pill
+        // with a round key cap; longer hint sentences stay plain text
+        // in the same pill. Same string in, same meaning out.
+        var m = /^([A-Za-z])\s*—\s*(.+)$/.exec(text);
+        if (m) {
+          el.prompt.innerHTML = '';
+          var cap = document.createElement('span');
+          cap.className = 'keycap'; cap.textContent = m[1].toUpperCase();
+          el.prompt.appendChild(cap);
+          el.prompt.appendChild(document.createTextNode(m[2]));
+        } else el.prompt.textContent = text;
+        el.prompt.classList.remove('hidden');
+      }
       else el.prompt.classList.add('hidden');
     },
 
@@ -128,9 +198,12 @@
     // to a name hash in the same style. drawPortrait takes an
     // expression (neutral/happy/angry/scared/hurt) that moves brow
     // angle, eye scale and mouth, like the 3D faces.
-    drawPortrait: function (name, expr) {
-      if (!el.subPortrait) return;
-      var cv = el.subPortrait;
+    drawPortrait: function (name, expr, target) {
+      // POLISH 01/02/04: an optional target canvas lets the pause
+      // menu reuse the same portrait for its character card; the
+      // subtitle call passes nothing and keeps the old behaviour.
+      var cv = target || el.subPortrait;
+      if (!cv) return;
       if (cv.width !== 216) { cv.width = 216; cv.height = 216; }
       var g = cv.getContext('2d');
       var CAST = {
@@ -279,6 +352,11 @@
       if (bannerTimer > 0) { bannerTimer -= 1 / 60; if (bannerTimer <= 0 && el.banner) el.banner.classList.add('hidden'); }
       if (hitmarkTimer > 0) { hitmarkTimer -= 1 / 60; if (hitmarkTimer <= 0 && el.hitmark) el.hitmark.classList.add('hidden'); }
       if (el.dmgFlash) el.dmgFlash.style.opacity = Math.max(0, Math.min(0.85, st._dmgFlash || 0));
+      // Speed lines: fade in only at chase speed, only while driving.
+      if (el.speedLines) {
+        var sl = (inGame && st.driving) ? Math.max(0, Math.min(0.6, (st.speedKmh - 62) / 120)) : 0;
+        el.speedLines.style.opacity = sl.toFixed(3);
+      }
 
       // Cash counts toward the real value; flashes green/red on change.
       if (displayedCash !== st.cash) {
@@ -323,12 +401,18 @@
       }
       if (el.stars._last !== stars) { el.stars.innerHTML = stars; el.stars._last = stars; }
 
-      // Wanted status line under the stars (real police state:
-      // air unit up, search in progress, or units responding).
+      // Unit line under the stars (redesign): the live responder
+      // count from the same Police data the deleted table showed —
+      // "8 UNITS · AIR" — plus the radar ring on the minimap edge
+      // while wanted. The old AIR UNIT DEPLOYED / SEARCHING /
+      // UNITS RESPONDING status text is gone; searching still
+      // reads from the blinking stars and the minimap blips.
       if (el.wantedStatus) {
         var wtxt = '';
         if (st.wanted > 0 && SH.Police) {
-          wtxt = SH.Police.heli ? 'AIR UNIT DEPLOYED' : (SH.Police.searching ? 'SEARCHING' : 'UNITS RESPONDING');
+          var pw = SH.Police;
+          var tot = pw.units.length + pw.blocks.length + (pw.heli ? 1 : 0);
+          wtxt = tot + ' UNITS' + (pw.heli ? ' · AIR' : '');
         }
         if (el.wantedStatus._last !== wtxt) {
           el.wantedStatus._last = wtxt;
@@ -336,14 +420,35 @@
           el.wantedStatus.classList.toggle('hidden', !wtxt);
         }
       }
+      if (el.ring) el.ring.classList.toggle('active', st.wanted > 0);
 
-      // Health / armour.
-      el.health.style.width = Math.max(0, st.player.health) + '%';
-      el.armor.style.width = Math.max(0, st.player.armor) + '%';
-      el.healthNum.textContent = Math.ceil(st.player.health);
-      if (el.armorNum) el.armorNum.textContent = Math.ceil(st.player.armor);
+      // Health / armour arcs on the minimap (redesign): each arc
+      // spans up to 30% of the circle (pathLength = 100), HP
+      // centred on the right edge, armour on the bottom edge.
+      var hpF = Math.max(0, Math.min(100, st.player.health)) / 100;
+      var arF = Math.max(0, Math.min(100, st.player.armor)) / 100;
+      var arcKey = hpF.toFixed(3) + '|' + arF.toFixed(3);
+      if (el.health && el.health._k !== arcKey) {
+        el.health._k = arcKey;
+        var hl = 30 * hpF, al = 30 * arF;
+        // The HP arc straddles the circle's path seam (3 o'clock),
+        // and this Chromium's dash renderer truncates any single
+        // dash that crosses the seam (measured on the render box,
+        // probe-hudred.cjs). So the arc is drawn as TWO dashes
+        // inside one pattern — [0, hl/2] and [100−hl/2, 100] —
+        // with offset 0; neither dash touches the seam.
+        el.health.setAttribute('stroke-dasharray', (hl / 2).toFixed(2) + ' ' + (100 - hl).toFixed(2) + ' ' + (hl / 2).toFixed(2));
+        el.health.setAttribute('stroke-dashoffset', '0');
+        el.armor.setAttribute('stroke-dasharray', al.toFixed(2) + ' 100');
+        el.armor.setAttribute('stroke-dashoffset', (al / 2 - 25).toFixed(2));
+      }
+      // The arcs dim while health sits full (contextual fade);
+      // any damage brings them straight back.
+      if (st.player.health >= 100) hpIdle += 1 / 60; else hpIdle = 0;
+      if (el.arcs) el.arcs.classList.toggle('dim', hpIdle > 4);
 
-      // Weapon box vs speedometer.
+      // Weapon cluster vs speedometer (redesign: the weapon lives
+      // under the stars now, the speedo stays bottom-right).
       if (st.driving) {
         el.weaponBox.classList.add('hidden');
         el.speedo.classList.remove('hidden');
@@ -359,53 +464,37 @@
           }
           if (el.radioTrack) el.radioTrack.textContent = info.title + ' — ' + info.artist;
         }
+        // Radio line fades out 4 s after the last station/track
+        // change (redesign); any change brings it straight back.
+        if (el.radioCard) {
+          var rsig = (el.radioStation ? (el.radioStation._st || '') : '') + '|' + (el.radioTrack ? el.radioTrack.textContent : '');
+          if (rsig !== radioSig) { radioSig = rsig; radioTimer = 4; el.radioCard.style.opacity = ''; }
+          if (radioTimer > 0) { radioTimer -= 1 / 60; if (radioTimer <= 0) el.radioCard.style.opacity = '0'; }
+        }
       } else {
         el.speedo.classList.add('hidden');
         el.weaponBox.classList.remove('hidden');
         var wid = st.weapon;
         var spec = SH.Combat ? SH.Combat.current() : SH.Config.weapons[wid];
-        el.weaponName.textContent = spec ? spec.label : '';
         var finite = !!spec && spec.mag !== Infinity;
-        // Silhouette of the active weapon (rebuilt on switch only).
+        // Silhouette of the active weapon (rebuilt on switch only);
+        // a switch also pops the arsenal strip for 2 s.
         if (el.weaponIcon._id !== wid) {
           el.weaponIcon._id = wid;
           el.weaponIcon.innerHTML = WEAPON_ICONS[wid] || '';
+          slotsTimer = 2;
         }
-        // The magazine count is the card's biggest glyph; the reserve
-        // is its own labelled block beside it. Fists have no magazine.
-        if (finite) { el.weaponAmmo.textContent = String(st.ammo); el.weaponAmmo._inf = false; }
-        else if (!el.weaponAmmo._inf) { el.weaponAmmo._inf = true; el.weaponAmmo.innerHTML = ICON_INF; }
-        el.weaponReserveBox.style.display = finite ? '' : 'none';
-        if (finite) el.weaponReserve.textContent = st.ammoReserve;
-        // Segmented magazine bar: one pip per round of capacity,
-        // filled pips = rounds left (rebuilt only when it changes).
-        var magKey = finite ? (wid + ':' + spec.mag + ':' + st.ammo) : 'inf';
-        if (el.weaponMagbar._key !== magKey) {
-          el.weaponMagbar._key = magKey;
-          if (!finite) { el.weaponMagbar.innerHTML = ''; }
-          else {
-            var mh = '';
-            for (var mi = 0; mi < spec.mag; mi++) mh += '<i class="' + (mi < st.ammo ? 'on' : '') + '"></i>';
-            el.weaponMagbar.innerHTML = mh;
-          }
+        // One count beside the icon: mag / reserve ("10 / 48").
+        // Fists have no magazine and keep the infinity glyph.
+        if (finite) {
+          var ammoTxt = st.ammo + ' / ' + st.ammoReserve;
+          if (el.weaponAmmo._t !== ammoTxt) { el.weaponAmmo._t = ammoTxt; el.weaponAmmo._inf = false; el.weaponAmmo.textContent = ammoTxt; }
         }
-        // Reload progress bar + state chip, from Combat's live timer.
-        var reloading = !!(SH.Combat && SH.Combat.reloadTimer > 0 && finite);
-        el.weaponReload.classList.toggle('hidden', !reloading);
-        if (reloading) el.weaponReloadFill.style.width = Math.min(100, (1 - SH.Combat.reloadTimer / spec.reload) * 100) + '%';
-        var wstate = '', wdanger = false;
-        if (reloading) wstate = 'RELOADING';
-        else if (finite && st.ammo === 0 && st.ammoReserve === 0) { wstate = 'NO AMMO'; wdanger = true; }
-        else if (finite && st.ammo > 0 && st.ammoReserve === 0) wstate = 'LAST MAG';
-        if (el.weaponState._last !== wstate) {
-          el.weaponState._last = wstate;
-          el.weaponState.textContent = wstate;
-          el.weaponState.classList.toggle('hidden', !wstate);
-          el.weaponState.classList.toggle('danger', wdanger);
-          el.weaponState.classList.toggle('reloading', reloading);
-        }
-        // Arsenal strip (the #1 entry's slot language): every weapon
-        // in Config order — active slot gold, owned dim, unowned faded.
+        else if (!el.weaponAmmo._inf) { el.weaponAmmo._inf = true; el.weaponAmmo._t = ''; el.weaponAmmo.innerHTML = ICON_INF; }
+        // Arsenal strip content (same live Combat data as before):
+        // every weapon in Config order — active slot gold, owned
+        // dim, unowned faded. It is only VISIBLE for 2 s after a
+        // switch (the .show class below).
         var owned = SH.Combat ? SH.Combat.owned : { fist: true };
         var slotKey = wid + '|' + (owned.pistol ? 1 : 0) + (owned.smg ? 1 : 0) + (owned.shotgun ? 1 : 0);
         if (el.weaponSlots._key !== slotKey) {
@@ -418,6 +507,13 @@
           }
           el.weaponSlots.innerHTML = sh;
         }
+        if (slotsTimer > 0) slotsTimer -= 1 / 60;
+        el.weaponSlots.classList.toggle('show', slotsTimer > 0);
+        // Contextual fade: the cluster dims to 35% after 4 s with
+        // no change to weapon / ammo / reserve; aiming holds it up.
+        var wsig = wid + '|' + st.ammo + '|' + st.ammoReserve;
+        if (wsig !== weapSig || st.aiming) { weapSig = wsig; weapIdle = 0; } else weapIdle += 1 / 60;
+        el.weaponBox.classList.toggle('dim', weapIdle > 4);
       }
 
       // Objective panel + 3D marker (+ stage progress and step timer).
@@ -429,6 +525,7 @@
         var dist = Math.hypot(st.objective.x - focus.x, st.objective.z - focus.z);
         el.objDist.textContent = Math.round(dist) + ' m';
         this.updateMarker(st.objective, dist);
+        this.updateMarker3d(st.objective, st);
         var act = SH.Missions && SH.Missions.active;
         // Eyebrow over the headline: "MISSION n · GIVER" from the
         // live mission def (the #1 entry's card hierarchy).
@@ -451,22 +548,31 @@
           }
           var stepNow = act.def.steps[act.stepIndex];
           if (el.objTimer) {
+            // Redesign: the timer line is a timer only — big bare
+            // text under the objective when the step is timed. The
+            // old STEP n/N chip text is gone (the step count still
+            // lives in the mission data and the pause career list).
             if (stepNow && stepNow.timeLimit) {
               var left = Math.max(0, stepNow.timeLimit - (act.stepData.t || 0));
               var tstr = ICON_CLOCK + Math.floor(left / 60) + ':' + ('0' + Math.floor(left % 60)).slice(-2);
               if (el.objTimer._h !== tstr) { el.objTimer._h = tstr; el.objTimer.innerHTML = tstr; }
-            } else {
-              var sstr = 'STEP ' + (act.stepIndex + 1) + '/' + total;
-              if (el.objTimer._h !== sstr) { el.objTimer._h = sstr; el.objTimer.textContent = sstr; }
-            }
+            } else if (el.objTimer._h !== '') { el.objTimer._h = ''; el.objTimer.textContent = ''; }
           }
         } else if (el.objTimer) { el.objTimer.textContent = ''; el.objTimer._h = ''; }
       } else {
         el.objective.classList.add('hidden');
         el.marker.classList.add('hidden');
+        if (marker3d) marker3d.visible = false;
       }
 
-      // Police response panel while wanted.
+      // Police response list (RESTORED 2026-11-24, Bos order —
+      // the redesign was a restyle, not a removal): the same live
+      // SH.Police units/blocks/heli rows, caps and format the
+      // pre-redesign panel showed (up to 4 PATROL-n units, then
+      // BLOCKADE rows and the HELI-1 row to 5, header count over
+      // all three pools, LOST VISUAL status row while searching),
+      // rendered bare under the wanted line. Display only — the
+      // data and the police logic are exactly as they were.
       if (el.police) {
         if (st.wanted > 0 && SH.Police && st.mode === 'playing') {
           el.police.classList.remove('hidden');
@@ -484,17 +590,36 @@
           }
           if (P.heli && rows.length < 5) rows.push({ label: 'HELI-1', d: Math.hypot(P.heli.mesh.position.x - f2.x, P.heli.mesh.position.z - f2.z), tag: 'AIR SUPPORT', cls: 'cool' });
           var total2 = P.units.length + P.blocks.length + (P.heli ? 1 : 0);
-          var html = '<div class="pol-head"><span>POLISI SELATARA</span><span>' + total2 + ' UNITS</span></div>';
+          var phtml = '<div class="pol-head"><span>POLISI SELATARA</span><span>' + total2 + ' UNITS</span></div>';
           for (var ri = 0; ri < rows.length; ri++) {
-            html += '<div class="pol-row"><span>' + rows[ri].label + '</span><span>' + Math.round(rows[ri].d) + ' m</span><span class="pol-tag ' + rows[ri].cls + '">' + rows[ri].tag + '</span></div>';
+            phtml += '<div class="pol-row"><span class="pol-name">' + rows[ri].label + '</span><span class="pol-tag ' + rows[ri].cls + '">' + rows[ri].tag + '</span><span class="pol-dist">' + Math.round(rows[ri].d) + ' m</span></div>';
           }
-          if (P.searching) html += '<div class="pol-row"><span>STATUS</span><span></span><span class="pol-tag cool">LOST VISUAL</span></div>';
-          if (el.police._html !== html) { el.police.innerHTML = html; el.police._html = html; }
+          if (P.searching) phtml += '<div class="pol-row"><span class="pol-name">STATUS</span><span class="pol-tag cool">LOST VISUAL</span><span class="pol-dist"></span></div>';
+          if (el.police._html !== phtml) { el.police.innerHTML = phtml; el.police._html = phtml; }
         } else el.police.classList.add('hidden');
       }
 
       // Crosshair only while aiming.
       el.crosshair.classList.toggle('hidden', !st.aiming);
+    },
+
+    // VISUAL POLISH step 1: place the in-world marker over the
+    // objective point, bobbing and turning so it catches the eye
+    // without a HUD element. During the chase step the objective
+    // IS the courier (missions.js keeps it glued to him), so the
+    // diamond rides over his head.
+    // FIX03 (user item 1): anchored just over head height —
+    // ground + 2.12 m puts the small gem ~0.3 m over a standing
+    // figure's crown — with a subtle ±0.05 m bob, not the old
+    // 3.05 m tower with its ±0.16 m swing.
+    updateMarker3d: function (obj, st) {
+      var scene = SH.Main && SH.Main.getScene ? SH.Main.getScene() : null;
+      if (!scene) return;
+      if (!marker3d) marker3d = buildMarker3d(scene);
+      var gy = SH.World.groundHeightAt(obj.x, obj.z);
+      marker3d.position.set(obj.x, gy + 2.12 + Math.sin(st.time * 1.8) * 0.07, obj.z);
+      marker3d.rotation.y = st.time * 1.2;
+      marker3d.visible = st.mode === 'playing';
     },
 
     updateMarker: function (obj, dist) {

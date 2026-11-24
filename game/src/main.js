@@ -122,7 +122,10 @@
       // focus (~3.5 m away, decay 1.8) as ~0.15, i.e. effectively no
       // fill at all, and night clothes fell to black. 16 lands as
       // ~1.7 at the subject: a real soft frontal fill after dark.
-      fillLight.intensity = fAmt * 16;
+      // POLISH2 (spec B7): a touch more night fill (16 -> 21) —
+      // garment colours must survive under the market tents and
+      // string lights instead of falling to silhouette.
+      fillLight.intensity = fAmt * 21;
       if (fAmt > 0.01) {
         fillLight.position.set(
           focus.x + Math.sin(State.camYaw) * 3.5,
@@ -147,7 +150,9 @@
       // dark (ap2: leads must separate from dark ground at night),
       // so its floor RISES with the night amount instead of falling.
       var nAmt = nightAmount(State.hour);
-      charRim.intensity = 0.85 + nAmt * 0.65;
+      // POLISH2 (spec B7): the warm rim's floor and night slope
+      // both rise a notch — a warm edge on every night figure.
+      charRim.intensity = 1.0 + nAmt * 0.8;
       charRim.position.set(
         focus.x - Math.sin(State.camYaw) * 30,
         9,

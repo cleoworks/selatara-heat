@@ -106,6 +106,20 @@
       g.fillStyle = v > 0.6 ? 'rgba(30,60,20,0.26)' : (v > 0.3 ? 'rgba(120,100,50,0.17)' : 'rgba(255,255,220,0.09)');
       g.fillRect(rng() * 512, rng() * 512, 3 + rng() * 9, 3 + rng() * 9);
     }
+    // POLISH2B (item 4): fine TWO-TONE blade grain on top of the
+    // blotches — thousands of short strokes in a deep green and a
+    // sunlit green. The old texture stopped at soft blotches +
+    // chunky speckles, which at gameplay distance averaged into
+    // the "green blur" the panel kept naming; the blade strokes
+    // keep a directional grain at every zoom. (The tuft geometry
+    // in landmarks.js carries the same read into 3D.)
+    for (var bi2 = 0; bi2 < 9000; bi2++) {
+      var bv = rng();
+      g.strokeStyle = bv > 0.5 ? 'rgba(24,52,16,0.5)' : 'rgba(126,168,74,0.42)';
+      g.lineWidth = 1.4;
+      var bxx = rng() * 512, byy = rng() * 512, lean = (rng() - 0.5) * 2.4;
+      g.beginPath(); g.moveTo(bxx, byy); g.lineTo(bxx + lean, byy - 3.5 - rng() * 3); g.stroke();
+    }
     var t = new THREE.CanvasTexture(c);
     if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -220,6 +234,85 @@
   var Roads = {
     lampPositions: [],
     waveMeshes: [],
+    // LEGFIX A: walkable-surface registry, filled during build —
+    // rects {cx, cz, ux, uz, hl, hw, top} (road ribbons, sidewalk
+    // slabs, zebra/stop bars, bridge decks) and caps {cx, cz, r,
+    // top} (junction fans), indexed by a 6 m grid. Bare ground
+    // (the base plane) sits at -0.08 and is the no-match default.
+    surfaces: [],
+    _surfAll: [],
+    _grid: null,
+
+    groundHeightAt: function (x, z) {
+      var g = this._grid;
+      if (!g) return 0;
+      var list = g[(Math.floor(x / 6) + 512) + (Math.floor(z / 6) + 512) * 2048];
+      var best = -0.08;
+      if (!list) return best;
+      var all = this._surfAll;
+      for (var i = 0; i < list.length; i++) {
+        var s = all[list[i]];
+        var dx = x - s.cx, dz = z - s.cz;
+        if (s.r) {
+          if (dx * dx + dz * dz <= s.r * s.r && s.top > best) best = s.top;
+        } else {
+          var al = dx * s.ux + dz * s.uz, sd = dx * s.uz - dz * s.ux;
+          if (Math.abs(al) <= s.hl && Math.abs(sd) <= s.hw && s.top > best) best = s.top;
+        }
+      }
+      return best;
+    },
+
+    _buildGroundGrid: function () {
+      var all = this.surfaces, grid = {}, CELL = 6;
+      function put(idx, x0, z0, x1, z1) {
+        var ix0 = Math.floor(x0 / CELL), ix1 = Math.floor(x1 / CELL);
+        var iz0 = Math.floor(z0 / CELL), iz1 = Math.floor(z1 / CELL);
+        for (var ix = ix0; ix <= ix1; ix++) for (var iz = iz0; iz <= iz1; iz++) {
+          var k = (ix + 512) + (iz + 512) * 2048;
+          (grid[k] || (grid[k] = [])).push(idx);
+        }
+      }
+      for (var i = 0; i < all.length; i++) {
+        var s = all[i];
+        if (s.r) { put(i, s.cx - s.r, s.cz - s.r, s.cx + s.r, s.cz + s.r); continue; }
+        var ex = Math.abs(s.ux) * s.hl + Math.abs(s.uz) * s.hw;
+        var ez = Math.abs(s.uz) * s.hl + Math.abs(s.ux) * s.hw;
+        put(i, s.cx - ex, s.cz - ez, s.cx + ex, s.cz + ez);
+      }
+      this._surfAll = all;
+      this._grid = grid;
+    },
+
+    // FIX03 (user item 2): late surface registration. Roads.build
+    // indexes the grid BEFORE Buildings.build runs (main.js order),
+    // so floors built by Buildings (the night-market pad and its
+    // mats) could never enter groundHeightAt — every character in
+    // the market stood rooted to the buried grass level (-0.08)
+    // while the visible pad top sits at +0.070, sinking every sole
+    // ~0.15 m and burying every blob shadow with them. A builder
+    // that raises a real floor now registers it here; the surface
+    // joins the same grid groundHeightAt reads.
+    registerSurface: function (s) {
+      this.surfaces.push(s);
+      if (!this._grid) return; // pre-build: _buildGroundGrid indexes it later
+      var idx = this._surfAll.length;
+      this._surfAll.push(s);
+      var CELL = 6, grid = this._grid;
+      var x0, z0, x1, z1;
+      if (s.r) { x0 = s.cx - s.r; x1 = s.cx + s.r; z0 = s.cz - s.r; z1 = s.cz + s.r; }
+      else {
+        var ex = Math.abs(s.ux) * s.hl + Math.abs(s.uz) * s.hw;
+        var ez = Math.abs(s.uz) * s.hl + Math.abs(s.ux) * s.hw;
+        x0 = s.cx - ex; x1 = s.cx + ex; z0 = s.cz - ez; z1 = s.cz + ez;
+      }
+      var ix0 = Math.floor(x0 / CELL), ix1 = Math.floor(x1 / CELL);
+      var iz0 = Math.floor(z0 / CELL), iz1 = Math.floor(z1 / CELL);
+      for (var ix = ix0; ix <= ix1; ix++) for (var iz = iz0; iz <= iz1; iz++) {
+        var k = (ix + 512) + (iz + 512) * 2048;
+        (grid[k] || (grid[k] = [])).push(idx);
+      }
+    },
 
     build: function (scene) {
       var cfg = SH.Config.world;
@@ -479,6 +572,8 @@
         var crng = SH.World.makeRng(5000 + ni2 * 13);
         var cu = 0.26 + (crng() > 0.5 ? 0.48 : 0), cv = 0.20 + crng() * 0.48;
         roadGeos.push(capGeo(nodes[ni2].x, nodes[ni2].z, nodeR[ni2], allAlley ? 0x9a9186 : 0xffffff, cu, cv));
+        // LEGFIX A: the junction fan is a 0.012 surface.
+        Roads.surfaces.push({ cx: nodes[ni2].x, cz: nodes[ni2].z, r: nodeR[ni2], top: 0.012 });
       }
 
       for (var i = 0; i < edges.length; i++) {
@@ -512,6 +607,8 @@
           top.position.set(mx, 0.03, mz);
           top.receiveShadow = true;
           collectRoad(top, t2.repeat.y, false, whiteTint);
+          // LEGFIX A: bridge driving plane, top at 0.03.
+          Roads.surfaces.push({ cx: mx, cz: mz, ux: ux, uz: uz, hl: (len + 9.2) / 2, hw: 4.6, top: 0.03 });
           for (var rs = -1; rs <= 1; rs += 2) {
             var rail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.85, len + 3), railMat);
             rail.rotation.y = Math.atan2(dx, dz);
@@ -541,6 +638,8 @@
         road.position.set(mx, 0, mz);
         road.receiveShadow = true;
         collectRoad(road, t2.repeat.y, axis && !edges[i].vertical, kind === 'alley' ? alleyTint : whiteTint);
+        // LEGFIX A: the asphalt ribbon itself, top at 0.
+        Roads.surfaces.push({ cx: mx, cz: mz, ux: ux, uz: uz, hl: (len + 1.2) / 2, hw: wRoad / 2, top: 0 });
 
         // Planted median on the diagonal boulevards (Rev 6): a low
         // concrete kerb + grass top riding the centreline. Traffic
@@ -602,6 +701,9 @@
             walk.receiveShadow = true;
             walk.updateMatrix();
             walkGeos.push(walk.geometry.clone().applyMatrix4(walk.matrix));
+            // LEGFIX A: the kerb slab, top at 0.14 — the surface
+            // whose absence sank every shoe in the PROPFIX photos.
+            Roads.surfaces.push({ cx: walk.position.x, cz: walk.position.z, ux: ux, uz: uz, hl: slabLen / 2, hw: cfg.sidewalk / 2, top: 0.14 });
           }
           // Lamp spots along BOTH edges of the street, each carrying
           // the direction toward the carriageway so buildings.js can
@@ -655,6 +757,8 @@
         zm2.compose(new THREE.Vector3(x, 0.02, z), zq2, zscl);
         geo.applyMatrix4(zm2);
         zebraGeos.push(geo);
+        // LEGFIX A: bars are real 0.035-high surfaces underfoot.
+        Roads.surfaces.push({ cx: x, cz: z, ux: Math.sin(heading), uz: Math.cos(heading), hl: lng / 2, hw: wdt / 2, top: 0.035 });
       }
       var legacyZ = [[0, -60], [-120, -180], [120, -300], [-360, 60], [240, 60], [360, -180]];
       for (var ni3 = 0; ni3 < nodes.length; ni3++) {
@@ -722,6 +826,9 @@
         debMesh.receiveShadow = true;
         scene.add(debMesh);
       }
+      // LEGFIX A: every walkable surface is registered by now —
+      // index them for groundHeightAt.
+      this._buildGroundGrid();
     },
 
     update: function (dt, elapsed) {

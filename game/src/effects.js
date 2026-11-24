@@ -73,6 +73,20 @@
   var SPARK_MAX = 512, PUFF_MAX = 160, BEAM_MAX = 320, FLASH_MAX = 96, FIRE_MAX = 288;
   var spark = null, puff = null, beam = null, flash = null, fire = null;
   var trauma = 0;
+  // POLISH2 (spec B9): explosions throw real light. Two pooled
+  // point lights — an explosion fires one at its centre and
+  // update() decays it over ~0.35 s, so the fireball washes the
+  // street, the wreck and nearby walls instead of glowing in a
+  // vacuum. Pooled: no allocation, no light-count growth.
+  var boomLights = [];
+  // VISUAL POLISH step 4: muzzle light pulses — two pooled point
+  // lights fired by muzzle() so a shot briefly LIGHTS the shooter,
+  // the stall fronts and the ground around the gun, the way the
+  // explosion lights wash a street. The flash sprite alone read
+  // as a sticker; the light pulse is what makes it feel strong.
+  // Pooled: no allocation, no light-count growth.
+  var muzzleLights = [];
+  var steamVents = []; // VISUAL POLISH step 3: registered by buildings.js (food carts)
 
   // One soft round sprite shared by both clouds: opaque white core
   // falling off to transparent at the rim, so a particle reads as a
@@ -318,6 +332,21 @@
 
   var Effects = {
     init: function (scene) {
+      for (var bli = 0; bli < 2; bli++) {
+        // POLISH2B (item 5): the wash radius is 12 m (was 26) and
+        // update() flickers it — a tight, living firelight instead
+        // of a broad smooth studio glow.
+        var bl = new THREE.PointLight(0xff8a3a, 0, 12, 2);
+        bl.visible = false;
+        scene.add(bl);
+        boomLights.push({ light: bl, t: 0, seed: bli * 7.31 + 1.7 });
+      }
+      for (var mli = 0; mli < 2; mli++) {
+        var ml = new THREE.PointLight(0xffc37a, 0, 9, 2);
+        ml.visible = false;
+        scene.add(ml);
+        muzzleLights.push({ light: ml, t: 0, seed: mli * 3.77 + 0.9 });
+      }
       var tex = dotTexture();
       var hardTex = hardDotTexture();
       // COMBAT V7: hard 0.13 m sparks (was the 0.30 m soft bead).
@@ -346,8 +375,20 @@
       // COMBAT V7: the muzzle-star cloud (see starTexture).
       // COMBAT V7.1: 0.62 m (was 0.5) so the star reads at the
       // far shooter's hand too.
+      // POLISH2D (Bos spec): small flash — radius 0.08 m, so the
+      // sprite size is 0.16 m (the 0.62 m star dwarfed the
+      // true-scale pistol it crowns).
+      // VISUAL POLISH step 4: the star grows back to 0.30 m — the
+      // 0.16 m sprite vanished at full-frame distance — but the
+      // real strength now comes from the muzzle LIGHT pulse (see
+      // muzzleLights), not sprite size, so the star stays a tight
+      // crown on the barrel instead of the old 0.62 m slab.
+      // POLISH03 (user item 6): 0.30 -> 0.36 m — with the longer
+      // life in muzzle() the star now survives the staged freeze
+      // at ~2/3 brightness, and the extra size makes the flash
+      // read as a flash at the barrel, not as part of the tracer.
       flash = makeCloud(FLASH_MAX, new THREE.PointsMaterial({
-        size: 0.62, map: starTexture(), vertexColors: true, transparent: true, opacity: 1.0,
+        size: 0.36, map: starTexture(), vertexColors: true, transparent: true, opacity: 1.0,
         depthWrite: false, blending: THREE.AdditiveBlending
       }));
       scene.add(flash.points);
@@ -419,19 +460,72 @@
     muzzle: function (x, y, z, dx, dz) {
       var fx = x, fz = z;
       if (dx !== undefined && dz !== undefined) { fx += dx * 0.35; fz += dz * 0.35; }
-      if (flash) spawnIn(flash, fx, y, fz, 0, 0, 0, 0.09, 1, 1, 1);
-      // CHARPOLISH: the knot's 3 beads spawn DIRECTLY with a
-      // 0.14 s life instead of via burst() — burst() adds a 0.5 s
+      // POLISH2D: flash lifetime 0.1 s (Bos spec), star + knot.
+      // FIX03 (user item 5): star life 0.10 -> 0.16 s. The old
+      // life EXPIRED inside the staged freeze (the hero staging
+      // ages effects ~0.095 s between fireOnce and the shutter),
+      // so the settled combat frame showed no flash at all —
+      // proven by probe: pulse light already invisible at
+      // capture. 0.16 s is still a blink in live fire.
+      // POLISH03 (user item 6): 0.16 -> 0.20 s. stepCloud fades
+      // the star LINEARLY with life fraction, so at the freeze's
+      // age the FIX03 star sat at ~41% brightness and dissolved
+      // into the tracer line; the hero staging now also ages
+      // less (hage 0.05 -> 0.03), and at the resulting ~0.075 s
+      // the star holds ~62% — a bright flash ON the barrel.
+      if (flash) spawnIn(flash, fx, y, fz, 0, 0, 0, 0.20, 1, 1, 1);
+      // VISUAL POLISH step 4: the light pulse — one pooled light
+      // at the flash point (update() decays it). This is the
+      // "stronger" half of the new flash: the shot visibly
+      // lights faces, cloth and ground nearby.
+      // FIX03 (user item 5): life 0.07 -> 0.18 s and spike
+      // 30 -> 46, with the spike-tail envelope in update() — at
+      // the freeze's 0.095 s age the pulse still burns at ~15
+      // (a readable warm pool on Raka, the stall and the pad)
+      // instead of being dead before the shutter opened.
+      // POLISH03 (user item 6): life 0.18 -> 0.22 s, spike
+      // 46 -> 52 (envelope in update() retuned to match) — at
+      // the freeze's ~0.075 s age the pulse holds ~57% of the
+      // spike, ~30 intensity on the surfaces around the gun.
+      for (var mgi = 0; mgi < muzzleLights.length; mgi++) {
+        if (muzzleLights[mgi].t <= 0) {
+          muzzleLights[mgi].t = 0.22;
+          muzzleLights[mgi].light.position.set(fx, y + 0.05, fz);
+          muzzleLights[mgi].light.intensity = 52;
+          muzzleLights[mgi].light.visible = true;
+          break;
+        }
+      }
+      // CHARPOLISH: the knot's beads spawn DIRECTLY with a
+      // short life instead of via burst() — burst() adds a 0.5 s
       // base life, so the old knot lingered ~0.6 s and one bead
       // reliably drifted onto the shooter's own back in the
       // staged freeze, reading as a soft pink dot (probe-fx:
-      // spark cloud, upper back). A 0.14 s knot still crowns the
+      // spark cloud, upper back). A 0.10 s knot still crowns the
       // star at the gun in live fire; it just dies with it.
-      for (var i = 0; i < 3; i++) {
+      // VISUAL POLISH step 4: 3 -> 5 beads, a touch faster — the
+      // knot reads as a spray of real sparks off the muzzle.
+      for (var i = 0; i < 5; i++) {
         var a = Math.random() * Math.PI * 2, e = Math.random() * 2 - 0.4;
         this.spawn(x, y, z,
-          Math.cos(a) * 2.0 * Math.random(), e * 1.2 + 2, Math.sin(a) * 2.0 * Math.random(),
-          0.14, 1, 0.8, 0.35);
+          Math.cos(a) * 2.6 * Math.random(), e * 1.2 + 2, Math.sin(a) * 2.6 * Math.random(),
+          0.18, 1, 0.8, 0.35); // FIX03: 0.10 -> 0.14; POLISH03: -> 0.18, dies with the star
+      }
+    },
+
+    // VISUAL POLISH step 4: impact dust — where a bullet lands on
+    // ground, dirt or masonry it should kick up a small tan puff,
+    // not only metal sparks. A few slow puffs on the puff cloud,
+    // coloured like dry road dust; they rise a little and die
+    // inside a second. (Character hits keep blood, vehicle hits
+    // keep pure sparks — dust is for the world surfaces.)
+    dust: function (x, y, z) {
+      if (!puff) return;
+      for (var i = 0; i < 5; i++) {
+        var a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 1.1;
+        spawnIn(puff, x + (Math.random() - 0.5) * 0.24, Math.max(0.12, y), z + (Math.random() - 0.5) * 0.24,
+          Math.cos(a) * sp, 0.8 + Math.random() * 0.9, Math.sin(a) * sp,
+          0.5 + Math.random() * 0.4, 0.62, 0.54, 0.42);
       }
     },
 
@@ -452,6 +546,15 @@
       spawnIn(puff, x + (Math.random() - 0.5) * 0.5, y, z + (Math.random() - 0.5) * 0.5,
         (Math.random() - 0.5) * 0.8, 2.2 + Math.random() * 1.6, (Math.random() - 0.5) * 0.8,
         1.1 + Math.random() * 0.8, g, g, g);
+    },
+
+    // VISUAL POLISH step 3: standing steam vents (the market food
+    // carts register theirs at build). update() breathes one pale
+    // puff off each vent every ~0.55 s, staggered per vent — a
+    // thin cook-smoke wisp on the same puff cloud, slower and
+    // lighter than explosion smoke.
+    steamVent: function (x, y, z) {
+      steamVents.push({ x: x, y: y, z: z, t: Math.random() * 0.55 });
     },
 
     // OVERHAUL: a standing flame — the emitter wreck fires and
@@ -534,12 +637,66 @@
             1.3 + Math.random() * 0.5, 0.05, 0.05, 0.05);
         }
       }
+      // POLISH2: fire the pooled light glow (see boomLights).
+      for (var gi = 0; gi < boomLights.length; gi++) {
+        if (boomLights[gi].t <= 0) {
+          boomLights[gi].t = 0.35;
+          boomLights[gi].light.position.set(x, y + 1.2, z);
+          boomLights[gi].light.intensity = 60;
+          boomLights[gi].light.visible = true;
+          break;
+        }
+      }
       this.shake(0.85);
     },
 
     shake: function (amount) { trauma = Math.min(1, trauma + amount); },
 
     update: function (dt, camera) {
+      // VISUAL POLISH step 3: steam vents breathe.
+      if (puff) {
+        for (var svi = 0; svi < steamVents.length; svi++) {
+          var sv = steamVents[svi];
+          sv.t -= dt;
+          if (sv.t <= 0) {
+            sv.t = 0.55;
+            spawnIn(puff, sv.x + (Math.random() - 0.5) * 0.3, sv.y, sv.z + (Math.random() - 0.5) * 0.3,
+              (Math.random() - 0.5) * 0.3, 1.15 + Math.random() * 0.5, (Math.random() - 0.5) * 0.3,
+              1.5 + Math.random() * 0.6, 0.72, 0.72, 0.72);
+          }
+        }
+      }
+      for (var li = 0; li < boomLights.length; li++) {
+        var bo = boomLights[li];
+        if (bo.t > 0) {
+          bo.t -= dt;
+          // POLISH2B (item 5): flicker — two crossed sines on the
+          // decay envelope give the firelight an irregular pulse
+          // (0.72..1.0 of the envelope) instead of a smooth fade.
+          var env = Math.max(0, bo.t / 0.35);
+          var fl = 0.86 + 0.14 * Math.sin(bo.t * 61 + bo.seed) * Math.sin(bo.t * 37.7 + bo.seed * 2.0);
+          bo.light.intensity = 60 * env * fl;
+          if (bo.t <= 0) bo.light.visible = false;
+        }
+      }
+      // VISUAL POLISH step 4: muzzle light pulses decay with a
+      // hard flicker — a gunshot's light is a spike, not a fade.
+      // FIX03 (user item 5): the envelope is a spike-tail over
+      // the 0.18 s life — (t/T)^1.35 holds ~36% of the 46 spike
+      // at mid-life, so a frame settled ~0.1 s after the shot
+      // still catches real light on nearby surfaces.
+      // POLISH03 (user item 6): envelope retuned to the 0.22 s
+      // life and the 52 spike set in muzzle().
+      for (var mi2 = 0; mi2 < muzzleLights.length; mi2++) {
+        var mo = muzzleLights[mi2];
+        if (mo.t > 0) {
+          mo.t -= dt;
+          var menv = Math.pow(Math.max(0, mo.t / 0.22), 1.35);
+          var mfl = 0.82 + 0.18 * Math.sin(mo.t * 211 + mo.seed);
+          mo.light.intensity = 52 * menv * mfl;
+          if (mo.t <= 0) mo.light.visible = false;
+        }
+      }
       if (spark) stepCloud(spark, dt);
       if (puff) stepCloud(puff, dt);
       if (beam) stepCloud(beam, dt);

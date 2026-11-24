@@ -55,7 +55,7 @@
       line: 'Satu antar terakhir. Habis itu gue berhenti. Mungkin.'
     },
     {
-      id: 'mami', label: 'Mami Ratna (fixer)', kind: 'story', lead: true,
+      id: 'mami', label: 'Mami Ratna (fixer)', kind: 'story', lead: true, female: true,
       body: { H: 1.68, hips: 1.06, waist: 0.92, skin: 2, handColor: 0x4a3826 },
       posture: { hunch: 0.22 },
       head: { jaw: 'taper' },
@@ -172,7 +172,7 @@
       face: { mouth: 'grin', randomEyes: true },
       hair: { styles: ['short', 'quiff', 'messy', 'undercut'] },
       wear: {
-        top: { type: 'tee', pattern: 'hawaii', colors: [0xf2e3c6, 0xd8e4ea, 0xf5d9c0], colors2: [0xe86a4a, 0xdd5a8a, 0xef8f3a] },
+        top: { type: 'tee', pattern: 'hawaii', colors: [0xf2e3c6, 0xd8e4ea, 0xf5d9c0], colors2: [0xd96a4c, 0xb45a72, 0xe08a3e] },
         bottom: { type: 'shorts', colors: [0x8a6a3c, 0x5a6e7a, 0x746a4f] },
         // COMBAT V7: shooter archetypes carry the factory pistol —
         // they fire in combat but were built unarmed (empty handR),
@@ -203,7 +203,7 @@
       wear: {
         top: { type: 'tee', color2: 0xc23b2e, colors: [0x4c5548, 0x3c4652, 0x554e42] },
         bottom: { type: 'long', colors: [0x2e3238, 0x3a352c] },
-        shoes: [0x1c1e24, 0x2a2019], accessories: ['pistol']
+        shoes: [0x1c1e24, 0x2a2019], accessories: ['pistol', 'cargoPockets']
       },
       idle: 'idle', walkSpeed: 1.2
     },
@@ -215,7 +215,7 @@
       wear: {
         top: { type: 'jacket', sleeve: 'long', colors: [0xc84a30, 0x3868b8, 0xd8942e] },
         bottom: { type: 'long', colors: [0x23242c, 0x2c2f36] },
-        shoes: [0x22242a, 0x1c1c20], accessories: ['bag']
+        shoes: [0x22242a, 0x1c1c20], accessories: ['bag', 'cargoPockets']
       },
       idle: 'idle_phone', walkSpeed: 1.7
     },
@@ -228,7 +228,7 @@
       wear: {
         top: { type: 'vest', color2: 0xc23b2e, colors: [0x33302c, 0x402e28, 0x2c3436] },
         bottom: { type: 'shorts', colors: [0x3a3f45, 0x4a4038] },
-        shoes: [0x2a2c33, 0x54443a], accessories: ['armTattoo', 'pistol']
+        shoes: [0x2a2c33, 0x54443a], accessories: ['armTattoo', 'pistol', 'cargoPockets']
       },
       idle: 'idle_lean', walkSpeed: 1.3
     },
@@ -252,7 +252,7 @@
       face: { blush: true, randomEyes: true },
       hair: { styles: ['long', 'ponytail', 'short', 'quiff', 'bob'] },
       wear: {
-        top: { type: 'tee', pattern: 'hawaii', colors: [0xf2e3c6, 0xe8f0e2, 0xfdeeda], colors2: [0xe86a4a, 0xdd5a8a, 0xef8f3a] },
+        top: { type: 'tee', pattern: 'hawaii', colors: [0xf2e3c6, 0xe8f0e2, 0xfdeeda], colors2: [0xd96a4c, 0xb45a72, 0xe08a3e] },
         bottom: { type: 'shorts', colors: [0x8a6a3c, 0x5a7a8a, 0xa89a72] },
         shoes: [0x54443a, 0xd8d3c8], hat: 'sunhat', accessories: ['camera', 'sunglasses']
       },
@@ -296,7 +296,7 @@
       idle: 'talk', walkSpeed: 1.1
     },
     {
-      id: 'warung', label: 'Pejalan — Pemilik warung', kind: 'ped',
+      id: 'warung', label: 'Pejalan — Pemilik warung', kind: 'ped', female: true,
       body: { waist: 1.08, belly: 0.35 }, heightRange: [1.58, 1.72], posture: { hunch: 0.18 },
       head: { jaw: 'taper' },
       face: { wrinkles: true, randomEyes: true },
@@ -329,7 +329,7 @@
       face: { randomEyes: true },
       hair: { style: 'short' },
       wear: {
-        top: { type: 'jacket', sleeve: 'long', colors: [0x2e7d32, 0x1f6e2e, 0x359846] },
+        top: { type: 'jacket', sleeve: 'long', colors: [0x2e7d32, 0x1f6e2e, 0x35854a] },
         bottom: { type: 'long', colors: [0x2a2d33, 0x23242c] },
         shoes: [0x1c1e24, 0x22242a], hat: 'ojekhelmet', accessories: ['phone']
       },
@@ -340,15 +340,17 @@
       body: { waist: 0.92 }, heightRange: [1.64, 1.82],
       face: { randomEyes: true },
       hair: { styles: ['ponytail', 'short', 'bob'] },
+      // POLISH (Bos point 8): the neon set (hot pink / cyan /
+      // bright green) pulled down to dusk-mood saturation.
       wear: {
-        top: { type: 'tee', colors: [0xd84a5a, 0x3aa8b8, 0xd8b13c, 0x6ab84a] },
+        top: { type: 'tee', colors: [0xc44a54, 0x4a94a4, 0xd8b13c, 0x639e4c] },
         bottom: { type: 'shorts', colors: [0x23242c, 0x2c4a6e, 0x6e2a3a] },
-        shoes: [0xf0ede6, 0xe84a6a, 0x3ac8d8]
+        shoes: [0xf0ede6, 0xc9506c, 0x57b3c4]
       },
       idle: 'idle', walkSpeed: 2.6
     },
     {
-      id: 'ibuBelanja', label: 'Pejalan — Ibu + tas belanja', kind: 'ped',
+      id: 'ibuBelanja', label: 'Pejalan — Ibu + tas belanja', kind: 'ped', female: true,
       body: { hips: 1.08 }, heightRange: [1.56, 1.68],
       head: { jaw: 'taper' },
       face: { randomEyes: true },
@@ -378,7 +380,7 @@
       face: { mouth: 'grin', randomEyes: true },
       hair: { styles: ['afro', 'quiff', 'long', 'messy'] },
       wear: {
-        top: { type: 'tee', pattern: 'stripes', colors: [0xe8e3d8, 0xd84a3a, 0x3aa8b8], colors2: [0x2c4a7a, 0x2e7d32, 0x6e2a3a] },
+        top: { type: 'tee', pattern: 'stripes', colors: [0xe8e3d8, 0xc44a3c, 0x4a94a4], colors2: [0x2c4a7a, 0x2e7d32, 0x6e2a3a] },
         bottom: { type: 'long', colors: [0x2c2f36, 0x4a3a2c] },
         shoes: [0x54443a, 0x22242a], accessories: ['guitar']
       },
@@ -393,7 +395,7 @@
       wear: {
         top: { type: 'vest', color: 0xe86a1c },
         bottom: { type: 'long', colors: [0x3c4652, 0x2f3844] },
-        shoes: [0x1c1e24, 0x2a2019], hat: 'helmet', hatColor: 0xe86a1c
+        shoes: [0x1c1e24, 0x2a2019], hat: 'helmet', hatColor: 0xe86a1c, accessories: ['cargoPockets']
       },
       idle: 'idle', walkSpeed: 1.3
     },
@@ -410,7 +412,7 @@
       idle: 'talk', walkSpeed: 1.2
     },
     {
-      id: 'ibuHijab', label: 'Pejalan — Ibu berhijab', kind: 'ped',
+      id: 'ibuHijab', label: 'Pejalan — Ibu berhijab', kind: 'ped', female: true,
       body: { hips: 1.06 }, heightRange: [1.56, 1.68],
       head: { jaw: 'taper' },
       face: { randomEyes: true },

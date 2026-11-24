@@ -536,9 +536,15 @@
           m.z += Math.cos(m.heading) * spd * dt;
         }
         m.ctl.setSpeed(spd);
-        m.ctl.update(dt);
-        m.char.group.position.set(m.x, 0, m.z);
+        // LEGFIX A: heist team rides the surface lookup (position
+        // before the pose update, like combat).
+        var mgT = SH.World.groundHeightAt(m.x, m.z);
+        if (m.gy === undefined) m.gy = mgT;
+        var mgStep = (mgT > m.gy ? 1.8 : 2.8) * dt;
+        m.gy += Math.max(-mgStep, Math.min(mgStep, mgT - m.gy));
+        m.char.group.position.set(m.x, m.gy + 0.005, m.z);
         m.char.group.rotation.y = m.heading;
+        m.ctl.update(dt);
       }
     },
 
@@ -699,9 +705,14 @@
       // Stage E: the courier runs his route on the shared clips,
       // stride-synced to his real speed by CharAnim.
       c.ctl.setSpeed(spd);
-      c.ctl.update(dt);
-      c.mesh.position.set(c.x, 0, c.z);
+      // LEGFIX A: the courier rides the surface lookup too.
+      var cgT = SH.World.groundHeightAt(c.x, c.z);
+      if (c.gy === undefined) c.gy = cgT;
+      var cgStep = (cgT > c.gy ? 2.0 : 3.0) * dt;
+      c.gy += Math.max(-cgStep, Math.min(cgStep, cgT - c.gy));
+      c.mesh.position.set(c.x, c.gy + 0.005, c.z);
       c.mesh.rotation.y = c.heading;
+      c.ctl.update(dt);
       // Keep the objective marker glued to the courier.
       if (this.active && this.active.def.steps[this.active.stepIndex].type === 'chasePed') {
         this.setObjective(this.active.def.title, this.active.def.steps[this.active.stepIndex].text, c.x, c.z);

@@ -52,8 +52,23 @@
         // level. The character key/fill lights (main.js) keep
         // the subject readable; the roads' emissive night floor
         // keeps the ground from going black.
+        // POLISH2B (item 5): the night floor rises again (hemi
+        // 0.74 -> 0.88, ambient 0.36 -> 0.55) — DISTANT figures get
+        // no focus fill (the point fill decays to nothing past
+        // ~10 m), so the global floor is the only light they have;
+        // at the old floor their shadow side fell under 25%
+        // luminance and read as silhouettes. (First pass 0.84/0.48
+        // still sampled ~16-21% mean luminance on distant figures
+        // in the night-market render — one measured notch more.)
+        // Day/dusk untouched.
+        // VISUAL POLISH step 1: one small notch more night floor
+        // (hemi 0.88 -> 0.92, ambient 0.55 -> 0.60) on the user's
+        // direct order — the market frame still read dark and flat
+        // past the focus lights. The market's own point-light pools
+        // (buildings.js) carry the local contrast, so this stays a
+        // floor lift, not a wash.
         sun: 0x8aa8ff, sunIntensity: 0.3, hemiSky: 0x3d5a8a, hemiGround: 0x1e2632,
-        hemiIntensity: 0.74, ambient: 0.36, water: 0x10344c, sand: 0x655a49,
+        hemiIntensity: 0.92, ambient: 0.60, water: 0x10344c, sand: 0x655a49,
         asphalt: 0x201f26, sidewalk: 0x3a3844, grass: 0x1c3d27
       }
     },

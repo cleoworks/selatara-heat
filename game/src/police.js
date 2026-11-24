@@ -602,7 +602,12 @@
           off.cycle += dt * spd2 * 2.6;
         }
         var los = od < cfgP.copFireRange + 14 && !losBlocked(off.x, off.z, f.x, f.z);
-        off.mesh.position.set(off.x, 0, off.z);
+        // LEGFIX A: officers ride the surface lookup too.
+        var ogT = SH.World.groundHeightAt(off.x, off.z);
+        if (off.gy === undefined) off.gy = ogT;
+        var ogStep = (ogT > off.gy ? 1.8 : 2.8) * dt;
+        off.gy += Math.max(-ogStep, Math.min(ogStep, ogT - off.gy));
+        off.mesh.position.set(off.x, off.gy + 0.005, off.z);
         off.mesh.rotation.y = Math.atan2(f.x - off.x, f.z - off.z);
         // Stage E animation: hit reactions own the body briefly;
         // at 3+ stars with line of sight and feet planted the officer

@@ -13,9 +13,15 @@
   // pool; the seed makes each instance a different person.
   var PED_ARCHS = ['turis', 'sekolah', 'kantoran', 'pedagang', 'warung', 'nelayan',
     'ojek', 'jogger', 'ibuBelanja', 'kakek', 'musisi', 'pekerjaDermaga', 'pasangan', 'ibuHijab'];
-  // The first eight pool slots live in the night market (Rev 6) —
+  // The first pool slots live in the night market (Rev 6) —
   // give them market-flavoured archetypes.
-  var MARKET_ARCHS = ['pedagang', 'warung', 'ibuBelanja', 'pasangan', 'turis', 'musisi', 'nelayan', 'ibuHijab'];
+  // VISUAL POLISH step 3: the market crowd grows 8 -> 14 — with
+  // the third stall row and the food-cart line the block carries
+  // three walking bands, and eight regulars left the rows reading
+  // empty between the staging crowds. Same pool of 48; six more
+  // of them are simply market regulars now.
+  var MARKET_ARCHS = ['pedagang', 'warung', 'ibuBelanja', 'pasangan', 'turis', 'musisi', 'nelayan', 'ibuHijab',
+    'pedagang', 'ibuBelanja', 'turis', 'warung', 'pasangan', 'ojek'];
   var PANIC_REF = (SH.CharAnim && SH.CharAnim.clips.panic && SH.CharAnim.clips.panic.userData.refSpeed) || 2.8;
 
   // ROUND 3 crowd distribution (user spec): gathering anchors. The
@@ -61,7 +67,7 @@
           // is seeded per character in toon.js createCharacter.)
           speedJ: 0.85 + this.rng() * 0.3,
           hot: null, // ROUND 3: gathering hotspot this ped belongs to
-          market: i < 8 // Rev 6: the first eight walkers belong to the night market
+          market: i < MARKET_ARCHS.length // Rev 6 + VISUAL POLISH step 3: the first MARKET_ARCHS walkers belong to the night market
         };
         this.list.push(ped);
         this.respawn(ped, true);
@@ -69,6 +75,7 @@
     },
 
     respawn: function (ped, anywhere) {
+      ped.gy = undefined; // LEGFIX A: snap to the new spot's surface
       // Market regulars always (re)spawn inside the market block, so
       // the stalls keep their crowd at any hour (Rev 6).
       if (ped.market) {
@@ -169,6 +176,19 @@
         if (ped.down) continue;
         var d = Math.hypot(ped.x - x, ped.z - z);
         if (d < radius) {
+          // VISUAL POLISH step 4: the closest bystanders DUCK
+          // before they run — a shot landing within ~9 m drops
+          // about half of them into the 'duck' cower for a beat
+          // (they flee when it expires, see update). A ped already
+          // ducking just stays down a little longer under
+          // sustained fire; one already fleeing keeps fleeing.
+          if (ped.state === 'duck') { ped.duckT = Math.max(ped.duckT, 0.7); continue; }
+          if (ped.state === 'panic') continue;
+          if (d < 9 && this.rng() < 0.55) {
+            ped.state = 'duck'; ped.duckT = 0.9 + this.rng() * 0.9;
+            ped.duckX = x; ped.duckZ = z;
+            continue;
+          }
           ped.state = 'panic'; ped.panic = 3 + this.rng() * 2;
           ped.tx = ped.x + (ped.x - x) / (d || 1) * 30;
           ped.tz = ped.z + (ped.z - z) / (d || 1) * 30;
@@ -225,12 +245,25 @@
           ped.timer -= dt;
           speed = 0;
           if (ped.timer <= 0) { ped.state = 'walk'; this.pickTarget(ped); }
-        } else if (dist < 1.6) {
+        } else if (dist < 1.6 && ped.state !== 'duck') {
           if (ped.state === 'panic') { ped.state = 'walk'; this.pickTarget(ped); }
           else if (this.rng() < 0.3) { ped.state = 'idle'; ped.timer = 2 + this.rng() * 4; }
           else this.pickTarget(ped);
         }
         if (ped.state === 'panic') { ped.panic -= dt; if (ped.panic <= 0) ped.state = 'walk'; }
+        // VISUAL POLISH step 4: a ducking ped stays planted until
+        // the cower expires, then bolts — converted here into the
+        // ordinary panic flee away from the shot's origin.
+        if (ped.state === 'duck') {
+          speed = 0;
+          ped.duckT -= dt;
+          if (ped.duckT <= 0) {
+            var ox = ped.duckX != null ? ped.duckX : ped.x - 1, oz = ped.duckZ != null ? ped.duckZ : ped.z;
+            var odx = ped.x - ox, odz = ped.z - oz, odl = Math.hypot(odx, odz) || 1;
+            ped.state = 'panic'; ped.panic = 2.5 + this.rng() * 1.5;
+            ped.tx = ped.x + odx / odl * 30; ped.tz = ped.z + odz / odl * 30;
+          }
+        }
 
         if (speed > 0 && dist > 0.1) {
           ped.heading = Math.atan2(dx / dist, dz / dist);
@@ -239,7 +272,15 @@
           ped.cycle += dt * speed * 2.6;
         }
         ped.speed = speed;
-        ped.mesh.position.set(ped.x, 0, ped.z);
+        // LEGFIX A: the root rides the real surface (slab 0.14,
+        // zebra 0.035, cap 0.012, road 0, grass -0.08), lerped at
+        // step rates so a curb crossing reads as a step, never a
+        // teleport or a sink.
+        var gT = SH.World.groundHeightAt(ped.x, ped.z);
+        if (ped.gy === undefined) ped.gy = gT;
+        var gStep = (gT > ped.gy ? 1.5 : 2.6) * dt;
+        ped.gy += Math.max(-gStep, Math.min(gStep, gT - ped.gy));
+        ped.mesh.position.set(ped.x, ped.gy + 0.005, ped.z);
         ped.mesh.rotation.y = ped.heading;
         // Shared animation: gait is speed-synced by CharAnim; panic
         // has its own clip (played at its stride rate); idle walkers
@@ -248,6 +289,8 @@
           ped.ctl.play('panic', 0.15);
           var act = ped.ctl.action();
           if (act) act.setEffectiveTimeScale(speed / PANIC_REF);
+        } else if (ped.state === 'duck') {
+          ped.ctl.play('duck', 0.1);
         } else {
           ped.ctl.setSpeed(speed);
         }

@@ -58,9 +58,16 @@
         char.setLook(y, p);
         return ctl;
       },
-      setPosture: function (p) { ctl.posture = p || {}; return ctl; },
+      setPosture: function (p) {
+        // PROPFIX: forward the WHOLE posture record (hunch,
+        // slouch, stiff) — the old call forwarded only .hunch,
+        // so slouch and stiff were dropped at this adapter
+        // (Bos point 9).
+        ctl.posture = p || {};
+        return ctl;
+      },
       update: function (dt) {
-        char.setPosture(ctl.posture.hunch || 0);
+        char.setPosture(ctl.posture);
         char.update(dt, {});
         return ctl;
       },

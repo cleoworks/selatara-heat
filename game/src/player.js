@@ -121,7 +121,15 @@
       // by the camera. (The old rig's lean layer has no equivalent;
       // the gait clips carry their own forward lean.)
       var spd = Math.hypot(p.vx, p.vz);
-      this.mesh.position.set(p.x, p.y, p.z);
+      // LEGFIX A: Raka's root rides the same surface lookup as
+      // everyone else (tracked through jumps too, so a landing on
+      // a slab or a zebra bar is flush); p.y is the jump arc on
+      // top of the ground line.
+      var gT = SH.World.groundHeightAt(p.x, p.z);
+      if (this._gy === undefined) this._gy = gT;
+      var gStep = (gT > this._gy ? 2.2 : 3.4) * dt;
+      this._gy += Math.max(-gStep, Math.min(gStep, gT - this._gy));
+      this.mesh.position.set(p.x, this._gy + 0.005 + p.y, p.z);
       this.mesh.rotation.y = p.heading;
       var ctl = this.ctl;
       if (this._lockT > 0) {
@@ -181,19 +189,50 @@
     driveCamSpec: function () {
       var st = SH.State;
       var spec = (st.vehicle && st.vehicle.spec) || null;
-      if (!spec) return { dist: 5.4, height: 1.55, lookY: 1.15 };
-      return {
-        dist: spec.length > 5.5 ? Math.max(5.4, spec.length * 1.05 + 1.6) : 5.4,
-        height: spec.height > 2 ? Math.max(1.55, spec.height * 0.72) : 1.55,
+      // POLISH2 (spec C11): the chase camera sits higher and
+      // farther back so the player's car is FULLY in frame and a
+      // pursuing police car no longer swallows it. Large vehicles
+      // keep their spec-derived frame, floored at the new base.
+      // VISUAL POLISH step 2: the chase camera pulls back a notch
+      // and rides a touch higher (6.6 -> 7.4 m, 2.05 -> 2.25 m) on
+      // the user's order — the hero car read at ~1/3 of the frame;
+      // at the new distance it sits near ~1/5 with the road, the
+      // pursuers and the city still around it. Look height and the
+      // large-vehicle derivation keep their proportions.
+      var base;
+      if (!spec) base = { dist: 7.4, height: 2.25, lookY: 1.15 };
+      else base = {
+        dist: spec.length > 5.5 ? Math.max(7.4, spec.length * 1.05 + 1.6) : 7.4,
+        height: spec.height > 2 ? Math.max(2.25, spec.height * 0.72) : 2.25,
         lookY: spec.height > 2 ? Math.max(1.15, spec.height * 0.5) : 1.15
       };
+      // POLISH2B (item 3): a police unit CLOSE aboard (under 30 m)
+      // raises the chase camera +0.5 m and pulls it +1.5 m further
+      // back, so the player's car keeps at least ~70% of its body
+      // in frame next to the pursuer instead of being cropped by it.
+      if (SH.Police && SH.Police.units && st.vehiclePos) {
+        for (var pi = 0; pi < SH.Police.units.length; pi++) {
+          var uv = SH.Police.units[pi].veh;
+          if (Math.hypot(uv.x - st.vehiclePos.x, uv.z - st.vehiclePos.z) < 30) {
+            base.dist += 1.5; base.height += 0.5;
+            break;
+          }
+        }
+      }
+      return base;
     },
     updateCamera: function (dt, camera) {
       var st = SH.State, p = st.player;
       var target = st.driving ? st.vehiclePos : p;
       var dcs = st.driving ? this.driveCamSpec() : null;
-      var dist = st.aiming ? (st._shotAimDist || 3.1) : (st.driving ? (st._shotCamDist || dcs.dist) : 6.1);
-      var height = st.driving ? dcs.height : 1.40;
+      // VISUAL POLISH step 2: on foot the follow camera also pulls
+      // back (6.1 -> 6.9 m) and rises (1.40 -> 1.55 m) — the player
+      // filled ~1/3 of the frame dead-centre; smaller in frame, the
+      // scene ahead reads. Aim distance eases 3.1 -> 3.3 m so the
+      // gun arm + target share the frame; the crosshair logic is
+      // untouched and stays clear.
+      var dist = st.aiming ? (st._shotAimDist || 3.3) : (st.driving ? (st._shotCamDist || dcs.dist) : 6.9);
+      var height = st.driving ? dcs.height : 1.55;
       var back = new THREE.Vector3(Math.sin(st.camYaw) * Math.cos(st.camPitch), Math.sin(st.camPitch), Math.cos(st.camYaw) * Math.cos(st.camPitch));
       var cx = target.x + back.x * dist;
       var cy = (target.y || 0) + height + back.y * dist;
@@ -203,6 +242,25 @@
         var rx = back.z, rz = -back.x;
         cx += rx * 1.7; cz += rz * 1.7;
       }
+      // POLISH2 (spec C12): on foot the camera rides slightly
+      // over the right shoulder — camera AND look point shift by
+      // the same right vector, so Raka sits left of centre and
+      // the street ahead stays centred instead of his back
+      // filling the middle of the frame.
+      var otsX = 0, otsZ = 0;
+      // VISUAL POLISH step 2: the over-shoulder shift widens with
+      // the longer lens (0.55 -> 0.70 m) so Raka sits clearly left
+      // of centre and the action ahead owns the middle of the frame.
+      if (!st.driving && !st.aiming) { otsX = back.z * 0.70; otsZ = -back.x * 0.70; cx += otsX; cz += otsZ; }
+      // POLISH2D (Bos spec): the AIM camera rides 0.35 m over the
+      // right shoulder. Measured before: aiming had NO lateral
+      // offset at all (the 0.55 m above is the walking
+      // over-shoulder shift, untouched), so the gun arm sat dead
+      // behind Raka's back and the pistol read as covered by his
+      // own arm. Camera AND look point shift by the same right
+      // vector, exactly the walking pattern. (Driving chase
+      // camera untouched.)
+      if (!st.driving && st.aiming) { otsX = back.z * 0.35; otsZ = -back.x * 0.35; cx += otsX; cz += otsZ; }
       cy = Math.max(0.7, cy);
       if (!this._camPos) this._camPos = new THREE.Vector3(cx, cy, cz);
       var k = 1 - Math.pow(0.0001, dt);
@@ -216,7 +274,7 @@
       // the axis flattened to ~8 deg; through the chest it is the
       // spec ~11 deg. Driving keeps its 2 m lead.
       var lookAhead = st.driving ? 2 : 0;
-      camera.lookAt(target.x - back.x * lookAhead, lookY, target.z - back.z * lookAhead);
+      camera.lookAt(target.x - back.x * lookAhead + otsX, lookY, target.z - back.z * lookAhead + otsZ);
       var baseFov = st.driving ? (st.speedKmh > 80 ? 68 : 65) : 60;
       if (Math.abs(camera.fov - baseFov) > 0.1) { camera.fov += (baseFov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
     }

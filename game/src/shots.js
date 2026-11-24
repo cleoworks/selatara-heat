@@ -41,9 +41,14 @@
     // scenes need ~3.4 m, not the 6.4 m follow distance, for faces
     // to read). Gameplay never sets _shotCamDist, so this is inert
     // outside ?shot= scenes.
-    var dist = st._shotCamDist || (st.driving ? dcs.dist : 6.4), height = st.driving ? dcs.height : 1.9;
+    var dist = st._shotCamDist || (st.driving ? dcs.dist : 6.4), height = st._shotCamHeight || (st.driving ? dcs.height : 1.9);
     var cx = t.x + back.x * dist, cz = t.z + back.z * dist;
     if (st.driving) { cx += back.z * 1.7; cz += -back.x * 1.7; }
+    // POLISH2: unstaged on-foot snaps mirror the gameplay
+    // over-the-shoulder offset (Player.updateCamera) so a staged
+    // photo frames like the game actually plays. Scenes that pin
+    // _shotCamDist compose their own centred lens and skip this.
+    else if (!st._shotCamDist) { cx += back.z * 0.55; cz += -back.x * 0.55; }
     SH.Player._camPos = new THREE.Vector3(cx, Math.max(0.7, height + back.y * dist), cz);
   }
 
@@ -111,7 +116,10 @@
       if (!post.hunch && SH.Archetypes && SH.Archetypes[m.arch] && SH.Archetypes[m.arch].posture) post = SH.Archetypes[m.arch].posture;
       var ctl = SH.CharAnim.create(ch, { start: action || 'idle', idle: 'idle', posture: post });
       if (scene) scene.add(ch.group);
-      ch.group.position.set(m.x, 0, m.z);
+      // LEGFIX A: staged members are never moved by a live system,
+      // so the row itself must stand on the real surface.
+      var gyS = SH.World.groundHeightAt ? SH.World.groundHeightAt(m.x, m.z) : 0;
+      ch.group.position.set(m.x, gyS + 0.005, m.z);
       ch.group.rotation.y = (heading != null ? heading : 0) + (m.dyaw || 0);
       if (expr && ch.setExpression) ch.setExpression(expr);
       ctl.play(action || 'idle', 0, true);
@@ -187,7 +195,23 @@
         // margin and its contact on the hero's rear quarter visible,
         // roadblock still 13 m and large); beyond 6.2 the chase
         // flattens and the roadblock shrinks. 6.2 it is.
-        st._shotCamDist = 6.2;
+        // POLISH 01/02/04 (user order): at 6.2 the rammer — seated
+        // 0.6 m behind the hero's quarter — projected into the
+        // frame's bottom-left corner and COVERED the minimap, and
+        // the hero ran over the ~20%-of-frame ceiling the user set
+        // for the chase shot. The ring moves out to 7.4 (the old
+        // ladder's top rung) and the rammer's seat moves back with
+        // it (see the seats note below): hero ~20% of frame width,
+        // minimap corner clear, both cars whole.
+        st._shotCamDist = 7.4;
+        // POLISH2B: the staged height is pinnable via &cheight= —
+        // driveCamSpec now raises the chase camera +0.5 m when
+        // police are close (item 3, gameplay), which pushes this
+        // composition's helicopter out of the top of the frame; the
+        // cover ladder re-pins the height per capture instead.
+        var chParam = null;
+        try { chParam = new URLSearchParams(location.search).get('cheight'); } catch (e) { /* no param */ }
+        if (chParam) st._shotCamHeight = parseFloat(chParam);
         st.camYaw = Math.PI / 2; st.camPitch = 0.03;
         snapCamera();
         st.cash = 4650;
@@ -215,7 +239,16 @@
           var units = SH.Police.units || [];
           var fh = car.heading, ffx = Math.sin(fh), ffz = Math.cos(fh);
           var rrx = ffz, rrz = -ffx; // hero right vector
-          var seats = [[2.6, 0.6], [-4.2, -19.0]];
+          // POLISH 01/02/04: unit 1's seat moves from [2.6, 0.6] to
+          // [2.9, 0.4] — beside the hero's rear quarter on the
+          // beach side, NOT behind him. The first retake proved
+          // why: anything seated metres behind the hero sits only
+          // ~5 m from the chase camera, blows up to a frame-filling
+          // slab and lands exactly on the minimap corner. Beside
+          // the quarter it keeps the hero's depth, reads as the
+          // ramming lunge the contact sparks fire at, and clears
+          // both the hero's silhouette and the minimap.
+          var seats = [[2.9, 0.4], [-4.2, -19.0]];
           for (var ui = 0; ui < units.length && ui < seats.length; ui++) {
             if (!units[ui].staged || !units[ui].veh) continue;
             units[ui].veh.x = car.x + rrx * seats[ui][0] - ffx * seats[ui][1];
@@ -263,7 +296,15 @@
           // blockade car and hid half the wall.
           var blk = SH.Police.blocks || [];
           for (var bi = 0; bi < blk.length; bi++) {
-            blk[bi].veh.x += 18;
+            // POLISH2B: the second blockade car takes an extra
+            // 3.5 m of push. Both cars used to sit at the exact
+            // same distance from the hero, so the police panel
+            // printed two identical "BLOCKADE 13 m ROADBLOCK"
+            // rows — the duplication the r16 panel read as a
+            // bug. The stagger is real staging (the wall stands
+            // slightly echeloned, as a placed roadblock would);
+            // the panel then reports two honest distances.
+            blk[bi].veh.x += 18 + (bi === 1 ? 3.5 : 0);
             SH.Vehicles.syncMesh(blk[bi].veh);
           }
         }
@@ -379,7 +420,16 @@
         // FIXVISUAL2 density: the promenade and the city sidewalk
         // gain six more walkers (appended — the first four spots
         // keep their staged pedestrians).
-        stagePeds([[36, 250], [88, 250], [12, 252], [104, 222], [52, 249], [70, 251], [-6, 250], [120, 248], [20, 229.5], [64, 230]]);
+        // POLISH2C (2026-11-23): the [20, 229.5] spot stood a
+        // staged walker ON the far traffic lane (z 228) in the
+        // capture corridor — panel r17 read him as a pedestrian
+        // standing in the middle of the road by the roadblock.
+        // He moves to the city sidewalk line (z 222.5, the same
+        // line as the [104, 222] spot), and clearCrowd sweeps
+        // ambient walkers out of the roadblock's ground so no
+        // random crossing can re-enter it inside the run.
+        stagePeds([[36, 250], [88, 250], [12, 252], [104, 222], [52, 249], [70, 251], [-6, 250], [120, 248], [20, 222.5], [64, 230]]);
+        clearCrowd(16, 237, 14);
         if (SH.HUD) SH.HUD.subtitle('Mami Ratna', 'Half the force is behind you, Raka. Do NOT stop for the sunset.', 30);
         // COMBAT5 freeze (2026-11-21): the staged formation above is
         // composed for ONE capture moment — the hero ~26 m into the
@@ -771,6 +821,46 @@
             cabLight.position.set(SH.Player.mesh.position.x, 1.02, SH.Player.mesh.position.z);
             scene.add(cabLight);
           }
+          // POLISH 01/02/04 — speed feel at the freeze: (a) CONTACT
+          // SPARKS where the rammer's lunge meets the hero's rear
+          // quarter, fired through the game's own Effects.sparks
+          // and aged in small steps (the flame-tail pattern) so
+          // the spray is mid-flight when the clock stops; (b) TIRE
+          // STREAKS trailing both cars' rear wheels — thin dark
+          // boxes laid on the road at the baked skid arcs' own
+          // height (0.045, roads.js), the marks this braking,
+          // grinding chase is laying. Staging only, like the
+          // cabin light above: live play never sees either.
+          if (SH.Effects && SH.Effects.sparks) {
+            var sfh = car.heading;
+            var spx = car.x + Math.cos(sfh) * 1.55 - Math.sin(sfh) * 1.95;
+            var spz = car.z - Math.sin(sfh) * 1.55 - Math.cos(sfh) * 1.95;
+            for (var spi = 0; spi < 3; spi++) {
+              SH.Effects.sparks(spx, 0.5, spz);
+              SH.Effects.update(0.03, SH.Main.getCamera());
+            }
+            SH.Effects.update(0.02, SH.Main.getCamera());
+          }
+          (function tireStreaks() {
+            var mat = new THREE.MeshBasicMaterial({ color: 0x14120f, transparent: true, opacity: 0.42, depthWrite: false });
+            function pair(veh, len) {
+              if (!veh) return;
+              var h = veh.heading, fx2 = Math.sin(h), fz2 = Math.cos(h);
+              var rx2 = fz2, rz2 = -fx2;
+              for (var s2 = -1; s2 <= 1; s2 += 2) {
+                var cx2 = veh.x + rx2 * (s2 * 0.83) - fx2 * (1.35 + len / 2);
+                var cz2 = veh.z + rz2 * (s2 * 0.83) - fz2 * (1.35 + len / 2);
+                var m2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.012, len), mat);
+                m2.position.set(cx2, 0.045, cz2);
+                m2.rotation.y = h;
+                m2.renderOrder = 2;
+                scene.add(m2);
+              }
+            }
+            pair(car, 8.4);
+            var u0 = (SH.Police.units || [])[0];
+            pair(u0 && u0.veh, 5.2);
+          })();
           st.mode = 'paused';
         }, 40);
       } else if (name === 'drive') {
@@ -827,7 +917,7 @@
         ]);
         stagePeds([[-127.5, -150], [-112.5, -96]]);
         if (SH.HUD) SH.HUD.subtitle('Raka', 'Four stars. Great. Hold on—', 30, 'scared');
-      } else if (name === 'combat') {
+      } else if (name === 'combat' || name === 'hero') {
         // On-foot shootout staging INSIDE the Ruko Senja night market.
         // RESTAGE 3 (2026-11-21): two independent judges shrank the
         // 2D frame to 384 px and it COLLAPSED — the target was
@@ -914,6 +1004,40 @@
         // sprite + one apply-time tracer that died 0.09 s later —
         // a still of a fight that was not happening.)
         SH.Main.setHour(18.35);
+        // TOP1STYLE (2026-11-23): 'hero' is THIS duel restaged as
+        // the set's cover, following the top-1 entry's hero-shot
+        // method (close character action, every HUD system in one
+        // frame). The fight itself is unchanged — same foes, same
+        // fireOnce exchange, same corpse — but the hero variant
+        // runs at full night (20.4, the night-market mission's own
+        // setHour), carries the real two-star police response, the
+        // mission's real chase step on the objective card (eyebrow,
+        // stage pips and countdown assembled in the freeze block),
+        // and ages the frame's tracer further toward its tail so
+        // it reads as a tracer line, not the frozen white bar
+        // panel r14 named on the f17256f set. The extra beam age
+        // rides the &hage= URL param (seconds added past the
+        // standard 0.045 s flush; default 0.05).
+        var heroMode = (name === 'hero');
+        // POLISH03 (user item 6): default extra age 0.05 -> 0.03 s.
+        // The 0.045 s flush + the old 0.05 aged the frame's shot
+        // ~0.095 s before the shutter — past half the muzzle
+        // star's life, so the flash reached the frame at ~41%
+        // brightness and read as tracer, not flash. At 0.03 the
+        // tracer still falls toward its tail (0.12 s life, ~62%
+        // spent) while the star and the light pulse arrive hot.
+        var heroBeamAge = parseFloat(params.get('hage') || '0.03') || 0;
+        if (heroMode) SH.Main.setHour(20.4);
+        // POLISH2C (2026-11-23): &chour= re-pins the combat clock
+        // for capture variants — panel r17 faulted the 18:21
+        // frame's sun icon against the NIGHT MARKET RUN title,
+        // while the anchor's frame runs at 19:09 dusk. Combat
+        // only; the hero keeps its 20.4 night. Without the param
+        // the staged frame is unchanged.
+        if (!heroMode) {
+          var chourParam = params.get('chour');
+          if (chourParam) SH.Main.setHour(parseFloat(chourParam));
+        }
         // RESTAGE 2D placement: Raka at the walkway's NW side,
         // aim axis running S-SE across it (azimuth ~17.5 deg east
         // of south; camYaw -2.244 puts the fireDirection — and so
@@ -940,6 +1064,18 @@
         // branch and no 'Wanted level 1' toast pops over the panel
         // in the frozen frame (the v2 overlap the judges flagged).
         if (SH.Police) SH.Police.forceWanted(1);
+        // TOP1STYLE: the hero frame carries the real two-star
+        // response — forceWanted(2) plus two patrol cars spawned
+        // through the police API near the fight (spawnCar targets
+        // ~55 m from the focus), so the response panel lists real
+        // units at real distances instead of the r14 frame's single
+        // unit 162 m away. carsByStars[2] = 3, so Police.update
+        // keeps them and may add a third at spawn distance.
+        if (heroMode && SH.Police) {
+          SH.Police.forceWanted(2);
+          SH.Police.spawnCar(true);
+          SH.Police.spawnCar(true);
+        }
         if (SH.Combat) {
           SH.Combat.owned.pistol = true;
           // Enemies ahead of the aim camera, in bright rival colours
@@ -1281,6 +1417,45 @@
                 hup.ctl.update(0.3);
               }
             }
+            // POLISH03 (user item 5): the far-left foreground
+            // witness — staged list index 28, the tourist at
+            // (-321, 87.3) in a 0.44 m sun hat (probe-polish03:
+            // head at frame px 105, the leftmost figure in the
+            // frame) — was caught by the freeze still in the
+            // 'duck' cower: scare() dropped him within 9 m of the
+            // first shot and the 0.5 s of hand-steps never outlast
+            // his 0.9-1.8 s cower, so he alone hunched at the
+            // frame's edge while every neighbour already fled.
+            // The staging completes the game's own beat by hand
+            // (pedestrians.js converts duck -> panic away from
+            // duckX/duckZ when the cower expires): same conversion,
+            // same flee line, then ~0.3 s of the flee itself —
+            // position stepped at the panic gait, clip advanced
+            // at the panic stride rate — so he reads mid-flight
+            // in a natural pose, hat and all.
+            if (SH.Pedestrians) {
+              var flp = SH.Pedestrians.list[28];
+              if (flp && !flp.down && flp.ctl) {
+                var fox = flp.duckX != null ? flp.duckX : st.player.x;
+                var foz = flp.duckZ != null ? flp.duckZ : st.player.z;
+                var fdx = flp.x - fox, fdz = flp.z - foz;
+                var fdl = Math.hypot(fdx, fdz) || 1;
+                fdx /= fdl; fdz /= fdl;
+                flp.state = 'panic'; flp.panic = 2.5;
+                flp.tx = flp.x + fdx * 30; flp.tz = flp.z + fdz * 30;
+                flp.heading = Math.atan2(fdx, fdz);
+                flp.x += fdx * 5.6 * 0.3; flp.z += fdz * 5.6 * 0.3;
+                var fgy = SH.World.groundHeightAt ? SH.World.groundHeightAt(flp.x, flp.z) : 0;
+                flp.gy = fgy;
+                flp.mesh.position.set(flp.x, fgy + 0.005, flp.z);
+                flp.mesh.rotation.y = flp.heading;
+                flp.ctl.play('panic', 0.08, true);
+                var fact = flp.ctl.action && flp.ctl.action();
+                var fref = (SH.CharAnim && SH.CharAnim.clips && SH.CharAnim.clips.panic && SH.CharAnim.clips.panic.userData.refSpeed) || 2.8;
+                if (fact && fact.setEffectiveTimeScale) fact.setEffectiveTimeScale(5.6 / fref);
+                flp.ctl.update(0.3);
+              }
+            }
             // Flush the shot into the GPU buffers and the HUD DOM
             // with the game's own per-frame calls (a few refreshes
             // only: the hit marker's 0.12 s timer decays per call).
@@ -1288,6 +1463,20 @@
             // keeps most of its brightness, and the muzzle and
             // blood stay strong.
             if (SH.Effects) SH.Effects.update(0.045, SH.Main.getCamera());
+            // TOP1STYLE: the hero frame ages the exchange further
+            // (&hage= extra seconds, default 0.05): the tracer
+            // (0.12 s life) falls toward its tail and reads as a
+            // line, while the blood burst (0.4 s life) stays
+            // strong and the corpse is untouched. Combat keeps
+            // its sanctioned 0.045 s only.
+            if (heroMode && SH.Effects) SH.Effects.update(heroBeamAge, SH.Main.getCamera());
+            // POLISH2 (spec A6): &notracer=1 ages the exchange past
+            // the beam's 0.12 s life before the freeze — the photo
+            // carries the aim, the blood burst and the surrender,
+            // never a frozen white streak (the panel's recurring
+            // glitch read). Without the param the sanctioned
+            // combat frame is byte-identical to before.
+            if (params.get('notracer') && SH.Effects) SH.Effects.update(0.11, SH.Main.getCamera());
             // TWEAK19: the target's answering muzzle stars (COMBAT
             // V7/FIXVISUAL2, spawned here at his gun hand) are GONE
             // with his return-fire pose — a surrendering man fires
@@ -1308,6 +1497,21 @@
             // so HUD.refresh itself hides the element before the
             // freeze. The hit still reads (blood burst, stagger
             // pose, the beam); only the UI glyph is gone.
+            // TOP1STYLE: the hero's objective card carries the
+            // mission's real machinery — Missions.active assembled
+            // exactly as startMission + beginStep leave it for the
+            // chase step (the stats scene's sanctioned pattern of
+            // staging a mid-game state from the game's own data):
+            // the HUD then draws the eyebrow (MISSION 2 ·
+            // MAMI RATNA), the stage pips and the step's own 170 s
+            // countdown, all read from the mission def by hud.js.
+            // Assembled only here, inside the freeze, and
+            // Missions.update never runs in 'paused' mode, so the
+            // game never acts on it.
+            if (heroMode && SH.Missions) {
+              SH.Missions.currentIndex = 1;
+              SH.Missions.active = { def: SH.Missions.list[1], stepIndex: 1, checkpoint: 1, stepData: { t: 0 }, failed: 0, eventFlags: {} };
+            }
             if (SH.HUD) for (var hi = 0; hi < 10; hi++) SH.HUD.refresh();
             // FIXVISUAL (2026-11-21): RAKA'S OWN STANCE — the
             // defect the user named outright ("combat santai
@@ -1340,7 +1544,10 @@
                 if (pb.thighR) pb.thighR.rotation.x += 0.30;
                 if (pb.shinR) pb.shinR.rotation.x += 0.14;
               }
-              if (SH.Player.char._pistolMesh) SH.Player.char._pistolMesh.scale.multiplyScalar(1.3);
+              // POLISH2B (item 2): the factory pistol is now TRUE
+              // spec size (0.22 m) at the source — the staged 1.3x
+              // growth this line used to apply is retired, or the
+              // gun would overshoot into the old floating slab.
               // COMBATFIX (2026-11-22, Bos's order): the same
               // prescription as the target's gun above — round 11's
               // near-white steel read as a white box in his fist
@@ -1364,9 +1571,28 @@
               // staged gun grows again (1.42x -> 1.75x here) so
               // the dark cross-section prints more pixels at
               // 384 px; the material prescription is unchanged.
+              // POLISH2B (item 2): the staged GROWTH stays retired
+              // (the factory gun is true spec size now — growing it
+              // again would rebuild the TWEAK19 slab), but the
+              // material swap RETURNS: measured on this round's
+              // first combat render, the flat toon gun at 2.6 m
+              // from the lens prints as a featureless black block,
+              // while the judged polish2 frame's standard-material
+              // gun (0x23272e, metalness 0.65) modelled its shape
+              // from the sky env. Size from the factory, shape from
+              // the material — the game's own gun keeps its toon
+              // finish outside this photo set.
               if (SH.Player.char._pistolMesh) {
-                SH.Player.char._pistolMesh.scale.multiplyScalar(1.30);
-                SH.Player.char._pistolMesh.material = new THREE.MeshStandardMaterial({ color: 0x23272e, metalness: 0.65, roughness: 0.45 });
+                // POLISH2D: the material swap is RETIRED. It
+                // flattened every part — including the slide's
+                // rim-light edge strip — into one standard
+                // material; with the gun now true-scale (0.20 m)
+                // the factory finish IS the spec (slide #2b2d33
+                // + the bright top edge), and the strip is the
+                // readability mechanism Bos ordered instead of
+                // size. The game's own gun keeps its factory
+                // materials in this photo set too.
+                void 0;
               }
               // TWEAK19 (2026-11-22): the staged growth is CUT
               // (1.75x -> 1.30x here; total ~2.62x, was 3.526x).
@@ -1430,6 +1656,20 @@
                   }
                 });
               }
+              // POLISH2 (spec A6): the polish round's combat frame
+              // (&notracer=1) keeps the pack ON — this round's
+              // brief orders a readable back (pack + jacket
+              // detail) from behind, and the cloth-textured pack
+              // is no longer the flat board panel 17 saw. The
+              // sealed set's param-less frame keeps the hide.
+              if (params.get('notracer') && pb && pb.spine2) {
+                pb.spine2.traverse(function (o) {
+                  if (o.isMesh && o.material && o.material.color) {
+                    var hx2 = o.material.color.getHex();
+                    if (hx2 === 0x6e4a26 || hx2 === 0x4f351b) o.visible = true;
+                  }
+                });
+              }
             }
             st.mode = 'paused';
             // RESTAGE 3 photo angle (the stats shot's sanctioned
@@ -1478,8 +1718,30 @@
             // line entering left — is preserved.
             var cam = SH.Main.getCamera();
             if (cam) {
-              cam.position.set(-327.25, 1.55, 90.51);
-              cam.lookAt(-322.5, 1.0, 93.08);
+              // POLISH2D (Bos spec): the pin rides 0.35 m along
+              // its own right vector — the same right-shoulder
+              // shift the gameplay aim camera now makes
+              // (player.js) — so the true-scale pistol clears
+              // Raka's own arm instead of hiding behind it.
+              // Right = normalize(cross(f, up)), f = (4.75, -0.55,
+              // 2.57): (-0.476, 0, 0.880); 0.35 m of it is
+              // (-0.167, 0, 0.308), applied to position AND
+              // lookAt so the view axis is unchanged.
+              // FIX03 (user item 4): pulled back and up. At the
+              // old pin Raka stood ~2.3 m from the lens, covered
+              // a third of the frame and his feet fell off the
+              // bottom edge. The pin now rides 2.9 m back along
+              // its own view axis and 0.5 m up (cam-to-Raka
+              // ~5.0 m): his full body, shoes and the ground
+              // under them fit the frame at roughly a fifth of
+              // its height, the right-shoulder offset from
+              // POLISH2D is preserved (same axis), the lookAt —
+              // and with it the crosshair line onto the courier —
+              // is unchanged. (Live on-foot cameras already sit
+              // at 6.9 m / 1.55 / OTS 0.70 since polish step 2;
+              // this pin is the staged frame only.)
+              cam.position.set(-329.96, 2.34, 89.45);
+              cam.lookAt(-322.67, 1.0, 93.39);
             }
           }, 2200);
         }
@@ -1491,6 +1753,10 @@
         // alone. The panel still shows the mission. RESTAGE 2D:
         // parked on the duel axis, 4.7 m S-SE of the new Raka spot.
         st.objective = { title: 'NIGHT MARKET RUN', text: 'Fight through the market — catch the courier', x: -321.46, z: 93.89 };
+        // TOP1STYLE: the hero's objective text is the mission's
+        // real chase-step text (missions.js, night-market step 2) —
+        // the step the assembled Missions.active above points at.
+        if (heroMode) st.objective = { title: 'NIGHT MARKET RUN', text: 'Catch the courier (get close on foot)', x: -321.46, z: 93.89 };
         // RESTAGE 3 crowd: market visitors in the mid-ground —
         // along both stall lines and deep down the walkway —
         // every one measured clear of both fire lines (a ped
@@ -1531,8 +1797,81 @@
         // stay south and north-edge figures stay north — no flee
         // path crosses either line. The in-frame crowd now reads
         // 20+ figures at 384 px, the Top 1 market's density.
-        stagePeds([[-315.5, 93.5], [-313, 89.8], [-311, 95.5], [-309, 91.5], [-316.5, 94.8], [-314.5, 87.6], [-310.5, 87.2], [-320, 94.6], [-311.5, 99], [-306, 92.5], [-304, 89.5], [-318, 87.9], [-318, 94.4], [-313.5, 94.6], [-307.6, 94.3], [-303.5, 94.7], [-310, 89.8], [-305.5, 90.1], [-320.5, 96.8], [-299, 94.2], [-295.5, 91.2], [-292, 93.6], [-288, 92.5], [-322.5, 96.6], [-319.5, 97.2], [-314, 96.8], [-310.5, 97.5], [-307, 96.2], [-321, 87.3], [-315.5, 86.9], [-309, 87.4], [-302, 90.8], [-298.5, 95.8]]);
+        // FIX03 (user item 6): six more visitors APPENDED at the
+        // frame's edges — west foreground, south foreground and
+        // the deep-east right edge — so the sides of the wider
+        // FIX03 frame are not empty pad. Appended only: indices
+        // 0-32 (and the hands-up picks among them) are untouched.
+        // Every spot is >= 2.9 m clear of both fire lines
+        // (player->courier and flanker->player); the near ones
+        // sit inside the scare radius and flee outward during
+        // the freeze's hand-steps, the deep-east one strolls on.
+        stagePeds([[-315.5, 93.5], [-313, 89.8], [-311, 95.5], [-309, 91.5], [-316.5, 94.8], [-314.5, 87.6], [-310.5, 87.2], [-320, 94.6], [-311.5, 99], [-306, 92.5], [-304, 89.5], [-318, 87.9], [-318, 94.4], [-313.5, 94.6], [-307.6, 94.3], [-303.5, 94.7], [-310, 89.8], [-305.5, 90.1], [-320.5, 96.8], [-299, 94.2], [-295.5, 91.2], [-292, 93.6], [-288, 92.5], [-322.5, 96.6], [-319.5, 97.2], [-314, 96.8], [-310.5, 97.5], [-307, 96.2], [-321, 87.3], [-315.5, 86.9], [-309, 87.4], [-302, 90.8], [-298.5, 95.8], [-329.5, 95.2], [-331, 97.8], [-320.5, 98.6], [-316.5, 99.3], [-313.5, 97.9], [-283, 95.5]]);
         if (SH.HUD) SH.HUD.subtitle('Courier', 'Stay away from me! I know what is in this bag!', 30, 'scared');
+      } else if (name === 'title') {
+        // TOP1STYLE (2026-11-23): the game's own title screen over
+        // the dusk city — the closing frame's brand + depth proof,
+        // following the top-1 set's third position (big title over
+        // a city vista, menu, save context). Everything on screen
+        // is the game's own: the staged mid-game state below is
+        // written through the real Save.saveGame(), so CONTINUE is
+        // offered exactly as it is to any returning player, and the
+        // live city turns behind the screen's own gradient. Mode
+        // is set to 'title' HERE, before the first frame — the
+        // natural boot state — so the gameplay HUD never un-hides
+        // (a first render that set it 600 ms late kept the HUD
+        // cards latched over the menu; the plain boot title
+        // screen carries no HUD at all). The title camera's slow
+        // orbit is frozen at one composed angle for the still
+        // (staging only: updateTitleCamera is wrapped for this
+        // shot alone — the same stillness the paused scenes get
+        // from the loop — and the angle rides the &tang= URL
+        // param, radians around the downtown centre the orbit
+        // itself uses). The screen, logo, menu and save are
+        // untouched.
+        SH.Main.setHour(17.95);
+        st.mode = 'title';
+        if (SH.Menus) {
+          SH.Menus.syncMode();
+          SH.Menus.updateTitleCamera = function () {};
+        }
+        var pinTitleCam = function () {
+          var cam = SH.Main.getCamera();
+          if (cam) {
+            // POLISH2B (item 7): the still now frames the vignette
+            // pair CENTRE-BOTTOM at ~2.5x the old print size. The
+            // old pin parked 34 m out on the orbit ring (~38 m
+            // from the pair: the car printed ~165 px); this pin
+            // stands 15 m from the pair at street height, aimed a
+            // touch high so Raka + the car sit in the lower half
+            // under the menu with the dusk towers behind them.
+            // The pair's spot mirrors stageTitleVignette's own
+            // formula (bearing 3.8, 12 m from the orbit centre).
+            var pvx = -120 + Math.sin(3.8) * 12, pvz = -180 + Math.cos(3.8) * 12;
+            var pcx = pvx - 0.5, pcz = pvz - 0.65;
+            cam.position.set(pcx + Math.sin(4.5) * 12.5, 2.2, pcz + Math.cos(4.5) * 12.5);
+            // Aim HIGH over the pair: the first pin (15 m, aim at
+            // the pair) centred them exactly behind the menu
+            // column at full size; the second (15 m, aim 5.6)
+            // dropped them to centre-bottom but foreshortened
+            // the car to ~255 px. This pin splits it: 12.5 m for
+            // size, aim 4.9 for the centre-bottom placement.
+            cam.lookAt(pcx, 4.9, pcz);
+          }
+        };
+        pinTitleCam();
+        window.setTimeout(function () {
+          // State staged after boot settles (the stats scene's
+          // pattern): a mid-game career, saved through the real
+          // save path so the menu offers CONTINUE.
+          st.cash = 4650; st.stats.missionsDone = 5; st.stats.carsStolen = 7; st.stats.time = 10043;
+          if (SH.Missions) SH.Missions.currentIndex = 5;
+          if (SH.Combat) { SH.Combat.owned.pistol = true; SH.Combat.owned.smg = true; }
+          if (SH.Save) SH.Save.saveGame();
+          st.mode = 'title';
+          if (SH.Menus) SH.Menus.syncMode();
+          pinTitleCam();
+        }, 600);
       } else if (name === 'stats') {
         // RESTAGE 2 (2026-11-20): the system-proof shot — the real
         // pause menu over the Pantai Kencana pier at sunset, its career
@@ -1757,6 +2096,38 @@
           place(15, -233.1, -89.5, -233.9, -88.5, 'idle', 60);
         })();
         stageCastRow([{ arch: 'patrol', seed: 900007, x: -234.0, z: -93.5 }], 0, 'idle', 'neutral');
+      } else if (name === 'chars-group') {
+        // PROPFIX (Bos point 11): the cast as a NATURAL group, not
+        // a parade row — uneven spacing and depths, mixed builds
+        // and heights (Varga stocky, a sekolah kid on his phone),
+        // a talk pair turned toward each other, one member frozen
+        // mid-stride walking through, the rest idling at varied
+        // yaw. Camera: slight LOW-angle 3/4 (camPitch -0.10) at
+        // 5.6 m on the chars-34 avenue spot, same evening light.
+        SH.Main.setHour(17.85);
+        st.player.x = -234.3; st.player.z = -92.0;
+        st.player.heading = -0.95;
+        st.camYaw = -0.95; st.camPitch = -0.08;
+        st._shotCamDist = 4.8;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — the cast, off-duty', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'varga', phase: 3, dyaw: 0.30, x: -233.6, z: -94.3 },
+          { arch: 'patrol', seed: 900007, phase: 11, dyaw: -0.50, x: -235.2, z: -93.2 },
+          { arch: 'dario', phase: 6, dyaw: 0.15, x: -234.6, z: -95.6 }
+        ], -0.95, 'idle', 'neutral');
+        stageCastRow([
+          { arch: 'mami', phase: 5, dyaw: 0.90, x: -233.6, z: -90.4 },
+          { arch: 'kantoran', phase: 9, dyaw: -2.20, x: -232.9, z: -90.8 }
+        ], -0.95, 'talk', 'neutral');
+        stageCastRow([
+          { arch: 'sindikatKulit', seed: 900022, phase: 9, dyaw: -0.15, x: -234.4, z: -89.9 }
+        ], -0.95, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: 0.40, x: -233.0, z: -88.9 }
+        ], -0.95, 'idle_phone', 'neutral');
+        clearCrowd(-234.3, -92.0, 9);
       } else if (name === 'chars-side') {
         // BODYFIX round 4: the cast row in PROFILE — same anchor
         // as chars-front, but everyone (player anchor included)
@@ -1907,10 +2278,592 @@
           if (++rbTicks > 300) window.clearInterval(rbPin);
         }, 100);
         clearCrowd(-233.0, -92.0, 7);
+      } else if (name === 'legfix-lineup') {
+        // LEGFIX (a): cast row ON the east sidewalk slab (centre
+        // x=-232.8, slab top 0.14) of the x=-240 avenue — the
+        // BEFORE frame must show feet sunk into the pavement,
+        // the AFTER frame soles flush on it. Low camera
+        // (camPitch -0.30) so legs + shoes fill the lower frame.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.30;
+        st._shotCamDist = 3.0;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — leg check', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -232.8, z: -94.3 },
+          { arch: 'pekerjaDermaga', seed: 900051, phase: 3, dyaw: 0.06, x: -232.8, z: -93.2 },
+          { arch: 'mami', phase: 13, dyaw: 0.09, x: -232.8, z: -90.9 },
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: -0.06, x: -232.8, z: -89.9 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'legfix-walk') {
+        // LEGFIX (b): REAL pedestrians walking the east sidewalk
+        // both directions, tight low camera — stride, foot plant
+        // and sole contact mid-gait are the subject.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -88;
+        st.player.heading = Math.PI;
+        st.camYaw = 0; st.camPitch = -0.15;
+        st._shotCamDist = 4.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — sidewalk gait', x: -240, z: -88 };
+        (function () {
+          var list = SH.Pedestrians.list;
+          function place(i, x, z, tx, tz, state, timer) {
+            var p = list[i]; if (!p) return;
+            p.x = x; p.z = z; p.tx = tx; p.tz = tz;
+            p.state = state; if (timer) p.timer = timer;
+            p.heading = Math.atan2(tx - x, tz - z);
+            p.mesh.position.set(x, 0, z);
+            p.mesh.rotation.y = p.heading;
+          }
+          place(8, -232.8, -94, -232.8, -103, 'walk');
+          place(14, -233.0, -102, -233.0, -93, 'walk');
+          place(16, -232.6, -90, -232.6, -99, 'walk');
+          place(18, -232.9, -97, -232.9, -88, 'walk');
+          place(22, -232.7, -92, -232.7, -101, 'walk');
+          place(24, -233.1, -100, -233.1, -91, 'walk');
+        })();
+      } else if (name === 'legfix-road') {
+        // LEGFIX (c): the same cast on bare asphalt (road centre
+        // x=-240, ground y=0) — control surface: soles must sit
+        // exactly on the tarmac, no float, no sink.
+        SH.Main.setHour(17.85);
+        st.player.x = -240.0; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.25;
+        st._shotCamDist = 3.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — road contact', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -240.0, z: -93.9 },
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.05, x: -240.0, z: -90.1 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-240.0, -92.0, 8);
+      } else if (name === 'legfix-cross') {
+        // LEGFIX (d): two figures standing ON the zebra bars of
+        // the (-240,-60) junction's north leg (bars at z=-68.4,
+        // top 0.035; nodeR 5.95 + 2.45 along the leg) plus one
+        // on the asphalt just short of them.
+        SH.Main.setHour(17.85);
+        st.player.x = -240.0; st.player.z = -63.5;
+        st.player.heading = 0;
+        st.camYaw = 0; st.camPitch = -0.10;
+        st._shotCamDist = 5.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — crosswalk', x: -240, z: -60 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.04, x: -241.8, z: -68.4 },
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.05, x: -238.2, z: -68.4 },
+          { arch: 'ojek', seed: 900031, phase: 10, dyaw: 0.0, x: -240.0, z: -65.8 }
+        ], 0, 'idle', 'neutral');
+        clearCrowd(-240.0, -65.8, 9);
+      } else if (name === 'legfix-curb') {
+        // LEGFIX (e): the curb itself — one figure up on the slab,
+        // one down on the asphalt, one frozen mid-stride stepping
+        // DOWN across the edge (x=-234.4), plus the player anchor
+        // standing on the edge line. Feet must split levels: the
+        // high foot on the slab, the low foot on the road.
+        SH.Main.setHour(17.85);
+        st.player.x = -234.4; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.30;
+        st._shotCamDist = 3.2;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — curb step', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'kantoran', seed: 900061, phase: 5, dyaw: 0.0, x: -232.9, z: -93.6 },
+          { arch: 'pekerjaDermaga', seed: 900051, phase: 3, dyaw: 0.0, x: -235.9, z: -93.6 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        stageCastRow([
+          { arch: 'ojek', seed: 900031, phase: 14, dyaw: 0.0, x: -234.4, z: -90.4 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        clearCrowd(-234.4, -92.0, 8);
+      } else if (name === 'legfix-run') {
+        // LEGFIX (f) RESTAGE 2: the subject is RAKA himself, in
+        // profile at centre frame, frozen at a measured run phase.
+        // R1 froze two joggers beside the idle player anchor and
+        // the still read "standing": the player (centre, facing
+        // the camera) dominated the frame in an idle pose. Now the
+        // real player is hidden (onFoot=false: Player.update keeps
+        // the mesh invisible, and updateCamera is a separate
+        // method, so the anchor and framing are unchanged) and a
+        // factory Raka (seed 1 = the player's own build) is staged
+        // at the anchor spot, heading +z in full profile.
+        // STANCEFIX phase correction: the old comment's phase
+        // arithmetic (from the 1/60 s runphase probe) did NOT
+        // match stageCastRow's 1/30 s stepping — phases 13-18 all
+        // froze the same stride-split contact pose and the still
+        // kept reading "walking". Re-measured with the exact
+        // stageCastRow path (tooling/stancephase-stancefix.cjs,
+        // cycle = 20 phases): knee-drive peaks (73.8 deg) at
+        // phase 0/10, true flight (both soles off the surface,
+        // min +0.011 / max +0.049, drive knee 59 deg) at phase
+        // 19 — the default now. ?runphase= / ?rundyaw= override
+        // for phase hunting without code edits.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = 0;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.20;
+        st._shotCamDist = 4.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — run cycle', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        var runPhase = parseInt(params.get('runphase'), 10);
+        if (isNaN(runPhase)) runPhase = 19;
+        var runDyaw = parseFloat(params.get('rundyaw'));
+        if (isNaN(runDyaw)) runDyaw = 0;
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: runPhase, dyaw: runDyaw, x: -232.8, z: -92.0 }
+        ], 0, 'run', 'neutral');
+        // Context runners from the R1 staging, unchanged: both
+        // ON the z axis in profile, two jogger builds in sneakers.
+        stageCastRow([
+          { arch: 'jogger', seed: 900077, phase: 14, dyaw: 0.0, x: -232.8, z: -89.4 }
+        ], Math.PI, 'run', 'neutral');
+        stageCastRow([
+          { arch: 'jogger', seed: 900131, phase: 35, dyaw: 0.0, x: -232.8, z: -95.2 }
+        ], 0, 'run', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-lineup') {
+        // STANCEFIX: the cast row from the FRONT, tighter and
+        // lower than legfix-lineup — the subject is the thigh
+        // pivots, the crotch gap and whether the legs stay
+        // inside the pelvis line. Same sidewalk slab (x=-232.8,
+        // top 0.14), same hour; only the framing closes in.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.36;
+        st._shotCamDist = 2.6;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — stance check', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.03, x: -232.8, z: -94.2 },
+          { arch: 'mami', phase: 13, dyaw: 0.05, x: -232.8, z: -93.1 },
+          { arch: 'varga', phase: 4, dyaw: -0.05, x: -232.8, z: -90.9 },
+          { arch: 'sekolah', seed: 503, phase: 2, dyaw: 0.04, x: -232.8, z: -89.9 }
+        ], -Math.PI / 2, 'idle', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-walkfront') {
+        // STANCEFIX: three walkers frozen mid-gait FACING the
+        // camera — the lateral foot track and any knee splay
+        // read directly from the front. Real player hidden
+        // (same trick as legfix-run); a factory Raka walks at
+        // centre frame.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.22;
+        st._shotCamDist = 3.4;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — walk track, front', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 3, dyaw: 0.0, x: -232.8, z: -93.8 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: 12, dyaw: 0.0, x: -232.8, z: -92.0 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'mami', phase: 21, dyaw: 0.0, x: -232.8, z: -90.2 }
+        ], -Math.PI / 2, 'walk', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'stancefix-walkside') {
+        // STANCEFIX: the same gait in PROFILE — stride length,
+        // knee lift and heel/toe sequence from the side, feet
+        // tracking along the sidewalk line.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = 0;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.16;
+        st._shotCamDist = 3.8;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara — walk stride, side', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        stageCastRow([
+          { arch: 'jogger', seed: 900077, phase: 16, dyaw: 0.0, x: -232.8, z: -94.8 }
+        ], 0, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'raka', seed: 1, phase: 6, dyaw: 0.0, x: -232.8, z: -92.0 }
+        ], 0, 'walk', 'neutral');
+        stageCastRow([
+          { arch: 'jogger', seed: 900131, phase: 24, dyaw: 0.0, x: -232.8, z: -89.2 }
+        ], Math.PI, 'walk', 'neutral');
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'polish-face') {
+        // POLISH: face close-up, three heads at 3/4 angles —
+        // eyes / brows / nose / mouth readability, hair silhouette
+        // variety and skin-tone unity are the subject. Player
+        // hidden (legfix-run trick). The on-foot follow camera
+        // ALWAYS sits 6.1 m behind the anchor (player.js — the
+        // _shotCamDist/_shotAimDist branches do not survive the
+        // live input/camera loop), so the close framing is staged
+        // geometrically: the anchor parks 6.1 m EAST of the row
+        // and the subjects stand on the view axis ~1.5 m in
+        // front of the lens, on the sidewalk slab. Spacing via
+        // ?facegap= (lens distance), pitch via ?facepitch=.
+        SH.Main.setHour(17.85);
+        st.player.x = -228.4; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2;
+        var fpitch = parseFloat(params.get('facepitch'));
+        st.camPitch = isNaN(fpitch) ? 0.02 : fpitch;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — face check', x: -240, z: -92 };
+        SH.Player.onFoot = false;
+        if (SH.Player.mesh) SH.Player.mesh.visible = false;
+        var fgap = parseFloat(params.get('facegap'));
+        if (isNaN(fgap)) fgap = 1.5;
+        var figX = -228.4 - 6.1 + fgap;
+        stageCastRow([
+          { arch: 'turis', seed: 900201, phase: 9, dyaw: 0.50, x: figX, z: -92.55 },
+          { arch: 'raka', seed: 1, phase: 5, dyaw: -0.55, x: figX, z: -91.80 },
+          { arch: 'mami', phase: 13, dyaw: 0.45, x: figX, z: -91.05 }
+        ], -Math.PI / 2, 'idle', null);
+        clearCrowd(-232.8, -92.0, 8);
+      } else if (name === 'polish-lineup') {
+        // POLISH: full-body front lineup across archetypes —
+        // palette harmony, outline consistency, hair variety and
+        // ground separation are the subject. The player (Raka)
+        // holds the centre slot, as in stancefix-lineup.
+        SH.Main.setHour(17.85);
+        st.player.x = -232.8; st.player.z = -92.0;
+        st.player.heading = -Math.PI / 2;
+        st.camYaw = -Math.PI / 2; st.camPitch = -0.13;
+        st._shotCamDist = 4.6;
+        snapCamera();
+        st.cash = 3420;
+        st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — polish lineup', x: -240, z: -92 };
+        stageCastRow([
+          { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.03, x: -232.8, z: -94.6 },
+          { arch: 'mami', phase: 13, dyaw: 0.05, x: -232.8, z: -93.55 },
+          { arch: 'ibuHijab', seed: 900301, phase: 4, dyaw: -0.05, x: -232.8, z: -90.95 },
+          { arch: 'jogger', seed: 900077, phase: 11, dyaw: 0.04, x: -232.8, z: -89.9 },
+          { arch: 'kakek', seed: 900401, phase: 2, dyaw: -0.02, x: -232.8, z: -88.85 }
+        ], -Math.PI / 2, 'idle', null);
+        clearCrowd(-232.8, -92.0, 9);
+      } else if (name === 'p2walk' || name === 'p2carjack' || name === 'p2damage' ||
+                 name === 'p2minimap' || name === 'p2market' || name === 'p2lineup') {
+        // POLISH2 (2026-11-23): staging scenes for the combined
+        // visual-polish round's 12-shot contest set. These branches
+        // ONLY stage real game state (positions, poses advanced by
+        // hand, HUD state) — no visual system is changed here. The
+        // freeze pattern is the combat branch's: settle the HUD
+        // with its own refresh, snap the camera, then stop the
+        // clock by direct mode assignment (Menus.syncMode is never
+        // called, so no menu DOM appears; the main loop's paused
+        // branch does not move the camera or the cast).
+        var p2Freeze = function (delay, fn) {
+          window.setTimeout(function () {
+            if (SH.HUD) for (var hi2 = 0; hi2 < 260; hi2++) SH.HUD.refresh();
+            if (fn) fn();
+            snapCamera();
+            st.mode = 'paused';
+          }, delay);
+        };
+        if (name === 'p2walk') {
+          // Daytime sidewalk on the Pelita avenue: the player mid-
+          // stride among a varied walking crowd (cast walkers hold
+          // hand-advanced gait phases; pool peds fill the far
+          // sidewalk and the crossing).
+          SH.Main.setHour(10.8);
+          st.player.x = -112.5; st.player.z = -148;
+          st.player.heading = Math.PI;
+          st.camYaw = 0; st.camPitch = 0.05;
+          snapCamera();
+          st.cash = 3420;
+          st.objective = { title: 'FREE ROAM', text: 'Pelita Heights — morning crowd', x: -120, z: -60 };
+          stageCastRow([
+            { arch: 'kantoran', seed: 900501, phase: 8, dyaw: 0.03, x: -115.2, z: -145.8 },
+            { arch: 'jogger', seed: 900077, phase: 17, dyaw: -0.02, x: -111.6, z: -153.5 },
+            { arch: 'ibuHijab', seed: 900301, phase: 5, dyaw: 0.04, x: -127.0, z: -144.5 },
+            { arch: 'nelayan', seed: 900601, phase: 12, dyaw: -0.03, x: -127.6, z: -152.0 }
+          ], Math.PI, 'walk', null);
+          stagePeds([[-126.8, -138], [-113.2, -160], [-126.5, -162], [-118, -141], [-121, -157], [-112.8, -136]]);
+          stageTraffic([
+            { from: [-120, -60], to: [-120, -180], t: 0.42 },
+            { from: [-120, -180], to: [-120, -60], t: 0.55 }
+          ]);
+          p2Freeze(1000, function () {
+            if (SH.Player && SH.Player.ctl) {
+              SH.Player.ctl.play('walk', 0, true);
+              for (var ws = 0; ws < 11; ws++) SH.Player.ctl.update(1 / 30);
+            }
+          });
+        } else if (name === 'p2carjack') {
+          // POLISH2B (item 1 + the sunken-feet fix): the REAL
+          // pull-out, replacing the old composed frame. The sedan
+          // (saturated red now, not the faded grey-blue) carries a
+          // visible driver seated by Vehicles.seatFigure;
+          // Vehicles.beginCarjack runs the 0.7 s sequence — door
+          // swinging to 70 degrees, the driver climbing out onto
+          // the ground at the door (his root at ground height the
+          // whole way: the measured fix), then backing 1.0 m off
+          // with his hands up. Raka waits at the door spot, 0.75 m
+          // clear of the body flank, holding the enter clip's
+          // opening reach (2 steps — its sit-down keys are the
+          // measured sinking cause and only play once he is over
+          // the seat, in the 'after' phase).
+          // Phases via &cjphase=: before | pull (default, the pool
+          // frame) | after (Raka seated in the car, door shut).
+          // Every phase records sole heights into
+          // window.__cjMeasure for the render harness: the foot
+          // verification numbers ship with the photos.
+          SH.Main.setHour(16.9);
+          var cjPhase = 'pull';
+          try { cjPhase = new URLSearchParams(location.search).get('cjphase') || 'pull'; } catch (e) { /* keep default */ }
+          var cjCar = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xd23b2e, -117.2, -96, 0);
+          cjCar.speed = 0;
+          var cjDoor = SH.Vehicles.doorSpotWorld(cjCar);
+          st.player.x = cjDoor.x; st.player.z = cjDoor.z;
+          st.player.heading = Math.PI / 2;
+          st.camYaw = -0.66; st.camPitch = 0.02;
+          st._shotCamDist = 4.5;
+          snapCamera();
+          st.cash = 3420;
+          st.objective = { title: 'FREE ROAM', text: 'Ruko Senja — a borrowed sedan', x: -117, z: -96 };
+          var cjDriver = SH.CharFactory.create('kantoran', 900501);
+          var cjCtl = SH.CharAnim.create(cjDriver, { start: 'drive', idle: 'idle' });
+          cjDriver.ctrl = cjCtl; cjDriver.ctl = cjCtl;
+          if (cjDriver.setExpression) cjDriver.setExpression('scared');
+          scene.add(cjDriver.group);
+          SH.Vehicles.seatFigure(cjCar, cjDriver.group);
+          cjCtl.update(0.3);
+          stagePeds([[-127.5, -104], [-112.5, -88]]);
+          var cjSole = function (group) {
+            var box = new THREE.Box3(), tmp = new THREE.Box3(), first = true;
+            group.updateMatrixWorld(true);
+            group.traverse(function (o) {
+              if (!o.isMesh) return;
+              if (o.name === 'blob' || (o.userData && o.userData.isOutline)) return;
+              tmp.setFromObject(o);
+              if (first) { box.copy(tmp); first = false; } else box.union(tmp);
+            });
+            var gx = group.position.x, gz = group.position.z;
+            var g = SH.World.groundHeightAt(gx, gz);
+            return { ground: +g.toFixed(3), groupY: +group.position.y.toFixed(3), soleAbove: +(box.min.y - g).toFixed(3) };
+          };
+          p2Freeze(900, function () {
+            var V = SH.Vehicles;
+            // POLISH2B fix (measured, cjdiag): the freeze can beat
+            // the boot -> playing transition on a slow machine, and
+            // Player.update — the only writer of the mesh position
+            // — then never runs, leaving Raka at the market spawn
+            // while st.player already sits at the door. Stage the
+            // mesh explicitly, the cast-row pattern: on the real
+            // ground at the door spot, facing the car.
+            if (SH.Player && SH.Player.mesh) {
+              var pm0 = SH.Player.mesh;
+              pm0.position.set(st.player.x, SH.World.groundHeightAt(st.player.x, st.player.z) + 0.005, st.player.z);
+              pm0.rotation.y = st.player.heading;
+              pm0.visible = true;
+            }
+            if (cjPhase !== 'before') {
+              V.beginCarjack(cjCar, cjDriver);
+              var cjSteps = cjPhase === 'pull' ? 12 : 21;
+              for (var cs = 0; cs < cjSteps; cs++) V.updateCarjack(1 / 30);
+              // 'after': the sequence's last step PLAYS hands_up
+              // but nothing steps the controller afterwards — one
+              // settle step so the surrender pose actually lands.
+              if (cjPhase === 'after') cjCtl.update(0.45);
+              if (cjPhase === 'pull') {
+                if (SH.Player && SH.Player.ctl) {
+                  SH.Player.ctl.play('enter_car', 0, true);
+                  for (var es = 0; es < 2; es++) SH.Player.ctl.update(1 / 30);
+                }
+              } else {
+                // after: Raka climbs in — his group lerps from the
+                // door spot to the seat while the clip runs to its
+                // seated end (the pelvis drop now happens OVER the
+                // seat, as the clip was authored for) and the door
+                // swings shut behind him.
+                var pg = SH.Player.mesh, seatW = V.seatWorld(cjCar);
+                var gyA = SH.World.groundHeightAt(cjCar.x, cjCar.z);
+                var sxA = pg.position.x, szA = pg.position.z;
+                if (SH.Player && SH.Player.ctl) SH.Player.ctl.play('enter_car', 0, true);
+                for (var ns = 0; ns <= 16; ns++) {
+                  var kk = ns / 16;
+                  pg.position.set(sxA + (seatW.x - sxA) * kk, (gyA + 0.005) + ((gyA - 0.22) - (gyA + 0.005)) * kk, szA + (seatW.z - szA) * kk);
+                  pg.rotation.y = (Math.PI / 2) * (1 - kk);
+                  if (SH.Player && SH.Player.ctl) SH.Player.ctl.update(1 / 30);
+                  if (ns > 8) V.setDoorAngle(cjCar, 70 * (1 - (ns - 8) / 8));
+                }
+                pg.visible = true;
+                // Settle into the DRIVE pose at the wheel (the
+                // cover freeze's proven seated read) — the entry
+                // clip's end fold alone leaves him slumped and
+                // unreadable through the glass.
+                if (SH.Player && SH.Player.ctl) {
+                  SH.Player.ctl.play('drive', 0.05, true);
+                  SH.Player.ctl.update(0.35);
+                }
+              }
+            }
+            if (SH.HUD && SH.HUD.setPrompt && cjPhase !== 'after') SH.HUD.setPrompt('F — Enter ' + (cjCar.spec ? cjCar.spec.label : 'Sedan'));
+            window.__cjMeasure = {
+              phase: cjPhase,
+              doorAngle: cjCar._door ? Math.round(cjCar._door.angle) : 0,
+              player: cjSole(SH.Player.mesh),
+              driver: cjSole(cjDriver.group)
+            };
+            // The photo lens (spec): 3/4 front-side of the door,
+            // 4.5 m out, 1.6 m up — set after the freeze's own
+            // snap, the cover-freeze pattern, so nothing re-aims it.
+            window.setTimeout(function () {
+              var cam = SH.Main.getCamera();
+              if (!cam) return;
+              cam.position.set(cjDoor.x - 0.60 * 4.5, 1.6, cjDoor.z + 0.78 * 4.5);
+              cam.lookAt(cjDoor.x, 0.95, cjDoor.z);
+              if (SH.Player) SH.Player._camPos = cam.position.clone();
+            }, 60);
+          });
+        } else if (name === 'p2damage') {
+          // A civilian sedan that met a wall: slewed across the
+          // avenue edge at hp 18 through the real damage path
+          // (damage(82) — not dead, so no explosion and no char;
+          // the generalised emitter smokes it on its real cadence
+          // and the freeze steps that emitter until the column
+          // stands). Raka in the foreground reads the wreck.
+          SH.Main.setHour(17.7);
+          var dmCar = SH.Vehicles.spawnVehicle(scene, 'sedan', 0xb03a2e, -118.5, -70, 0.6);
+          dmCar.speed = 0;
+          SH.Vehicles.damage(dmCar, 82);
+          // POLISH2 round 2: the round-1 frame caught the wreck's
+          // REAR (tail lights to camera). Stand south-west of it
+          // instead — the nose, the smoked glasshouse and the
+          // column read from the front three-quarter.
+          st.player.x = -121.5; st.player.z = -73.0;
+          st.player.heading = Math.atan2(-118.5 - -121.5, -70 - -73.0);
+          st.camYaw = st.player.heading + Math.PI; st.camPitch = 0.05;
+          snapCamera();
+          st.cash = 3420;
+          st.objective = { title: 'FREE ROAM', text: 'Someone parked that the hard way', x: -118, z: -70 };
+          stageTraffic([
+            { from: [-120, -180], to: [-120, -60], t: 0.30 }
+          ]);
+          stagePeds([[-128.5, -80], [-104, -52]]);
+          p2Freeze(1100, function () {
+            if (SH.Effects) {
+              // POLISH2 round 1: denser smoke — more emitter steps
+              // at a finer age step, so the column stands thick
+              // instead of dissipating between spawns.
+              for (var di2 = 0; di2 < 150; di2++) {
+                if (SH.Vehicles.updateVisuals) SH.Vehicles.updateVisuals();
+                SH.Effects.update(1 / 240, SH.Main.getCamera());
+              }
+            }
+          });
+        } else if (name === 'p2minimap') {
+          // Driving the avenue with every minimap layer live at
+          // once: green place blips, the yellow objective marker,
+          // a white player-set waypoint, and flashing police blips
+          // from a real two-star response behind.
+          SH.Main.setHour(11.4);
+          var mmCar = SH.Vehicles.spawnVehicle(scene, 'sedan', 0x3a6ea5, -120, -118, Math.PI);
+          mmCar.speed = 8;
+          enterClean(mmCar);
+          st._shotCruise = { speed: 8 };
+          st.camYaw = 0; st.camPitch = 0.05;
+          snapCamera();
+          st.cash = 2310;
+          st.objective = { title: 'PORT OF LIES', text: 'Lose the police completely', x: 60, z: 232 };
+          st.waypoint = { x: 60, z: 240 };
+          if (SH.Police) {
+            SH.Police.forceWanted(2);
+            SH.Police.spawnCar(true);
+            SH.Police.spawnCar(true);
+          }
+          stageTraffic([
+            { from: [-120, -300], to: [-120, -180], t: 0.5 }
+          ]);
+          p2Freeze(1300, null);
+        } else if (name === 'p2market') {
+          // The night market at peace: Raka walking the lit
+          // walkway, vendors at their stalls, shoppers between
+          // them — the combat branch's arena without the fight.
+          SH.Main.setHour(20.4);
+          // POLISH2 round 1: the BEFORE frame parked the camera
+          // inside a stall canopy (a tent roof filled the whole
+          // left foreground, Raka small behind it). The player
+          // steps 2.5 m forward into the aisle and the crowd
+          // spots move onto the walkway line with him.
+          st.player.x = -323.2; st.player.z = 92.5;
+          st.player.heading = 0.897;
+          st.camYaw = -2.244; st.camPitch = 0.04;
+          snapCamera();
+          st.cash = 4650;
+          st.objective = { title: 'NIGHT MARKET', text: 'Ruko Senja after dark', x: -325, z: 91 };
+          stageCastRow([
+            { arch: 'pedagang', seed: 900701, phase: 9, dyaw: 0.05, x: -328.3, z: 87.8 },
+            { arch: 'warung', seed: 900801, phase: 15, dyaw: -0.04, x: -321.8, z: 87.6 },
+            { arch: 'ibuBelanja', seed: 900901, phase: 6, dyaw: 0.03, x: -321.5, z: 95.5 }
+          ], 2.75, 'talk', null);
+          stagePeds([[-321, 94.5], [-319, 91], [-328, 95], [-316.5, 93], [-314, 90], [-331, 92.5], [-324, 89], [-326, 96.5]]);
+          p2Freeze(1000, function () {
+            if (SH.Player && SH.Player.ctl) {
+              SH.Player.ctl.play('walk', 0, true);
+              for (var ms2 = 0; ms2 < 9; ms2++) SH.Player.ctl.update(1 / 30);
+            }
+          });
+        } else if (name === 'p2lineup') {
+          // POLISH2: the clothing lineup — eleven archetypes in
+          // one row on the usual slab, the player holding the
+          // centre slot. Composed for the LIVE on-foot camera
+          // (6.1 m — _shotCamDist does not survive the loop), so
+          // the row spans what that lens actually covers.
+          SH.Main.setHour(17.85);
+          st.player.x = -232.8; st.player.z = -92.0;
+          st.player.heading = -Math.PI / 2;
+          st.camYaw = -Math.PI / 2; st.camPitch = -0.10;
+          // POLISH2 round 1: closer lens + tighter spacing — the
+          // BEFORE row read small for a clothing close-up.
+          st._shotCamDist = 5.6;
+          snapCamera();
+          st.cash = 3420;
+          st.objective = { title: 'FREE ROAM', text: 'Selatara Heat — wardrobe lineup', x: -240, z: -92 };
+          stageCastRow([
+            { arch: 'patrol', seed: 900007, phase: 7, dyaw: -0.03, x: -232.8, z: -96.05 },
+            { arch: 'swat', seed: 900021, phase: 3, dyaw: 0.02, x: -232.8, z: -95.35 },
+            { arch: 'mami', phase: 13, dyaw: 0.05, x: -232.8, z: -94.25 },
+            { arch: 'kantoran', seed: 900501, phase: 9, dyaw: -0.04, x: -232.8, z: -93.55 },
+            { arch: 'nelayan', seed: 900601, phase: 5, dyaw: 0.03, x: -232.8, z: -92.85 },
+            { arch: 'ojek', seed: 901001, phase: 11, dyaw: -0.02, x: -232.8, z: -91.15 },
+            { arch: 'jogger', seed: 900077, phase: 16, dyaw: 0.04, x: -232.8, z: -90.45 },
+            { arch: 'ibuHijab', seed: 900301, phase: 4, dyaw: -0.05, x: -232.8, z: -89.75 },
+            { arch: 'pekerjaDermaga', seed: 901101, phase: 8, dyaw: 0.02, x: -232.8, z: -89.05 },
+            { arch: 'warung', seed: 900801, phase: 2, dyaw: -0.03, x: -232.8, z: -88.35 }
+          ], -Math.PI / 2, 'idle', null);
+          clearCrowd(-232.8, -92.0, 9);
+        }
       } else if (name === 'map') {
         SH.Main.setHour(10.5);
+        // POLISH 01/02/04: the map shot stages the same mid-game
+        // state as the stats shot — THE KENCANA HEIST is the live
+        // mission (index 5, as in the stats staging), its real
+        // first-step objective (the boardwalk jewellery store at
+        // 60/214, from missions.js) is the yellow pin, and the
+        // player stands at the Ruko Senja safehouse so the route
+        // line the full map now draws crosses the whole city.
+        if (SH.Missions) SH.Missions.currentIndex = 5;
+        st.player.x = -368; st.player.z = 84;
+        st.objective = { title: 'THE KENCANA HEIST', text: 'Case the jewellery store on the boardwalk', x: 60, z: 214 };
         st.mode = 'map';
-        if (SH.Missions) SH.Missions.startIntroObjective();
       } else {
         if (SH.Missions) SH.Missions.startIntroObjective();
       }

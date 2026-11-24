@@ -105,9 +105,22 @@
       return SH.Config.weapons[SH.State.weapon] || SH.Config.weapons.fist;
     },
 
+    // POLISH2D: keep the player's hand prop in sync with the
+    // equipped weapon (visual only — the factory owns the prop
+    // and its true-metre scale). Before this, equipping changed
+    // nothing in the hand: the SMG/shotgun had no prop at all
+    // and the pistol appeared only on photo sets.
+    _syncHandProp: function () {
+      if (SH.CharFactory && SH.CharFactory.syncWeapon && SH.Player && SH.Player.char) {
+        var w = SH.State.weapon;
+        SH.CharFactory.syncWeapon(SH.Player.char, w === 'fist' ? null : w);
+      }
+    },
+
     giveWeapon: function (id, ammo) {
       this.owned[id] = true;
       SH.State.weapon = id;
+      this._syncHandProp();
       var spec = SH.Config.weapons[id];
       SH.State.ammo = spec.mag === Infinity ? 0 : spec.mag;
       SH.State.ammoReserve = (ammo || 0) + (spec.mag === Infinity ? 0 : spec.mag);
@@ -120,6 +133,7 @@
         var id = ORDER[(cur + i) % ORDER.length];
         if (this.owned[id]) {
           SH.State.weapon = id;
+          this._syncHandProp();
           this.reloadTimer = 0;
           var spec = SH.Config.weapons[id];
           if (spec.mag !== Infinity && SH.State.ammo > spec.mag) SH.State.ammo = spec.mag;
@@ -161,6 +175,11 @@
       // at the gun (0.35 m toward the target), not at body centre.
       SH.Effects.muzzle(x, y, z, dx / dist, dz / dist);
       SH.Effects.tracer(x, y, z, ex, ty, ez, true);
+      // VISUAL POLISH step 4: hostile shots panic bystanders too —
+      // a crowd that only reacts to the PLAYER's gunfire reads
+      // deaf in a two-way fight. scare() skips peds already
+      // fleeing or ducking, so burst fire doesn't stack timers.
+      if (SH.Pedestrians) SH.Pedestrians.scare(x, z, 18);
       if (SH.Audio) SH.Audio.shot('enemy');
       if (!miss) {
         if (st.driving && st.vehicle) {
@@ -180,7 +199,7 @@
           // Vehicle and ground-miss impacts keep sparks.
           SH.Effects.blood(ex, ty, ez);
         }
-      } else SH.Effects.sparks(ex, 0.4, ez);
+      } else { SH.Effects.sparks(ex, 0.4, ez); SH.Effects.dust(ex, 0.15, ez); }
     },
 
     // ---- enemies ---------------------------------------------------------------
@@ -428,7 +447,10 @@
         SH.Effects.sparks(hx, hy, hz);
         if (SH.HUD) SH.HUD.hitmark();
       }
-      else SH.Effects.sparks(hx, hy, hz);
+      // VISUAL POLISH step 4: a world-surface hit (wall / ground)
+      // kicks up dust alongside the sparks — bullets landing in
+      // dirt and masonry puff, they don't only glitter.
+      else { SH.Effects.sparks(hx, hy, hz); SH.Effects.dust(hx, hy, hz); }
     },
 
     meleeSwing: function () {
@@ -597,9 +619,16 @@
         } else {
           e.ctl.setSpeed(spd);
         }
-        e.ctl.update(dt);
-        e.mesh.position.set(e.x, 0, e.z);
+        // LEGFIX A: enemies ride the surface lookup; position is
+        // set BEFORE the pose update so the foot-ground layer
+        // reads this frame's root, not last frame's.
+        var egT = SH.World.groundHeightAt(e.x, e.z);
+        if (e.gy === undefined) e.gy = egT;
+        var egStep = (egT > e.gy ? 1.8 : 2.8) * dt;
+        e.gy += Math.max(-egStep, Math.min(egStep, egT - e.gy));
+        e.mesh.position.set(e.x, e.gy + 0.005, e.z);
         e.mesh.rotation.y = e.state === 'attack' || e.state === 'alert' ? Math.atan2(f.x - e.x, f.z - e.z) : e.heading;
+        e.ctl.update(dt);
       }
     },
 

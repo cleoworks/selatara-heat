@@ -62,7 +62,11 @@
     t.generateMipmaps = false; t.needsUpdate = true;
     return t;
   }
-  var gradientMapBody = makeGradient([[86, 68, 60], [174, 156, 140], [255, 243, 228]]);
+  // PROPFIX (2026-11-22): shade step deepened hard (86 -> 64) and
+  // the mid step pulled down — the 3 toon bands must read as 2-3
+  // CLEAR bands at street distance, the same shading language as
+  // the buildings, not a soft wash (Bos point 10).
+  var gradientMapBody = makeGradient([[64, 50, 44], [168, 150, 134], [255, 244, 230]]);
   // Finer 4-step gradient, HEAD SKIN ONLY: the 3-step map quantized the
   // sphere's lighting into one hard diagonal band across the face (the
   // chibi proof's worst defect). Four steps move the band boundaries
@@ -70,7 +74,10 @@
   // 3-step map the buildings use, so the shading language stays shared.
   // BODYFIX2: steps deepened a touch and warm-tinted like the body
   // map — still four soft steps, so the face ramp can never band.
-  var gradientMapSoft = makeGradient([[118, 102, 92], [174, 158, 144], [216, 202, 186], [255, 246, 236]]);
+  // POLISH (Bos point 4): the two shade steps deepened so the
+  // face bands read as clear steps (not a soft wash), still four
+  // steps so no single hard edge can slash the face.
+  var gradientMapSoft = makeGradient([[92, 76, 66], [160, 144, 130], [216, 202, 186], [255, 246, 236]]);
   var matCache = {}, skinCache = {};
   // ROUND 3 (user spec 2026-11-22): character materials share the world's
   // rendering grade — ACES tone mapping and fog ON. Round 2 forced
@@ -91,6 +98,30 @@
   var outlineMat = (function () {
     return new THREE.MeshBasicMaterial({ color: 0x2a1a12, side: THREE.BackSide });
   })();
+  // POLISH (Bos point 5): the outline is a darker shade of the
+  // part's OWN colour, never near-black — one shared dark-brown
+  // hull (0x2a1a12) read as a black sticker line on pale skin,
+  // grey hair and cream cloth alike. Cached per base colour.
+  var outlineCache = {};
+  function outlineMatFor(material) {
+    // POLISH2: cloth materials carry a baked full-colour texture
+    // (colour white), so their base hex rides on userData.baseHex.
+    var hex = (material && material.userData && material.userData.baseHex != null) ? material.userData.baseHex
+      : (material && material.color) ? material.color.getHex() : 0x2a1a12;
+    if (outlineCache[hex]) return outlineCache[hex];
+    var c = new THREE.Color(hex);
+    c.multiplyScalar(0.40);
+    var m = new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide });
+    outlineCache[hex] = m; return m;
+  }
+  // POLISH (Bos point 2): lighten a hex toward white by f (0..1) —
+  // the hair highlight tone is derived from the base hair colour.
+  function lighten(hex, f) {
+    var r = clamp(Math.round(((hex >> 16) & 255) + (255 - ((hex >> 16) & 255)) * f), 0, 255),
+      g = clamp(Math.round(((hex >> 8) & 255) + (255 - ((hex >> 8) & 255)) * f), 0, 255),
+      b = clamp(Math.round((hex & 255) + (255 - (hex & 255)) * f), 0, 255);
+    return (r << 16) | (g << 8) | b;
+  }
   var blobMat = (function () {
     var cv = document.createElement('canvas'); cv.width = cv.height = 128;
     var c = cv.getContext('2d');
@@ -103,11 +134,126 @@
     // BODYFIX4: core deepened again (0.70 -> 0.80, mid 0.44 ->
     // 0.56) — at lineup distance the dark shoes needed a darker
     // contact pool under them to separate from the ground.
-    g.addColorStop(0, 'rgba(8,6,4,0.80)'); g.addColorStop(0.7, 'rgba(8,6,4,0.56)'); g.addColorStop(1, 'rgba(8,6,4,0)');
+    // PROPFIX: core 0.88 / mid 0.68 and the disc itself grows
+    // (blob4 plane 0.80 -> 0.96 in buildRig) — Bos point 10: the
+    // contact shadow must stay planted at the wider new stance.
+    // POLISH03 (user item 1): REVERSED — at 0.92 core / 0.74 mid
+    // the disc read as a hard black plate under every character
+    // in the market frame. Peak alpha drops to 0.55 (~40%
+    // transparent overall) and the falloff spreads across the
+    // whole radius (0.45 / 0.75 stops) so the edge is a soft
+    // gradient, not a rim; the disc itself shrinks in buildRig.
+    g.addColorStop(0, 'rgba(8,6,4,0.55)'); g.addColorStop(0.45, 'rgba(8,6,4,0.40)'); g.addColorStop(0.75, 'rgba(8,6,4,0.16)'); g.addColorStop(1, 'rgba(8,6,4,0)');
     c.fillStyle = g; c.fillRect(0, 0, 128, 128);
-    var m = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false });
+    var m = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     m.toneMapped = false; m.fog = false; return m;
   })();
+
+  // ---- cloth materials (POLISH2, Bos spec A) -------------------------------
+  // Clothing stops being flat-shaded colour blocks: every garment
+  // material carries a baked canvas texture — a fine weave grain,
+  // soft vertical fold streaks (the fold read the geometry-only
+  // passes kept skipping for ring risk), and the archetype patterns
+  // (hawaii / stripes / batik) or a denim twill for trousers. The
+  // texture is baked in FULL colour and the material colour stays
+  // white; the base hex rides on userData.baseHex so the
+  // per-colour outline hull keeps its tint (see outlineMatFor).
+  function cssHex(hex) {
+    return '#' + ('000000' + (hex >>> 0).toString(16)).slice(-6);
+  }
+  function clothTexture(hex, pattern, hex2, soft) {
+    // VISUAL POLISH step 5: the SOFT variant (trousers/legs) —
+    // the standard fold streaks are vertical gradients, and on
+    // the long leg lathes they stretch the full limb length and
+    // read as sewn-in PINSTRIPES (the user's "striped trousers"
+    // call on the market frame). Soft halves the fold + rib
+    // contrast so legs read as cloth with a weave, not stripes;
+    // torso garments keep the full-strength folds.
+    var foldA = soft ? 0.045 : 0.11, foldL = soft ? 0.03 : 0.07, ribA = soft ? 0.045 : 0.10;
+    var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    var g = cv.getContext('2d');
+    g.fillStyle = cssHex(hex); g.fillRect(0, 0, 128, 128);
+    // deterministic scatter, seeded by the colours themselves
+    var s = ((hex ^ ((hex2 || 0) * 7)) >>> 0) || 1;
+    function rnd() { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }
+    var i, x, y;
+    if (pattern === 'hawaii' && hex2 != null) {
+      // scattered hibiscus: five petals + a light heart, plus
+      // small leaf pairs — flat print, original motif.
+      g.fillStyle = cssHex(hex2);
+      for (i = 0; i < 15; i++) {
+        var fx = rnd() * 128, fy = rnd() * 128, fr = 4.5 + rnd() * 4;
+        for (var p = 0; p < 5; p++) {
+          var pa = p / 5 * Math.PI * 2 + rnd() * 0.3;
+          g.beginPath();
+          g.ellipse(fx + Math.cos(pa) * fr * 0.62, fy + Math.sin(pa) * fr * 0.62, fr * 0.52, fr * 0.30, pa, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.fillStyle = 'rgba(255,246,220,0.85)';
+        g.beginPath(); g.arc(fx, fy, fr * 0.22, 0, Math.PI * 2); g.fill();
+        g.fillStyle = cssHex(hex2);
+        g.beginPath(); g.ellipse(fx + fr * 1.7, fy + fr * 0.9, fr * 0.55, fr * 0.20, 0.7, 0, Math.PI * 2); g.fill();
+      }
+    } else if (pattern === 'stripes' && hex2 != null) {
+      g.fillStyle = cssHex(hex2);
+      for (y = 6; y < 128; y += 30) g.fillRect(0, y, 128, 13);
+    } else if (pattern === 'batik' && hex2 != null) {
+      g.fillStyle = cssHex(hex2);
+      for (var ry = 0; ry < 4; ry++) for (var rx = 0; rx < 4; rx++) {
+        var bx = rx * 32 + (ry % 2 ? 16 : 0), by = ry * 32 + 8;
+        g.beginPath(); g.arc(bx, by, 3.2, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(bx + 9, by + 12, 1.8, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(bx - 8, by + 13, 1.8, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = cssHex(hex2); g.lineWidth = 1.6;
+        g.beginPath(); g.arc(bx, by + 4, 7.5, 0.25, Math.PI - 0.25); g.stroke();
+      }
+    }
+    if (pattern === 'twill') {
+      // denim: fine diagonal ribs + pale fade streaks
+      g.strokeStyle = 'rgba(10,10,24,' + ribA + ')'; g.lineWidth = 1;
+      for (i = -128; i < 256; i += 3) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 128, 128); g.stroke();
+      }
+      g.fillStyle = 'rgba(255,255,255,' + (soft ? 0.03 : 0.05) + ')';
+      for (i = 0; i < 6; i++) { x = rnd() * 128; g.fillRect(x, 0, 5 + rnd() * 7, 128); }
+    }
+    // fold streaks: soft vertical shade/light pairs — cloth that
+    // hangs and bends, not a painted tube.
+    for (i = 0; i < 6; i++) {
+      x = rnd() * 128;
+      var fg = g.createLinearGradient(x, 0, x + 9, 0);
+      fg.addColorStop(0, 'rgba(0,0,0,0)');
+      fg.addColorStop(0.5, 'rgba(0,0,0,' + foldA + ')');
+      fg.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = fg; g.fillRect(x, 0, 9, 128);
+      var lg = g.createLinearGradient(x + 9, 0, x + 14, 0);
+      lg.addColorStop(0, 'rgba(255,255,255,' + foldL + ')');
+      lg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = lg; g.fillRect(x + 9, 0, 5, 128);
+    }
+    // weave grain over everything
+    g.fillStyle = 'rgba(0,0,0,0.05)';
+    for (y = 0; y < 128; y += 2) g.fillRect(0, y, 128, 1);
+    g.fillStyle = 'rgba(255,255,255,0.035)';
+    for (x = 0; x < 128; x += 2) g.fillRect(x, 0, 1, 128);
+    var t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    // The canvas is painted in sRGB hex — tag it, or the renderer
+    // treats the texels as linear and every garment washes out a
+    // full stop brighter (round-1 proof: Raka's orange printed
+    // beige, the office suit printed white).
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  var clothCache = {};
+  function matCloth(hex, pattern, hex2, soft) {
+    var key = hex + '|' + (pattern || '') + '|' + (hex2 || 0) + (soft ? '|s' : '');
+    if (clothCache[key]) return clothCache[key];
+    var m = new THREE.MeshToonMaterial({ color: 0xffffff, map: clothTexture(hex, pattern, hex2, soft), gradientMap: gradientMapBody });
+    m.userData.baseHex = hex;
+    clothCache[key] = m; return m;
+  }
 
   // ---- unit-space metrics (character local height = 1) ---------------------
   // Semi-realistic proportions (Bos spec): ~7.25 heads tall. Head height
@@ -123,14 +269,25 @@
   // pivot stays at 0.36 m at H 1.75 — the old rig's height, so sitters
   // stay grounded on the same benches/car seats: unit 0.2057, dy -0.299
   // (pelvis rose +0.015 in BODYFIX3; world height unchanged).
+  // PROPFIX (2026-11-22, Bos's 11-point spec from the bodymeasure
+  // report): leg length 49.0% -> 47.0% — pelvis 0.505 -> 0.485, so
+  // the thigh pivot lands at 0.470 and the torso (hip pivot -> neck)
+  // lengthens 0.355 -> 0.375. Knee re-derived proportionally inside
+  // the shorter leg (thigh 0.211 / shin 0.204): kneeY 0.27 -> 0.259.
+  // Shoulder pivots in (0.115 -> 0.107: shoulder line incl. arms
+  // ~0.287H -> ~0.271H) and hip pivots out (0.088 -> 0.104) so the
+  // feet land at shoulder width under the widened pelvis. Seated /
+  // death heights re-derived proportionally (factor 0.470/0.490):
+  // sit world 0.2057 -> 0.1973 (0.345 m at H 1.75), dy -0.288;
+  // death rest 0.140 -> 0.134 (see the death pose keys).
   var M = {
-    pelvisY: 0.505, ankleY: 0.055, kneeY: 0.27,
+    pelvisY: 0.485, ankleY: 0.055, kneeY: 0.259,
     spine1Y: 0.60, spine2Y: 0.72, neckY: 0.845, headY: 0.862,
     headCY: 0.069, headR: 0.069, // head centre / radius, head-pivot local
     headHW: 0.0552, headHD: 0.0607, // head half width / half depth
-    shoulderX: 0.115, shoulderDY: 0.095,
-    elbowDY: -0.175, handDY: -0.17, hipX: 0.088,
-    sitDY: -0.299, sitPelvisWorld: 0.2057 // seated pelvis, unit space
+    shoulderX: 0.107, shoulderDY: 0.095,
+    elbowDY: -0.175, handDY: -0.17, hipX: 0.104,
+    sitDY: -0.288, sitPelvisWorld: 0.1973 // seated pelvis, unit space
   };
   // Builds vary shoulder width, belly, hip width AND height feel, not
   // only scale: w = overall width, d = depth, shoulder = shoulder-line
@@ -276,7 +433,10 @@
       // dome read as bolted action-figure joints. The raised rim is
       // the crotch point: below it the two leg tubes separate into
       // a clean inseam V, front and back.
-      return lathe('hips6', [[0.052, -0.040], [0.082, -0.036], [0.098, -0.020], [0.104, -0.002], [0.1065, 0.015], [0.103, 0.045], [0.098, 0.080]]);
+      // PROPFIX: all radii x1.158 — the female pelvis lands at
+      // male hip +5.5% against the PROPFIX male pelvis below
+      // (Bos point 6: +5-6%, not the old +12.7%).
+      return lathe('hips7', [[0.0715, -0.040], [0.0995, -0.036], [0.1135, -0.020], [0.1204, -0.002], [0.1233, 0.015], [0.1192, 0.045], [0.1135, 0.080]]);
     },
     hipsM: function () {
       // BODYFIX5: MALE pelvis — the shared hips6 dome reads as a
@@ -290,15 +450,59 @@
       // trouser cloth sloping down, not a lifted curve. The rim /
       // crotch point is IDENTICAL to hips6 (-0.040, r 0.052) so
       // the inseam V and the thigh6/thighM tuck are unchanged.
-      return lathe('hipsM5', [[0.052, -0.040], [0.080, -0.036], [0.093, -0.020], [0.099, -0.004], [0.1005, 0.012], [0.096, 0.040], [0.091, 0.080]]);
+      // PROPFIX: all radii x1.163 and hipK 0.94 -> 1.00 in
+      // buildRig — male hip ratio 64-66 -> ~84 (shoulder = 100,
+      // Bos point 1). The peak stays low and the top stays
+      // narrower than the peak, so the straighter male drop and
+      // the flat seat survive the widening.
+      return lathe('hipsM6', [[0.0720, -0.040], [0.0980, -0.036], [0.1081, -0.020], [0.1151, -0.004], [0.1169, 0.012], [0.1116, 0.040], [0.1058, 0.080]]);
     },
     torso: function () {
-      return lathe('torso4', [[0.030, -0.085], [0.082, -0.080], [0.100, -0.068], [0.101, -0.052], [0.097, -0.030], [0.0955, 0.000], [0.098, 0.040], [0.100, 0.080], [0.100, 0.105]]);
+      // PROPFIX: all radii x1.134 — the waist was the frame's
+      // worst deviation (ratio 64-67 vs Bos's 82); with the
+      // shoulder line pulled in to ~0.271H this lands the waist
+      // at ~78 (Bos point 1). The top rings grow by the same
+      // factor so the trunk reads as ONE straighter column into
+      // the chest, not a waist bulge.
+      return lathe('torso5', [[0.0340, -0.085], [0.0930, -0.080], [0.1134, -0.068], [0.1145, -0.052], [0.1100, -0.030], [0.1083, 0.000], [0.1111, 0.040], [0.1134, 0.080], [0.1134, 0.105]]);
     },
     chest: function () {
       return lathe('chest4', [[0.020, -0.045], [0.070, -0.040], [0.095, -0.028], [0.104, -0.005], [0.116, 0.030], [0.124, 0.062], [0.123, 0.090], [0.114, 0.112], [0.092, 0.132], [0.058, 0.146], [0.046, 0.152]]);
     },
-    belt: function () { return cyl('belt4', 0.0985, 0.0985, 0.024, 14); },
+    belt: function () { return cyl('belt5', 0.1120, 0.1120, 0.024, 14); },
+    // POLISH2 (spec A1): the waistband as its own layer — a wider
+    // belt seated at the trouser waist (spine1 -0.038, over the
+    // hips' top ring) so hem -> belt + buckle -> trousers stack as
+    // three readable layers instead of one tube with a ring on it.
+    beltP2: function () { return cyl('beltP2', 0.1175, 0.1175, 0.024, 14); },
+    // POLISH2B (item 6): the police duty belt — a full 0.05 m band.
+    beltDuty: function () { return cyl('beltDuty2', 0.1185, 0.1185, 0.050, 14); },
+    // POLISH2 (spec A1): the garment HEM — a short flared lathe
+    // that starts on the torso, swells gently and ends BELOW the
+    // torso's waist, overlapping the belt's top edge: the jacket /
+    // shirt silhouette the flat torso lathe never had. Radii ride
+    // ~0.006 proud of the torso profile so no surface z-fights.
+    hem: function () {
+      return lathe('hemP2', [[0.1155, 0.014], [0.1175, -0.008], [0.1200, -0.022], [0.1215, -0.030]], 14);
+    },
+    hemSlim: function () {
+      return lathe('hemP2s', [[0.1135, 0.010], [0.1145, -0.010], [0.1160, -0.024]], 14);
+    },
+    // POLISH2: safety-vest reflective bands that FOLLOW the trunk
+    // profiles (+~0.005 proud) instead of floating as cylinders.
+    reflChest: function () {
+      return lathe('reflP2c', [[0.1120, 0.004], [0.1170, 0.018], [0.1225, 0.034], [0.1255, 0.046]], 14);
+    },
+    reflWaist: function () {
+      return lathe('reflP2w', [[0.1195, -0.068], [0.1205, -0.056], [0.1170, -0.044]], 14);
+    },
+    // POLISH2 (spec A4): the hijab's shoulder drape — an open
+    // lathe cone from the neck over the shoulders, so the cloth
+    // falls as cloth instead of ending at a head shell.
+    hijabDrape: function () {
+      return lathe('drapeP2', [[0.050, 0.010], [0.082, -0.045], [0.118, -0.105], [0.130, -0.150]], 14);
+    },
+    btn: function () { return geo('btnP2', function () { var g = new THREE.SphereGeometry(0.0034, 8, 6); g.scale(1, 1, 0.55); return g; }); },
     collar: function () {
       return lathe('collar4', [[0.125, 0.098], [0.108, 0.120], [0.084, 0.138], [0.055, 0.150]]);
     },
@@ -320,13 +524,18 @@
     uArm: function () {
       // BODYFIX2: bottom extended to -0.180 so the profile still
       // covers the elbow joint after elbowDY moved to -0.175.
-      return lathe('uarm5', [[0.010, 0.025], [0.026, 0.012], [0.0285, -0.010], [0.0275, -0.060], [0.0255, -0.110], [0.0235, -0.150], [0.014, -0.180]], 12);
+      // PROPFIX (Bos point 8): the top rings taper in gradually
+      // (0.010/0.026/0.0285 ball -> 0.008/0.022/0.0275 slope) and
+      // the shoulder pivot moved in to 0.107, so the arm emerges
+      // from the chest slope as ONE smooth shoulder line — no
+      // round deltoid bump sitting on the jacket.
+      return lathe('uarm6', [[0.008, 0.028], [0.022, 0.014], [0.0275, -0.008], [0.0270, -0.060], [0.0255, -0.110], [0.0235, -0.150], [0.014, -0.180]], 12);
     },
     fArm: function () {
       // BODYFIX2: bottom extended to -0.174 for the new handDY -0.17.
       return lathe('farm5', [[0.009, 0.018], [0.020, 0.006], [0.0235, -0.020], [0.0225, -0.060], [0.0195, -0.105], [0.0160, -0.140], [0.0135, -0.160], [0.010, -0.174]], 12);
     },
-    cuff: function () { return cyl('cuff4', 0.0175, 0.0175, 0.020, 12); },
+    cuff: function () { return cyl('cuff4', 0.0175, 0.0175, 0.030, 12); },
     sleeveBand: function () { return cyl('slband4', 0.0265, 0.0265, 0.024, 12); },
     hand: function (side) {
       // BODYFIX3: the fingerless paddle is gone (Bos: "Tangan gada
@@ -334,7 +543,12 @@
       // merged into ONE geometry per hand (buildHandGeo) — same
       // ~0.082 envelope and the exact face-skin material instance
       // as BODYFIX2's mitt. Cached per side (the thumb mirrors).
-      return geo('hand6' + (side > 0 ? 'L' : 'R'), function () { return buildHandGeo(side); });
+      // PROPFIX (Bos point 7): the whole hand scales 0.85 — the
+      // BODYFIX2 envelope read oversized against the slimmed
+      // arms. The material is untouched: hands already use the
+      // exact face-skin material instance (handM = skinM in
+      // buildRig), so hand tone can never run paler than the arm.
+      return geo('hand7' + (side > 0 ? 'L' : 'R'), function () { var g = buildHandGeo(side); g.scale(0.85, 0.85, 0.85); return g; });
     },
     thigh: function () {
       // BODYFIX3: ONE trouser surface from above the hip joint to
@@ -348,7 +562,20 @@
       // knee 0.27). Because the tube surrounds the joint and the
       // hips dome (hips6) tucks inside it, no circular seam can
       // show at the hip, standing or at full stride.
-      return lathe('thigh6', [[0.010, 0.050], [0.026, 0.038], [0.044, 0.018], [0.054, -0.002], [0.0575, -0.030], [0.0545, -0.075], [0.0485, -0.125], [0.0415, -0.170], [0.0355, -0.200], [0.0330, -0.220], [0.021, -0.238]], 12);
+      // PROPFIX: knee ring = the MALE knee ring (0.0355) — Bos
+      // point 6: women's knee and ankle widths equal men's. The
+      // knee line moved with the 47% leg (knee pivot now -0.211
+      // below the thigh pivot, was -0.220).
+      // PROPFIX round 3: the upper rings (-0.002..-0.125) taper
+      // x0.92 — the hip widening (hipK 1.00) had pushed the
+      // thigh-top ratio to ~43 vs the 36 reference; the knee
+      // ring and below are untouched, so knee/ankle stay on spec
+      // and the column tapers straighter (Bos point 4).
+      // LEGFIX B: upper rings x0.95 — the probe still read the
+      // thigh top at 38.3 (shoulder = 100) against the 36-37
+      // target; the knee ring and below stay, so the column
+      // keeps its straight taper.
+      return lathe('thigh7', [[0.010, 0.050], [0.026, 0.038], [0.044, 0.018], [0.0472, -0.002], [0.0503, -0.030], [0.0476, -0.075], [0.0446, -0.125], [0.0435, -0.170], [0.0395, -0.191], [0.0355, -0.211], [0.023, -0.229]], 12);
     },
     thighM: function () {
       // BODYFIX5: MALE thigh — same construction contract as
@@ -360,31 +587,54 @@
       // read. thighM keeps the volume (max 0.0560 at the joint)
       // and tapers almost linearly to a shallow knee (0.0385 =
       // 69% of max): a straight trouser column, not a curve.
-      return lathe('thighM5', [[0.010, 0.050], [0.026, 0.038], [0.044, 0.018], [0.0535, -0.002], [0.0560, -0.030], [0.0525, -0.075], [0.0480, -0.125], [0.0435, -0.170], [0.0400, -0.200], [0.0385, -0.220], [0.024, -0.238]], 12);
+      // PROPFIX (Bos point 4): straight, slightly loose trousers
+      // — the knee ring drops to 0.0355 at the new knee line
+      // (-0.211) so knee ratio lands 26-27 (shoulder = 100) and
+      // the column thigh -> knee -> ankle stops tapering hard.
+      // PROPFIX round 3: upper rings x0.92 (see thigh7) — the
+      // joint stays the widest point of the leg, but the
+      // thigh-top ratio returns to ~37 from ~43.
+      // LEGFIX B: upper rings x0.95, same correction as thigh7
+      // (probe thigh top 38.3 -> target 36-37, shoulder = 100).
+      return lathe('thighM6', [[0.010, 0.050], [0.026, 0.038], [0.044, 0.018], [0.0467, -0.002], [0.0489, -0.030], [0.0459, -0.075], [0.0442, -0.125], [0.0435, -0.170], [0.0390, -0.191], [0.0355, -0.211], [0.023, -0.229]], 12);
     },
     shin: function () {
       // BODYFIX2: shin segment 0.215; calf 0.0325 easing to a
       // relaxed ankle 0.0225 (trouser leg, not a stocking).
-      return lathe('shin5', [[0.011, 0.017], [0.027, 0.004], [0.0305, -0.028], [0.0325, -0.065], [0.028, -0.121], [0.0225, -0.182], [0.015, -0.213], [0.010, -0.226]], 12);
+      // PROPFIX: ankle ring = the MALE ankle ring (0.0260, Bos
+      // point 6) and the bottom rings re-seated for the shorter
+      // shin segment (knee -> ankle 0.204, was 0.215).
+      // LEGFIX B: fuller knee head (0.027 -> 0.0295) so the knee
+      // reads as a joint, not a tube pinch, and the two bottom
+      // rings widen (0.018/0.011 -> 0.0235/0.0205) so the
+      // trouser leg stacks over the shoe instead of vanishing
+      // into a stocking point at the ankle.
+      return lathe('shin6', [[0.011, 0.017], [0.0295, 0.004], [0.0315, -0.028], [0.0325, -0.065], [0.0285, -0.121], [0.0260, -0.182], [0.0235, -0.204], [0.0205, -0.217]], 12);
     },
     shinM: function () {
       // BODYFIX5: MALE shin — straighter column: calf peak kept
       // (0.0335) but the ankle is fuller (0.0260 at -0.182, was
       // 0.0225) so the leg stops curving in to a narrow ankle.
-      return lathe('shinM5', [[0.011, 0.017], [0.027, 0.004], [0.0310, -0.028], [0.0335, -0.065], [0.0295, -0.121], [0.0260, -0.182], [0.018, -0.213], [0.011, -0.226]], 12);
+      // PROPFIX: bottom rings re-seated for the 0.204 shin
+      // segment (ankle ring 0.0260 already gives ratio 19-20
+      // once hipK = 1.00 — Bos point 4).
+      // LEGFIX B: same knee/stack correction as shin6.
+      return lathe('shinM6', [[0.011, 0.017], [0.0295, 0.004], [0.0320, -0.028], [0.0335, -0.065], [0.0300, -0.121], [0.0260, -0.182], [0.0235, -0.204], [0.0205, -0.217]], 12);
     },
-    pantCuffM: function () { return cyl('pcuffM5', 0.0275, 0.0275, 0.026, 12); },
+    pantCuffM: function () { return cyl('pcuffM7', 0.0300, 0.0300, 0.044, 12); },
     shortsBandM: function () {
       // BODYFIX5: seated on the thighM profile at -0.185
       // (r ~0.0423 there) with the same ~proud margin as shband6.
       return geo('shbandM5', function () { return new THREE.CylinderGeometry(0.0450, 0.0425, 0.024, 12); });
     },
-    pantCuff: function () { return cyl('pcuff4', 0.023, 0.023, 0.026, 12); },
+    pantCuff: function () { return cyl('pcuff7', 0.0300, 0.0300, 0.044, 12); },
     shortsBand: function () {
       // BODYFIX3: tapered to the thigh6 profile at its seat
       // (-0.185) so the hem sits ON the leg (the old straight
       // r 0.0315 cylinder drowned inside the fuller thigh).
-      return geo('shband6', function () { return new THREE.CylinderGeometry(0.0425, 0.0375, 0.024, 12); });
+      // PROPFIX: radii follow the wider thigh7 knee column at
+      // the seat (same proud margin as the male band now).
+      return geo('shband7', function () { return new THREE.CylinderGeometry(0.0450, 0.0425, 0.024, 12); });
     },
     // BODYFIX4: the shoe is a real shoe profile, not a box.
     // Pass 1 tried an extruded side silhouette — from the front
@@ -401,42 +651,118 @@
     // pivot height), so ground contact and every gait/death
     // offset are unchanged. Footprint length stays the old
     // sole's ~0.18 (~1.5x head width).
+    // PROPFIX (Bos point 5): CHUNKY shoe — sole thickness
+    // 0.018 -> 0.026 (extrude depth 0.013 -> 0.021), footprint
+    // widened x1.25 (width 0.080 -> ~0.099, target ~0.10H) and
+    // trimmed x0.96 fore-aft (length ~0.178 = ~1.6x head width);
+    // the upper widens and rises with it (capsule x-scale
+    // 0.98 -> 1.24, height scale 0.60 -> 0.66, centre lifted
+    // -0.0245 -> -0.021 so the vamp sits ON the thick sole).
+    // buildRig additionally scales shoe+sole per build so the
+    // length tracks 1.6x that build's head width (kid fix).
     shoe: function () {
-      return geo('shoe5', function () {
+      return geo('shoe6', function () {
         var body = new THREE.CapsuleGeometry(0.0315, 0.095, 4, 10);
-        var bm = new THREE.Matrix4().makeTranslation(0, -0.0245, 0.026);
+        var bm = new THREE.Matrix4().makeTranslation(0, -0.021, 0.024);
         bm.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2 + 0.06));
-        bm.multiply(new THREE.Matrix4().makeScale(0.98, 1, 0.60));
+        bm.multiply(new THREE.Matrix4().makeScale(1.24, 0.97, 0.66));
         var riser = new THREE.SphereGeometry(0.030, 10, 8);
-        var rm = new THREE.Matrix4().makeTranslation(0, -0.016, -0.024);
-        rm.multiply(new THREE.Matrix4().makeScale(0.92, 0.85, 1.25));
+        var rm = new THREE.Matrix4().makeTranslation(0, -0.014, -0.024);
+        rm.multiply(new THREE.Matrix4().makeScale(1.16, 0.85, 1.25));
         return mergeGeos([{ g: body, m: bm }, { g: riser, m: rm }]);
       });
     },
     sole: function () {
-      return geo('sole4', function () {
+      return geo('sole5', function () {
         var s = new THREE.Shape();
-        s.moveTo(-0.028, -0.058);
-        s.quadraticCurveTo(-0.036, -0.056, -0.0365, -0.020);
-        s.quadraticCurveTo(-0.037, 0.030, -0.0375, 0.072);
-        s.quadraticCurveTo(-0.0375, 0.106, -0.020, 0.115);
-        s.quadraticCurveTo(0, 0.119, 0.020, 0.115);
-        s.quadraticCurveTo(0.0375, 0.106, 0.0375, 0.072);
-        s.quadraticCurveTo(0.037, 0.030, 0.0365, -0.020);
-        s.quadraticCurveTo(0.036, -0.056, 0.028, -0.058);
-        s.quadraticCurveTo(0, -0.061, -0.028, -0.058);
-        var g = new THREE.ExtrudeGeometry(s, { depth: 0.013, bevelEnabled: true, bevelThickness: 0.0025, bevelSize: 0.0025, bevelSegments: 1, curveSegments: 6, steps: 1 });
+        s.moveTo(-0.035, -0.0557);
+        s.quadraticCurveTo(-0.045, -0.0538, -0.0456, -0.0192);
+        s.quadraticCurveTo(-0.0463, 0.0288, -0.0469, 0.0691);
+        s.quadraticCurveTo(-0.0469, 0.1018, -0.025, 0.1104);
+        s.quadraticCurveTo(0, 0.1142, 0.025, 0.1104);
+        s.quadraticCurveTo(0.0469, 0.1018, 0.0469, 0.0691);
+        s.quadraticCurveTo(0.0463, 0.0288, 0.0456, -0.0192);
+        s.quadraticCurveTo(0.045, -0.0538, 0.035, -0.0557);
+        s.quadraticCurveTo(0, -0.0586, -0.035, -0.0557);
+        var g = new THREE.ExtrudeGeometry(s, { depth: 0.021, bevelEnabled: true, bevelThickness: 0.0025, bevelSize: 0.0025, bevelSegments: 1, curveSegments: 6, steps: 1 });
         g.rotateX(Math.PI / 2);
-        g.translate(0, -0.0395, 0);
+        // After rotateX the extrusion runs DOWNWARD from y +0.0025
+        // to y -0.0235 (depth 0.021 + bevel), so the translate that
+        // lands the sole bottom exactly on -0.055 is -0.0315.
+        g.translate(0, -0.0315, 0);
         return g;
       });
     },
-    skirt: function () { return cyl('skirt4', 0.106, 0.150, 0.16, 14, true); },
-    eye: function () { return geo('eye', function () { var g = new THREE.SphereGeometry(0.0088, 10, 8); g.scale(1, 1.3, 0.4); return g; }); },
+    // LEGFIX B: the calf — a unit ellipsoid the rig scales to
+    // (0.027, 0.047, 0.020) and seats on the back of the upper
+    // shin, proud of the lathe behind, hidden inside it in
+    // front: the muscle bulge the smooth tube never had.
+    calf: function () {
+      return geo('calf7', function () {
+        var g = new THREE.SphereGeometry(1, 10, 8);
+        g.scale(0.027, 0.047, 0.020);
+        return g;
+      });
+    },
+    // LEGFIX D: duty BOOT — the sneaker's capsule body + heel
+    // riser + a shaft cylinder that swallows the shin bottom
+    // and the trouser cuff (boot over pants, the uniform read).
+    // Same foot-pivot contract: sole bottom at -0.055.
+    shoeBoot: function () {
+      return geo('shoeboot7', function () {
+        var body = new THREE.CapsuleGeometry(0.0315, 0.095, 4, 10);
+        var bm = new THREE.Matrix4().makeTranslation(0, -0.021, 0.024);
+        bm.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2 + 0.06));
+        bm.multiply(new THREE.Matrix4().makeScale(1.24, 0.97, 0.66));
+        var riser = new THREE.SphereGeometry(0.030, 10, 8);
+        var rm = new THREE.Matrix4().makeTranslation(0, -0.014, -0.024);
+        rm.multiply(new THREE.Matrix4().makeScale(1.16, 0.85, 1.25));
+        var shaft = new THREE.CylinderGeometry(0.0375, 0.0395, 0.105, 12);
+        var sm2 = new THREE.Matrix4().makeTranslation(0, 0.030, -0.006);
+        sm2.multiply(new THREE.Matrix4().makeScale(1.0, 1.0, 0.92));
+        return mergeGeos([{ g: body, m: bm }, { g: riser, m: rm }, { g: shaft, m: sm2 }]);
+      });
+    },
+    // LEGFIX D: HEEL — a slimmer capsule on a real heel block
+    // (block bottom on the -0.055 ground line; buildRig shortens
+    // the footprint sole to the front two-thirds to match).
+    shoeHeel: function () {
+      return geo('shoeheel8', function () {
+        // R2: shorter toe box + slimmer, taller heel block —
+        // the first cut read as a flat pink slipper in the run
+        // still; a pump needs the gap under the arch to show.
+        var body = new THREE.CapsuleGeometry(0.030, 0.078, 4, 10);
+        var bm = new THREE.Matrix4().makeTranslation(0, -0.018, 0.032);
+        bm.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2 + 0.10));
+        bm.multiply(new THREE.Matrix4().makeScale(1.06, 0.95, 0.60));
+        var heel = new THREE.BoxGeometry(0.027, 0.052, 0.025);
+        var hm = new THREE.Matrix4().makeTranslation(0, -0.029, -0.044);
+        return mergeGeos([{ g: body, m: bm }, { g: heel, m: hm }]);
+      });
+    },
+    // LEGFIX D: SANDAL toe cap — a flat skin dome over the front
+    // of the sole; buildRig adds the two strap bands, so the
+    // foot reads as a foot in a sandal, not a brown shoe.
+    sandalToe: function () {
+      return geo('sandaltoe7', function () {
+        var g = new THREE.CapsuleGeometry(0.029, 0.062, 4, 10);
+        var m = new THREE.Matrix4().makeTranslation(0, -0.034, 0.048);
+        m.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2 + 0.10));
+        m.multiply(new THREE.Matrix4().makeScale(1.18, 0.92, 0.34));
+        g.applyMatrix4(m);
+        return g;
+      });
+    },
+    skirt: function () { return cyl('skirt5', 0.124, 0.158, 0.16, 14, true); },
+    // POLISH (Bos point 1): smaller, wider almond — the old
+    // tall oval (r 0.0088 x 1.3) read as bulging doll eyes.
+    eye: function () { return geo('eye', function () { var g = new THREE.SphereGeometry(0.0082, 10, 8); g.scale(1.12, 1.02, 0.42); return g; }); },
     glint: function () { return geo('glint', function () { return new THREE.SphereGeometry(0.0028, 6, 4); }); },
     // BODYFIX2: brows a touch longer + thicker — they read faint
     // at street distance in the bodyfix renders.
-    brow: function () { return box('brow5', 0.028, 0.0075, 0.005); },
+    // POLISH (Bos point 1): thinner brow bar — the old 0.0075
+    // slab read as a heavy stern slash on calm faces.
+    brow: function () { return box('brow6', 0.027, 0.0052, 0.005); },
     noseBridge: function () { return box('nosebr', 0.0075, 0.030, 0.007); },
     noseTip: function () { return box('nosetip', 0.011, 0.007, 0.009); },
     mouth: function () { return geo('mouth', function () { return new THREE.TorusGeometry(0.0105, 0.0028, 5, 10, 2.0); }); },
@@ -456,7 +782,12 @@
     // at creation so a hat brim can never stripe the face.
     m.castShadow = true; m.receiveShadow = true;
     if (outline) {
-      var o = new THREE.Mesh(geometry, outlineMat);
+      var o = new THREE.Mesh(geometry, outlineMatFor(material));
+      // PROPFIX: 1.05 -> 1.06 — the hull must stay readable at
+      // MEDIUM distance too, not only in close-up (Bos point 10);
+      // factory LOD1 no longer hides outlines either.
+      // POLISH: back to 1.05 with the per-colour tint above —
+      // thinner and tinted reads cleaner than thick and black.
       o.scale.setScalar(1.05); o.userData.isOutline = true;
       m.add(o);
     }
@@ -503,10 +834,17 @@
       headPivot.add(g); return g;
     }
     face.eyeL = eye(1); face.eyeR = eye(-1);
+    // POLISH (Bos point 1): brows differ per character — length
+    // and weight vary deterministically with the seed, so the
+    // cast stops sharing one identical brow bar. (Expressions
+    // drive rotation/height only; this scale is untouched.)
+    var browR = rng((cfg.seed || 1) * 131 + 7);
+    var browLenK = 0.88 + browR() * 0.30, browThickK = 0.85 + browR() * 0.45;
     function brow(side) {
       var g = new THREE.Group();
       g.position.set(side * 0.0215, cy + 0.017, 0.0540);
       var b = new THREE.Mesh(GEO.brow(), hairMat);
+      b.scale.set(browLenK, browThickK, 1);
       b.position.x = side * 0.002; g.add(b);
       headPivot.add(g); return g;
     }
@@ -565,21 +903,43 @@
     var style = cfg.hair || 'short';
     if (style === 'bald' || style === 'none') return null;
     var hm = matFor(cfg.hairColor), cy = M.headCY, R = M.headR;
+    // POLISH (Bos point 2): the second hair tone — a lightened
+    // derivative of the base colour for the crown highlight.
+    var hiM = matFor(lighten(cfg.hairColor, 0.30));
     var grp = new THREE.Group(); headPivot.add(grp);
     function cap(rad, tl, sq, y, z) {
       var m = softPart(grp, hairCap(rad, tl, sq), hm, 0, cy + (y || 0), z || 0, true);
       // tilt the shell back: the front rim rises above the brows
       // while the back rim drops — one haircut from every angle
       m.rotation.x = -0.42;
+      // POLISH: highlight shell over the crown — same sweep
+      // shortened to the top, radius +1.5% so it rides ON the
+      // base cap; no outline of its own (the base cap's hull
+      // still draws the silhouette).
+      var hi = softPart(grp, hairCap(rad * 1.015, tl * 0.52, sq), hiM, 0, cy + (y || 0) + 0.0035, z || 0, false);
+      hi.rotation.x = -0.42;
       return m;
     }
     if (style === 'hijab') {
-      // Cloth shell: bigger sphere swept further down the back and
-      // sides, face left open by shifting the shell back, plus a
-      // drape panel to the shoulders.
-      var shell = softPart(grp, hairCap(R * 1.14, Math.PI * 0.80, 1.06), hm, 0, cy + 0.004, -0.012, true);
+      // Cloth shell: bigger sphere swept down the back and sides,
+      // face left open, plus a drape panel to the shoulders.
+      // POLISH2B (item 6 fix, measured on the lineup crop): the old
+      // sweep (0.80pi) + tip (-0.25) left the shell's front surface
+      // PROUD of the face plane — the whole face rendered in cloth
+      // green with the features on top of it, the "green-skinned
+      // NPC" the user flagged. The coverage math: the face-forward
+      // direction sits 90 deg + tip from the cap axis, so the face
+      // only opens when sweep < 90 deg + tip. Sweep 0.60pi (108
+      // deg) + tip -0.40 (23 deg) opens the face (113 > 108) while
+      // back (67 deg) and sides (90 deg) stay covered.
+      var shell = softPart(grp, hairCap(R * 1.14, Math.PI * 0.60, 1.06), hm, 0, cy + 0.004, -0.012, true);
       shell.scale.set(1.04, 1.10, 1.04);
-      shell.rotation.x = -0.25;
+      shell.rotation.x = -0.40;
+      // POLISH: cloth highlight over the crown, same treatment
+      // as the hair caps (Bos point 2: two tones, clean edge).
+      var shellHi = softPart(grp, hairCap(R * 1.155, Math.PI * 0.36, 1.06), hiM, 0, cy + 0.0075, -0.012, false);
+      shellHi.scale.set(1.04, 1.10, 1.04);
+      shellHi.rotation.x = -0.40;
       softPart(grp, box('drape2', 0.125, 0.13, 0.022), hm, 0, cy - 0.085, -0.062, true);
       return grp;
     }
@@ -622,10 +982,14 @@
     var grp = new THREE.Group(); headPivot.add(grp);
     var hm = matFor(cfg.hatColor != null ? cfg.hatColor : 0x23242c);
     if (hat === 'beanie') {
-      var bc = softPart(grp, hairCap(R * 1.08, Math.PI * 0.48, 0.96), hm, 0, cy + 0.008, 0, true);
+      // POLISH2B (item 2): more loft — the dome sits higher and
+      // fuller and the band thickens, so the beanie reads as knit
+      // volume on the head, not a grey skullcap film. (Raka's is
+      // near-black 0x1c1e24 by archetype, not grey.)
+      var bc = softPart(grp, hairCap(R * 1.13, Math.PI * 0.52, 1.04), hm, 0, cy + 0.014, 0, true);
       bc.rotation.x = -0.50;
       // the band sits ABOVE the brow line (brow top at cy+0.020)
-      var band = softPart(grp, geo('beanband2', function () { return new THREE.CylinderGeometry(R * 0.86, R * 0.88, 0.024, 14, 1, true); }), hm, 0, cy + 0.034, 0, false);
+      var band = softPart(grp, geo('beanband2', function () { return new THREE.CylinderGeometry(R * 0.88, R * 0.91, 0.034, 14, 1, true); }), hm, 0, cy + 0.036, 0, false);
       band.scale.set(1.0, 1, 1.08);
       return grp;
     }
@@ -748,8 +1112,8 @@
       [-1, 1].forEach(function (s) {
         var lap = part(P.spine2, box('lapel5', 0.016, 0.115, 0.004), foldM, s * 0.036, 0.052, 0.1205 * cz + 0.002, false);
         lap.rotation.z = -s * 0.38; lap.rotation.x = -0.08;
-        part(P.pelvis, box('hpocket5', 0.040, 0.024, 0.005), foldM, s * 0.058, -0.008, 0.1055 * hz + 0.002, false).rotation.y = -s * 0.22;
-        var tf = part(P['thigh' + (s < 0 ? 'R' : 'L')], box('tfold5', 0.008, 0.11, 0.003), foldM, 0, -0.10, (isMaleCfg(cfg) ? 0.0475 : 0.0495) * B2.d + 0.001, false);
+        part(P.pelvis, box('hpocket5', 0.040, 0.024, 0.005), foldM, s * 0.058, -0.008, (isMaleCfg(cfg) ? 0.1155 : 0.1210) * hz + 0.002, false).rotation.y = -s * 0.22;
+        var tf = part(P['thigh' + (s < 0 ? 'R' : 'L')], box('tfold5', 0.008, 0.11, 0.003), foldM, 0, -0.10, (isMaleCfg(cfg) ? 0.0478 : 0.0505) * B2.d + 0.001, false);
         tf.rotation.x = 0.05;
         var cb = part(P['fArm' + (s < 0 ? 'R' : 'L')], cyl('blzcuff5', 0.0195, 0.0195, 0.014, 12), foldM, 0, -0.118, 0, false);
         cb.scale.set(B2.w, 1, 0.90 * B2.d);
@@ -757,7 +1121,7 @@
       part(P.spine2, box('cpocket5', 0.042, 0.026, 0.005), foldM, -0.052, -0.012, 0.1085 * cz + 0.002, false);
       part(P.spine2, box('cflap5', 0.046, 0.008, 0.006), foldM, -0.052, 0.004, 0.1125 * cz + 0.002, false);
       [-1, 1].forEach(function (s) {
-        var fd = part(P.spine1, box('fold5', 0.009, 0.12, 0.003), foldM, s * 0.042, -0.012, 0.0975 * cz + 0.0015, false);
+        var fd = part(P.spine1, box('fold5', 0.009, 0.12, 0.003), foldM, s * 0.042, -0.012, 0.1090 * cz + 0.0015, false);
         fd.rotation.x = 0.03;
       });
     }
@@ -770,12 +1134,18 @@
       part(um, geo('umtop2', function () { return new THREE.ConeGeometry(0.18, 0.075, 10); }), matFor(0xc23b2e), 0, 0.245, 0, true);
     }
     if (has('glasses') || has('sunglasses')) {
-      var lensM = has('sunglasses') ? matFor(0x14161c) : matFor(0x9fb6c4);
+      // POLISH (Bos point 1): the old lens (r 0.020, OPAQUE pale
+      // 0x9fb6c4) swallowed the whole eye zone behind an owl
+      // mask. Smaller lens + thinner rim, and real glasses are
+      // translucent — the eyes stay readable through them.
+      // Sunglasses keep their opaque dark lens, just smaller.
+      var lensM = has('sunglasses') ? matFor(0x14161c)
+        : new THREE.MeshToonMaterial({ color: 0xd7e5ee, gradientMap: gradientMapBody, transparent: true, opacity: 0.30, depthWrite: false });
       [-1, 1].forEach(function (s) {
-        softPart(P.head, geo('lens2', function () { var g = new THREE.SphereGeometry(0.020, 10, 8); g.scale(1, 0.85, 0.32); return g; }), lensM, s * 0.021, M.headCY - 0.002, 0.0575, false);
-        softPart(P.head, geo('rim2', function () { return new THREE.TorusGeometry(0.0215, 0.0028, 5, 14); }), dark, s * 0.021, M.headCY - 0.002, 0.0585, false);
+        softPart(P.head, geo('lens3', function () { var g = new THREE.SphereGeometry(0.0165, 10, 8); g.scale(1, 0.82, 0.30); return g; }), lensM, s * 0.021, M.headCY - 0.002, 0.0575, false);
+        softPart(P.head, geo('rim3', function () { return new THREE.TorusGeometry(0.0178, 0.0018, 5, 14); }), dark, s * 0.021, M.headCY - 0.002, 0.0585, false);
       });
-      softPart(P.head, box('bridge2', 0.02, 0.004, 0.004), dark, 0, M.headCY + 0.001, 0.0585, false);
+      softPart(P.head, box('bridge3', 0.016, 0.003, 0.003), dark, 0, M.headCY + 0.001, 0.0585, false);
     }
     if (has('badge')) {
       part(P.spine2, box('badge2', 0.03, 0.037, 0.008), matFor(0xf2b13c), -0.055, 0.075, 0.1106 * cz + 0.002, false);
@@ -828,7 +1198,7 @@
       part(P.spine2, box('tie2', 0.035, 0.19, 0.01), matFor(0x6e1f2a), 0, -0.01, 0.108 * cz + 0.001, false);
     }
     if (has('beltBadge')) {
-      part(P.pelvis, box('beltbadge2', 0.036, 0.045, 0.01), matFor(0xf2b13c), 0.075, -0.005, 0.1063 * hz + 0.002, false);
+      part(P.pelvis, box('beltbadge2', 0.036, 0.045, 0.01), matFor(0xf2b13c), 0.075, -0.005, 0.1155 * hz + 0.002, false);
     }
     if (has('visor')) {
       softPart(P.head, geo('visor2', function () { return new THREE.CylinderGeometry(M.headR * 1.06, M.headR * 1.06, 0.055, 12, 1, true, -0.62, 1.24); }), matFor(0x14161c), 0, M.headCY + 0.005, 0, false);
@@ -848,6 +1218,17 @@
     if (has('jewelry')) {
       part(P.neck, geo('necklace2', function () { return new THREE.TorusGeometry(0.034, 0.004, 6, 16); }), matFor(0xe8c85a), 0, 0.002, 0.008, false).rotation.x = 1.25;
     }
+    if (has('cargoPockets')) {
+      // LEGFIX C: cargo thigh pockets — flat-shaded boxes on
+      // the outer thigh with a darker flap line: the
+      // work-trouser read for guards, couriers and dockers.
+      var cpM = matFor(darken(cfg.bottomColor, 0.85)), cpF = matFor(darken(cfg.bottomColor, 0.68));
+      [-1, 1].forEach(function (s) {
+        var tgh = P['thigh' + (s < 0 ? 'R' : 'L')];
+        part(tgh, box('cargo7', 0.016, 0.052, 0.058), cpM, s * 0.050, -0.098, 0.002, false);
+        part(tgh, box('cargoflap7', 0.018, 0.014, 0.060), cpF, s * 0.050, -0.070, 0.002, false);
+      });
+    }
   }
 
   // ---- pose tables --------------------------------------------------------------
@@ -855,15 +1236,16 @@
   // tuned key values, Euler degrees relative to bind). dy/dz are the
   // pelvis offset in UNIT space. Only the pelvis offsets and the
   // sitting / lying leg angles were re-derived for the new proportions:
-  //   sit/drive/enter/exit — seated pelvis pivot 0.36 m at H 1.75
-  //     (unit dy -0.299 from the 0.505 pelvis; BODYFIX3 shifted
-  //     every world-anchored dy by -0.015 when the pelvis rose
-  //     0.49 -> 0.505 — the world seat height 0.2057 is unchanged);
+  //   sit/drive/enter/exit — seated pelvis pivot 0.345 m at H 1.75
+  //     (unit dy -0.288 from the 0.485 pelvis; PROPFIX re-derived
+  //     it proportionally from the 47% leg — the BODYFIX3 world
+  //     seat height 0.2057 scaled by 0.470/0.490 to 0.1973);
   //     thigh -86 deg, shin +47
   //     (feet planted forward on the floor, car-seat geometry: shin
   //     0.23 long cannot hang vertical from a 0.36 m seat), foot +35.
-  //   death — pelvis pitched 86 deg, final pelvis centre 0.14
-  //     (torso half-depth 0.134 + a hair), dy -0.365, dz -0.26, so
+  //   death — pelvis pitched 86 deg, final pelvis centre 0.134
+  //     (PROPFIX proportional re-derive: 0.140 x 0.470/0.490),
+  //     dy -0.351, dz -0.275, so
   //     no limb spears the floor.
   //   jump/land/hit/stagger — small offsets scaled to the longer legs.
   // Gaits are analytic (below), not keyframed.
@@ -913,9 +1295,9 @@
     { t: 3.0, p: { pelvis: [0, 0, 4], spine1: [0, 0, -5], uArmL: [-6, 0, 20], fArmL: [-74, 0, 6], head: [0, 6, 4], uArmR: [0, 0, -6], fArmR: [-8, 0, -2] } }
   ], true);
   def('idle_sit', 3.0, [
-    { t: 0, p: { thighL: [-86, 0, 2], thighR: [-86, 0, -2], shinL: [47, 0, 0], shinR: [47, 0, 0], footL: [35, 0, 0], footR: [35, 0, 0], spine2: [7, 0, 0], uArmL: [-20, 0, 6], uArmR: [-20, 0, -6], fArmL: [-24, 0, 2], fArmR: [-24, 0, -2], head: [2, -6, 0] }, dy: -0.299 },
-    { t: 1.5, p: { spine2: [8.5, 0, 0], head: [3, 7, 0] }, dy: -0.299 },
-    { t: 3.0, p: { thighL: [-86, 0, 2], thighR: [-86, 0, -2], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [7, 0, 0], uArmL: [-20, 0, 6], uArmR: [-20, 0, -6], fArmL: [-24, 0, 2], fArmR: [-24, 0, -2], head: [2, -6, 0] }, dy: -0.329 }
+    { t: 0, p: { thighL: [-86, 0, 2], thighR: [-86, 0, -2], shinL: [47, 0, 0], shinR: [47, 0, 0], footL: [35, 0, 0], footR: [35, 0, 0], spine2: [7, 0, 0], uArmL: [-20, 0, 6], uArmR: [-20, 0, -6], fArmL: [-24, 0, 2], fArmR: [-24, 0, -2], head: [2, -6, 0] }, dy: -0.288 },
+    { t: 1.5, p: { spine2: [8.5, 0, 0], head: [3, 7, 0] }, dy: -0.288 },
+    { t: 3.0, p: { thighL: [-86, 0, 2], thighR: [-86, 0, -2], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [7, 0, 0], uArmL: [-20, 0, 6], uArmR: [-20, 0, -6], fArmL: [-24, 0, 2], fArmR: [-24, 0, -2], head: [2, -6, 0] }, dy: -0.317 }
   ], true);
   def('jump', 0.55, [
     { t: 0, p: { thighL: [-46, 0, 2], thighR: [-46, 0, -2], shinL: [64, 0, 0], shinR: [64, 0, 0], spine2: [14, 0, 0], uArmL: [18, 0, 10], uArmR: [18, 0, -10] }, dy: -0.075 },
@@ -931,9 +1313,26 @@
     { t: 0, p: { thighL: [-52, 0, 3], thighR: [-52, 0, -3], shinL: [72, 0, 0], shinR: [72, 0, 0], spine2: [16, 0, 0], uArmL: [-30, 0, 16], uArmR: [-30, 0, -16] }, dy: -0.095 },
     { t: 0.38, p: { thighL: [0, 0, 1], thighR: [0, 0, -1], shinL: [2, 0, 0], shinR: [2, 0, 0], spine2: [2, 0, 0], uArmL: [0, 0, 6], uArmR: [0, 0, -6] }, dy: 0 }
   ], false);
+  // VISUAL POLISH step 4: 'duck' — the cower a bystander drops
+  // into when gunfire lands close (pedestrians.js scare()). A
+  // deep crouch on the 'land' geometry (thigh -52 / shin 72
+  // plants the feet; here -58 / 80 with dy -0.105 for the deeper
+  // squat), spine folded forward, head tucked, both arms raised
+  // beside the head with forearms folded over it. Looped with a
+  // small tremble key so a held duck doesn't freeze-frame.
+  def('duck', 1.5, [
+    { t: 0, p: { thighL: [-58, 0, 3], thighR: [-58, 0, -3], shinL: [80, 0, 0], shinR: [80, 0, 0], spine1: [15, 0, 0], spine2: [21, 0, 0], head: [15, 0, 0], uArmL: [-24, 0, 126], uArmR: [-24, 0, -126], fArmL: [-62, 0, 16], fArmR: [-62, 0, -16] }, dy: -0.105 },
+    { t: 0.75, p: { thighL: [-56, 0, 3], thighR: [-59, 0, -3], shinL: [78, 0, 0], shinR: [81, 0, 0], spine1: [16, 0, 0], spine2: [22, 0, 0], head: [16, 0, 2], uArmL: [-22, 0, 129], uArmR: [-26, 0, -124], fArmL: [-60, 0, 16], fArmR: [-64, 0, -16] }, dy: -0.108 },
+    { t: 1.5, p: { thighL: [-58, 0, 3], thighR: [-58, 0, -3], shinL: [80, 0, 0], shinR: [80, 0, 0], spine1: [15, 0, 0], spine2: [21, 0, 0], head: [15, 0, 0], uArmL: [-24, 0, 126], uArmR: [-24, 0, -126], fArmL: [-62, 0, 16], fArmR: [-62, 0, -16] }, dy: -0.105 }
+  ], true);
+  // POLISH2B (item 2): the aim elbow bends 17 degrees (spec 15-20),
+  // not the old near-straight 7 — a locked arm read as a mannequin
+  // from behind. This held pose is ALSO where shoot_pistol settles
+  // and reload returns to, so the bend shows in firing frames too
+  // (reported as-is: the aim pose and the shot's settle share it).
   def('aim_pistol', 1.6, [
-    { t: 0, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } },
-    { t: 1.6, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } }
+    { t: 0, p: { uArmR: [-84, 0, -3], fArmR: [-17, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } },
+    { t: 1.6, p: { uArmR: [-84, 0, -3], fArmR: [-17, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } }
   ], true);
   def('aim_rifle', 1.6, [
     { t: 0, p: { uArmR: [-78, 0, -6], fArmR: [-20, 0, 0], uArmL: [-70, -12, 6], fArmL: [-40, 0, 10], spine2: [3, -11, 0], head: [4, 5, 0] } },
@@ -942,13 +1341,13 @@
   def('shoot_pistol', 0.30, [
     { t: 0, p: { uArmR: [-76, 0, -3], fArmR: [-11, 0, 0], spine2: [3.5, -8, 0], head: [1, 4, 0] } },
     { t: 0.06, p: { uArmR: [-97, 0, -3], fArmR: [-3, 0, 0], spine2: [-1, -10, 0], head: [-3, 4, 0] } },
-    { t: 0.30, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } }
+    { t: 0.30, p: { uArmR: [-84, 0, -3], fArmR: [-17, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], spine2: [2, -9, 0], head: [0, 4, 0] } }
   ], false);
   def('reload', 1.15, [
     { t: 0, p: { uArmR: [-60, 0, -4], fArmR: [-38, 0, 0], head: [13, 0, 0], spine2: [6, -4, 0] } },
     { t: 0.4, p: { uArmR: [-46, 0, -4], fArmR: [-52, 0, 0], uArmL: [-48, 0, 12], fArmL: [-82, 0, 10], head: [15, -3, 0] } },
     { t: 0.75, p: { uArmL: [-40, 0, 12], fArmL: [-70, 0, 10], head: [12, 0, 0] } },
-    { t: 1.15, p: { uArmR: [-84, 0, -3], fArmR: [-7, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], head: [0, 4, 0], spine2: [2, -9, 0] } }
+    { t: 1.15, p: { uArmR: [-84, 0, -3], fArmR: [-17, 0, 0], uArmL: [-52, 0, 10], fArmL: [-58, 0, 8], head: [0, 4, 0], spine2: [2, -9, 0] } }
   ], false);
   def('melee_l', 0.46, [
     { t: 0, p: { spine2: [0, 16, 0], uArmL: [24, 0, 12], fArmL: [-30, 0, 0] } },
@@ -988,26 +1387,29 @@
   // floor (the first draft's -0.435 put it 0.049 under). dz -0.26
   // is the longer spine chain rotating down to the ground. The mid
   // key is a transient fall frame (same character as the chibi's).
+  // PROPFIX: dy/dz re-derived for the 0.485 pelvis — final centre
+  // 0.134 (0.140 x 0.470/0.490), dy -0.351; dz scaled by the longer
+  // torso (0.375/0.355): -0.26 -> -0.275, -0.15 -> -0.158.
   def('death', 0.95, [
-    { t: 0, p: { spine1: [-6, 0, 0], uArmL: [-30, 0, 20], uArmR: [-24, 0, -22] }, dy: -0.024 },
-    { t: 0.45, p: { pelvis: [46, 0, 0], spine1: [-16, 0, 0], spine2: [-8, 0, 0], thighL: [-6, 0, 4], thighR: [-2, 0, -4], shinL: [16, 0, 0], shinR: [10, 0, 0], uArmL: [-40, 0, 44], uArmR: [14, 0, -40], head: [-16, 0, 0] }, dy: -0.205, dz: -0.15 },
-    { t: 0.95, p: { pelvis: [86, 0, 0], spine1: [-2, 0, 0], spine2: [3, 0, 0], thighL: [4, 0, 4], thighR: [12, 0, -4], shinL: [6, 0, 0], shinR: [2, 0, 0], uArmL: [-24, 0, 48], uArmR: [20, 0, -48], head: [-8, 0, 0] }, dy: -0.365, dz: -0.26 }
+    { t: 0, p: { spine1: [-6, 0, 0], uArmL: [-30, 0, 20], uArmR: [-24, 0, -22] }, dy: -0.023 },
+    { t: 0.45, p: { pelvis: [46, 0, 0], spine1: [-16, 0, 0], spine2: [-8, 0, 0], thighL: [-6, 0, 4], thighR: [-2, 0, -4], shinL: [16, 0, 0], shinR: [10, 0, 0], uArmL: [-40, 0, 44], uArmR: [14, 0, -40], head: [-16, 0, 0] }, dy: -0.197, dz: -0.158 },
+    { t: 0.95, p: { pelvis: [86, 0, 0], spine1: [-2, 0, 0], spine2: [3, 0, 0], thighL: [4, 0, 4], thighR: [12, 0, -4], shinL: [6, 0, 0], shinR: [2, 0, 0], uArmL: [-24, 0, 48], uArmR: [20, 0, -48], head: [-8, 0, 0] }, dy: -0.351, dz: -0.275 }
   ], false);
   def('enter_car', 0.8, [
     { t: 0, p: { thighR: [-38, 0, -3], shinR: [30, 0, 0], spine2: [4, -14, 0], uArmR: [-30, 0, -8], fArmR: [-30, 0, 0] } },
-    { t: 0.45, p: { thighL: [-78, 0, 3], thighR: [-78, 0, -3], shinL: [42, 0, 0], shinR: [42, 0, 0], spine2: [7, -6, 0], uArmL: [-34, 0, 6], uArmR: [-34, 0, -6], fArmL: [-26, 0, 2], fArmR: [-26, 0, -2] }, dy: -0.275 },
-    { t: 0.8, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, 0, 0] }, dy: -0.299 }
+    { t: 0.45, p: { thighL: [-78, 0, 3], thighR: [-78, 0, -3], shinL: [42, 0, 0], shinR: [42, 0, 0], spine2: [7, -6, 0], uArmL: [-34, 0, 6], uArmR: [-34, 0, -6], fArmL: [-26, 0, 2], fArmR: [-26, 0, -2] }, dy: -0.265 },
+    { t: 0.8, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, 0, 0] }, dy: -0.288 }
   ], false);
   def('exit_car', 0.75, [
-    { t: 0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2] }, dy: -0.299 },
-    { t: 0.4, p: { thighL: [-55, 0, 4], thighR: [-18, 0, -4], shinL: [30, 0, 0], shinR: [6, 0, 0], spine2: [8, 12, 0], uArmL: [-24, 0, 8], uArmR: [-44, 0, -10], fArmR: [-36, 0, 0] }, dy: -0.145 },
+    { t: 0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2] }, dy: -0.288 },
+    { t: 0.4, p: { thighL: [-55, 0, 4], thighR: [-18, 0, -4], shinL: [30, 0, 0], shinR: [6, 0, 0], spine2: [8, 12, 0], uArmL: [-24, 0, 8], uArmR: [-44, 0, -10], fArmR: [-36, 0, 0] }, dy: -0.140 },
     { t: 0.75, p: { thighL: [0, 0, 1], thighR: [0, 0, -1], shinL: [2, 0, 0], shinR: [2, 0, 0], spine2: [2, 0, 0], uArmL: [0, 0, 6], uArmR: [0, 0, -6], fArmL: [-8, 0, 2], fArmR: [-8, 0, -2] }, dy: 0 }
   ], false);
   def('drive', 4.0, [
-    { t: 0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, -12, 0] }, dy: -0.299 },
-    { t: 1.4, p: { head: [0, 10, 0], spine2: [6.8, 0, 0] }, dy: -0.299 },
-    { t: 2.6, p: { head: [1, 2, 0] }, dy: -0.299 },
-    { t: 4.0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, -12, 0] }, dy: -0.299 }
+    { t: 0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, -12, 0] }, dy: -0.288 },
+    { t: 1.4, p: { head: [0, 10, 0], spine2: [6.8, 0, 0] }, dy: -0.288 },
+    { t: 2.6, p: { head: [1, 2, 0] }, dy: -0.288 },
+    { t: 4.0, p: { thighL: [-86, 0, 3], thighR: [-86, 0, -3], shinL: [47, 0, 0], shinR: [47, 0, 0], spine2: [6, 0, 0], uArmL: [-38, 0, 6], uArmR: [-38, 0, -6], fArmL: [-28, 0, 2], fArmR: [-28, 0, -2], head: [0, -12, 0] }, dy: -0.288 }
   ], true);
   def('hands_up', 1.8, [
     { t: 0, p: { uArmL: [-6, 0, 152], uArmR: [-6, 0, -152], fArmL: [-12, 0, 6], fArmR: [-12, 0, -6], head: [-4, 0, 0], spine2: [1, 0, 0] } },
@@ -1038,6 +1440,15 @@
   // 0.449 after BODYFIX3): same stride calibration as the retired
   // system — only the leg-length constant in the step formula moved
   // with the proportions (0.465 -> 0.435 -> 0.449).
+  // PROPFIX: hip pivot 0.470 with the 47% leg — the step constant
+  // scales with it (0.449 x 0.470/0.490 = 0.431).
+  // LEGFIX F: that constant was STALE — it still divided by the
+  // pre-PROPFIX leg. The step length now uses the real 0.470 leg
+  // (the ~8% mismatch was a measurable foot-slide source), and
+  // the swings come DOWN while knees come UP: walk 21 -> 19 deg
+  // puts the stride at ~0.44H (was scissoring at ~0.49H on the
+  // old constant), run/sprint lean and knee lift rise, and the
+  // pelvis roll grows 4.2 -> 4.8 for a visible hip sway.
   // Gait now carries hip rotation (pelvis yaw 6.5), counter-swinging
   // arms, knee bend, a heel-strike foot term (toes up just before
   // contact), forward lean when running, and head stabilization —
@@ -1045,31 +1456,46 @@
   // the gaze stays level (see gaitPose: head yaw -5.0 sin, roll -2.8).
   var GAITS = {};
   function gait(name, o) {
-    o.bob = o.bob || 0; o.drop = o.drop || 0;
-    var stepLen = 2 * (0.449 * 1.75) * Math.sin(o.swing * DEG);
+    o.bob = o.bob || 0; o.drop = o.drop || 0; o.zin = o.zin || 0;
+    var stepLen = 2 * (0.470 * 1.75) * Math.sin(o.swing * DEG);
     o.refSpeed = 0.78 * (2 * stepLen) / o.dur;
     GAITS[name] = o;
   }
-  gait('walk', { swing: 21, knee: 40, arm: 26, elbow: 14, lean: 4, bob: 0.0095, drop: 0.0115, dur: 0.92 });
-  gait('run', { swing: 33, knee: 58, arm: 36, elbow: 50, lean: 8, bob: 0.018, drop: 0.016, dur: 0.68 });
-  gait('sprint', { swing: 41, knee: 72, arm: 44, elbow: 60, lean: 12, bob: 0.019, drop: 0.017, dur: 0.60 });
-  gait('panic', { swing: 36, knee: 60, arm: 12, elbow: 66, lean: 9, bob: 0.017, drop: 0.016, dur: 0.64 });
-  gait('walk_old', { swing: 13, knee: 20, arm: 9, elbow: 15, lean: 8, bob: 0.005, drop: 0.009, dur: 1.05 });
+  // STANCEFIX: zin = inward thigh angle (deg) — the feet track
+  // INSIDE the pivot line toward the centre line (walk lateral
+  // target 0.08-0.12H, run 0.05-0.10H) instead of the old
+  // constant +1.5 deg OUTWARD splay. Walk swing 19 -> 17.5:
+  // the measured full-cycle stride was 0.486H, above Bos's
+  // 0.38-0.45H band; 17.5 deg lands it at ~0.45H.
+  gait('walk', { swing: 17.5, knee: 50, arm: 26, elbow: 16, lean: 4, bob: 0.012, drop: 0.013, dur: 0.92, zin: 1.0 });
+  gait('run', { swing: 31, knee: 68, arm: 36, elbow: 52, lean: 10, bob: 0.020, drop: 0.014, dur: 0.68, zin: 3.5 });
+  gait('sprint', { swing: 38, knee: 80, arm: 44, elbow: 62, lean: 14, bob: 0.021, drop: 0.015, dur: 0.60, zin: 3.8 });
+  gait('panic', { swing: 34, knee: 68, arm: 12, elbow: 66, lean: 10, bob: 0.019, drop: 0.014, dur: 0.64, zin: 3.3 });
+  gait('walk_old', { swing: 12, knee: 26, arm: 9, elbow: 15, lean: 9, bob: 0.006, drop: 0.010, dur: 1.05, zin: 1.0 });
   function bump(x) { var s = Math.sin(x); return s > 0 ? s * s : 0; }
   function gaitPose(o, a, out) {
     function leg(off) {
       var s = Math.sin(a + off);
       return {
         thigh: -o.swing * s,
-        shin: o.knee * bump(a + off + 0.9) + 4,
+        // LEGFIX F: base shin 4 -> 6 (the leg never locks
+        // straight mid-cycle) and the foot terms strengthen —
+        // toe-off 10 -> 15, heel-strike -13 -> -15 — so the
+        // heel-strike -> flat -> toe-off sequence reads.
+        shin: o.knee * bump(a + off + 0.9) + 6,
         foot: o.swing * s * 0.40 - o.knee * bump(a + off + 0.9) * 0.30
-          - 10 * bump(a + off - 0.2) + 10 * bump(a + off - 3.2) + 2
-          - 13 * bump(a + off - 1.15) // heel strike: toes up before contact
+          - 10 * bump(a + off - 0.2) + 15 * bump(a + off - 3.2) + 2
+          - 15 * bump(a + off - 1.15) // heel strike: toes up before contact
       };
     }
     var L = leg(0), R = leg(Math.PI), p = out.p;
-    p.thighL = [L.thigh, 0, 1.5]; p.shinL = [L.shin, 0, 0]; p.footL = [L.foot, 0, 0];
-    p.thighR = [R.thigh, 0, -1.5]; p.shinR = [R.shin, 0, 0]; p.footR = [R.foot, 0, 0];
+    // STANCEFIX: thigh z is the gait's inward angle (zin) — the
+    // swinging leg travels in the sagittal plane and the feet
+    // land near the centre line; the old constant +-1.5 deg was
+    // an outward splay that, stacked on the old wide pivots,
+    // put the walk/run foot track at 0.26-0.35H.
+    p.thighL = [L.thigh, 0, -o.zin]; p.shinL = [L.shin, 0, 0]; p.footL = [L.foot, 0, 0];
+    p.thighR = [R.thigh, 0, o.zin]; p.shinR = [R.shin, 0, 0]; p.footR = [R.foot, 0, 0];
     p.uArmL = [-o.arm * Math.sin(a + Math.PI), 0, 7];
     p.uArmR = [-o.arm * Math.sin(a), 0, -7];
     p.fArmL = [-o.elbow - 5 * Math.sin(a + Math.PI), 0, 3];
@@ -1080,7 +1506,7 @@
     // head stabilization: counter-rotate against the pelvis/spine
     // yaw (6.5 + 6.5 - 7.5 + 3.2 deg) and the pelvis roll (4.2 deg)
     p.head = [-o.lean * 0.55, -5.0 * Math.sin(a), -2.8 * Math.sin(a)];
-    p.pelvis = [0, 6.5 * Math.sin(a), 4.2 * Math.sin(a)];
+    p.pelvis = [0, 6.5 * Math.sin(a), 4.8 * Math.sin(a)];
     p.handL = [0, 0, 0]; p.handR = [0, 0, 0];
     out.dy = -o.drop + o.bob * Math.cos(2 * a); out.dz = 0;
     return out;
@@ -1131,8 +1557,16 @@
   }
   function buildRig(cfg) {
     var B = BUILDS[cfg.build] || BUILDS.avg;
-    var skinM = matSkin(cfg.skin), topM = matFor(cfg.topColor),
-      botM = matFor(cfg.bottomColor), shoeM = matFor(cfg.shoeColor),
+    var skinM = matSkin(cfg.skin),
+      // POLISH2: garments wear the baked cloth materials (weave +
+      // folds + pattern / denim twill) instead of flat colour.
+      topM = matCloth(cfg.topColor, cfg.pattern, cfg.accentColor),
+      // VISUAL POLISH step 5: legs wear the SOFT cloth variant —
+      // full-strength fold streaks stretched into pinstripes on
+      // the leg lathes (see clothTexture).
+      botM = matCloth(cfg.bottomColor, 'twill', null, true),
+      skirtM = matCloth(cfg.bottomColor, null, null),
+      shoeM = matFor(cfg.shoeColor),
       // BODYFIX2: hands use the FACE/NECK skin material itself —
       // the exact same cached instance, so hand tone can never
       // drift from face tone. (This retires Mami's oily-hand tint:
@@ -1140,10 +1574,35 @@
       handM = skinM;
     var root = new THREE.Group();
     var P = {};
-    var blob = new THREE.Mesh(geo('blob3', function () { return new THREE.PlaneGeometry(0.80, 0.80); }), blobMat);
-    blob.rotation.x = -Math.PI / 2; blob.position.y = 0.016; blob.renderOrder = 2;
+    // PROPFIX: blob disc 0.80 -> 0.96 and gradient stops deepen
+    // (see blobTex) — the wider shoulder-width stance needs a
+    // bigger, darker contact pool (Bos point 10).
+    // LEGFIX G: disc 0.96 -> 1.04 and seated at 0.005 (was
+    // 0.016 — it visibly hovered in the leg close-ups); the
+    // material now carries polygonOffset, so it stays glued
+    // on top of the paving at any root height.
+    // POLISH (Bos point 9): disc 1.04 -> 1.12 and the gradient
+    // stops deepened again (see blobMat) — a bigger, darker
+    // contact pool under the narrower stancefix stance.
+    // POLISH03 (user item 1): disc 1.12 -> 0.88 — the pool now
+    // hugs the feet instead of spreading past the stance, and
+    // with the lighter blobMat gradient it reads as a shadow,
+    // not a black disc.
+    var blob = new THREE.Mesh(geo('blob9', function () { return new THREE.PlaneGeometry(0.88, 0.88); }), blobMat);
+    blob.rotation.x = -Math.PI / 2; blob.position.y = 0.005; blob.renderOrder = 2;
     blob.name = 'blob'; root.add(blob);
-    var pelvis = P.pelvis = new THREE.Group(); pelvis.position.y = M.pelvisY; root.add(pelvis);
+    // PROPFIX: per-character proportion plumbing (Bos point 9) —
+    // the factory forwards body.waist / body.thigh / body.legFrac
+    // (dead inputs until now) plus a per-seed width variation
+    // (widthK, +-4%, crowd archetypes only). legFrac scales the
+    // whole leg chain around the 47% skeleton; pelvisBaseY is
+    // where applyPose parks the pelvis for THIS character.
+    var waistK = cfg.waistK != null ? cfg.waistK : 1;
+    var thighK = cfg.thighK != null ? cfg.thighK : 1;
+    var widthK = cfg.widthK != null ? cfg.widthK : 1;
+    var legK = cfg.legFrac != null ? cfg.legFrac : 1;
+    var pelvisBaseY = M.pelvisY + (legK - 1) * 0.470;
+    var pelvis = P.pelvis = new THREE.Group(); pelvis.position.y = pelvisBaseY; root.add(pelvis);
     // BODYFIX (round 4): trunk depth factor — the lathe profiles
     // are turned round; this z-scale sets the depth (~52% of the
     // width at avg build; per-build depth + belly ride on top).
@@ -1151,23 +1610,38 @@
     // BODYFIX5: male pelvis — narrower (hipK 0.94: hip width
     // lands at ~0.80 of the shoulder line, was ~0.85) and much
     // flatter in z (0.48 vs 0.60) on the male hipsM profile.
+    // PROPFIX: hipK 0.94 -> 1.00 with the widened hipsM6 profile
+    // (Bos point 1: male hip ~84 at shoulder = 100) — the flat
+    // 0.48 z-scale stays, so the seat does not round back out.
     var male = isMaleCfg(cfg);
-    var hipK = male ? 0.94 : 1;
+    var hipK = male ? 1.00 : 1;
     var hips = part(pelvis, male ? GEO.hipsM() : GEO.hips(), botM, 0, 0, 0, true);
-    hips.scale.set(B.hip * hipK, 1, (male ? 0.48 : 0.60) * B.d * (1 + B.belly * 0.10));
+    hips.scale.set(B.hip * hipK * widthK, 1, (male ? 0.48 : 0.60) * B.d * (1 + B.belly * 0.10));
     var spine1 = P.spine1 = new THREE.Group(); spine1.position.y = M.spine1Y - M.pelvisY; pelvis.add(spine1);
     var torso = part(spine1, GEO.torso(), topM, 0, 0, 0, true);
-    torso.scale.set(B.w, 1, trunkZ);
-    // thin belt / waistband line ON the torso waist — a flat
-    // detail that also hides the torso/hips intersection seam.
-    // (Round 3's belt was a full ellipsoid: another ring.)
-    var belt = part(spine1, GEO.belt(), matFor(darken(cfg.bottomColor, 0.7)), 0, -0.005, 0, false);
-    belt.scale.set(B.w, 1, trunkZ);
+    torso.scale.set(B.w * widthK * waistK, 1, trunkZ);
+    // POLISH2 (spec A1): the belt drops to the trouser waist
+    // (spine1 -0.038, the hips' top ring) on the wider beltP2
+    // profile and gains a real buckle, so the stack reads as
+    // hem -> belt + buckle -> trousers: three layers, three
+    // silhouettes. (The round-3 belt sat mid-torso as a ring.)
+    var belt = part(spine1, GEO.beltP2(), matFor(darken(cfg.bottomColor, 0.7)), 0, -0.038, 0, false);
+    belt.scale.set(B.w * widthK * waistK, 1, trunkZ);
+    if (cfg.bottomType !== 'skirt') {
+      part(spine1, box('buckleP2', 0.036, 0.020, 0.007), matFor(0xb9bdc4), 0, -0.038, 0.1175 * trunkZ + 0.003, false);
+    }
+    // POLISH2B (item 6): police wear the 0.05 m duty belt over the
+    // standard band (the chest badge already ships via the 'badge'
+    // accessory in buildAccessories).
+    if ((cfg.accessories || []).indexOf('policePatch') >= 0) {
+      var duty = part(spine1, GEO.beltDuty(), matFor(0x14161c), 0, -0.038, 0, false);
+      duty.scale.set(B.w * widthK * waistK, 1, trunkZ);
+    }
     var spine2 = P.spine2 = new THREE.Group(); spine2.position.y = M.spine2Y - M.spine1Y; spine1.add(spine2);
     var chest = part(spine2, GEO.chest(), topM, 0, 0, 0, true);
-    chest.scale.set(B.shoulder, 1, trunkZ);
+    chest.scale.set(B.shoulder * widthK, 1, trunkZ);
     var collar = part(spine2, GEO.collar(), matFor(darken(cfg.topColor, 0.85)), 0, 0, 0, false);
-    collar.scale.set(B.shoulder, 1, trunkZ);
+    collar.scale.set(B.shoulder * widthK, 1, trunkZ);
     if (cfg.accentColor != null) {
       // one thin FLAT accent strip on the chest (Raka's yellow
       // band, the syndicate's red band) — a shading detail, never
@@ -1184,6 +1658,112 @@
         ep.rotation.z = -s * 0.16;
       });
     }
+    // ---- POLISH2 garment detail (spec A1/A2/A4) ------------------
+    // Every top type gains its own small GEOMETRY: a flared hem
+    // overlapping the waist, then per-type collars / plackets /
+    // lapels / pockets / straps / pouches. All pieces are thin
+    // boxes or profile-following lathes seated a few mm proud of
+    // the trunk surface (the accessory z convention), flat-shaded
+    // in derived shades of the garment's own colours — detail as
+    // construction, never as paint. Nothing here moves a pivot,
+    // a proportion or a pose: it is sewn onto the same rig.
+    var topType = cfg.topType || 'tee';
+    var accList = cfg.accessories || [];
+    var topDark = matFor(darken(cfg.topColor, 0.78));
+    var topDarker = matFor(darken(cfg.topColor, 0.58));
+    var hemMesh = part(spine1, (topType === 'jacket' || topType === 'blazer' || topType === 'vest') ? GEO.hem() : GEO.hemSlim(), topM, 0, 0, 0, false);
+    hemMesh.scale.set(B.w * widthK * waistK, 1, trunkZ);
+    function gBox(geoKey, w, h, d, mat, parent, x, y, zK, rz, ry) {
+      var m = part(parent, box(geoKey, w, h, d), mat, x, y, zK * trunkZ + (zK < 0 ? -0.002 : 0.002), false);
+      if (rz) m.rotation.z = rz;
+      if (ry) m.rotation.y = ry;
+      return m;
+    }
+    if (topType === 'jacket') {
+      // zipper placket down the chest + lapels + chest pocket +
+      // hip pocket flaps + a back yoke band (the rear read, A6).
+      gBox('gzipp2', 0.014, 0.150, 0.004, topDarker, spine2, 0, 0.030, 0.1195);
+      [-1, 1].forEach(function (s) {
+        var lap = gBox('glapp2', 0.018, 0.105, 0.004, topDark, spine2, s * 0.034, 0.078, 0.1200, -s * 0.35);
+        lap.rotation.x = -0.08;
+        gBox('ghipp2', 0.046, 0.010, 0.005, topDark, spine1, s * 0.062, -0.052, 0.0965, 0, -s * 0.20);
+      });
+      gBox('gchpock2', 0.042, 0.026, 0.004, topDark, spine2, -0.055, 0.018, 0.0985);
+      gBox('gchflap2', 0.046, 0.009, 0.005, topDarker, spine2, -0.055, 0.034, 0.1005);
+      gBox('gyoke2', 0.150, 0.016, 0.004, topDark, spine2, 0, 0.095, -0.1205);
+      // POLISH2B (item 2): the jacket BACK gets its construction —
+      // a centre back seam running yoke-to-hem (two segments, one
+      // per spine pivot) and a standing collar band raised 0.04 m
+      // at the back of the neck. The hem lathe already spans
+      // 0.044 m (spec: 0.03 m thick) — verified, unchanged.
+      gBox('gseam2a', 0.006, 0.150, 0.003, topDarker, spine2, 0, 0.012, -0.1205);
+      gBox('gseam2b', 0.006, 0.130, 0.003, topDarker, spine1, 0, -0.010, -0.1185);
+      var collarB = gBox('gcollar2', 0.120, 0.040, 0.010, topDark, spine2, 0, 0.152, -0.0720);
+      collarB.rotation.x = -0.18;
+      [-1, 1].forEach(function (s) {
+        var wing = gBox('gcollarw2', 0.055, 0.036, 0.009, topDark, spine2, s * 0.058, 0.148, -0.0480, 0, s * 0.55);
+        wing.rotation.x = -0.12;
+      });
+    } else if (topType === 'blazer') {
+      // The blazerSet accessory already tailors Dario — do not
+      // double-sew him. Other blazers get lapels, pockets, a
+      // button pair and a tie (spec A4: office = shirt + tie).
+      if (accList.indexOf('blazerSet') < 0) {
+        [-1, 1].forEach(function (s) {
+          var lap2 = gBox('glapp2', 0.018, 0.115, 0.004, topDark, spine2, s * 0.036, 0.072, 0.1200, -s * 0.38);
+          lap2.rotation.x = -0.08;
+          gBox('ghipp2', 0.046, 0.010, 0.005, topDark, spine1, s * 0.062, -0.052, 0.0965, 0, -s * 0.20);
+        });
+        gBox('gchpock2', 0.042, 0.026, 0.004, topDark, spine2, -0.052, -0.012, 0.0885);
+        gBox('gchflap2', 0.046, 0.008, 0.006, topDark, spine2, -0.052, 0.004, 0.0905);
+        [0.030, -0.018].forEach(function (by) {
+          part(spine2, GEO.btn(), topDarker, 0, by, 0.1205 * trunkZ + 0.002, false);
+        });
+        if (accList.indexOf('tie') < 0) {
+          gBox('gtie2', 0.034, 0.170, 0.008, matFor(0x5a2432), spine2, 0, -0.008, 0.1100);
+          gBox('gtieknot2', 0.020, 0.024, 0.009, matFor(0x5a2432), spine2, 0, 0.086, 0.1160);
+        }
+      }
+    } else if (topType === 'vest') {
+      // Work / duty vest: chest strap, shoulder straps running
+      // into it, two bellows pouches on the lower trunk.
+      gBox('gveststrap2', 0.190, 0.020, 0.006, topDarker, spine2, 0, 0.052, 0.1215);
+      [-1, 1].forEach(function (s) {
+        gBox('gvestsh2', 0.030, 0.115, 0.005, topDarker, spine2, s * 0.052, 0.028, 0.1175);
+        gBox('gpouch2', 0.052, 0.062, 0.020, topDark, spine1, s * 0.048, 0.052, 0.1045);
+        gBox('gpouchflap2', 0.054, 0.016, 0.022, topDarker, spine1, s * 0.048, 0.086, 0.1045);
+      });
+      // The dock worker's orange vest carries silver reflective
+      // bands (colour test on the garment itself: a saturated
+      // orange top IS the safety vest of this cast).
+      var oc = cfg.topColor;
+      if (((oc >> 16) & 255) > 200 && ((oc >> 8) & 255) > 70 && ((oc >> 8) & 255) < 150 && (oc & 255) < 70) {
+        var reflM = matFor(0xd9dee6);
+        var rc = part(spine2, GEO.reflChest(), reflM, 0, 0, 0, false);
+        rc.scale.set(B.shoulder * widthK, 1, trunkZ);
+        var rw = part(spine1, GEO.reflWaist(), reflM, 0, 0, 0, false);
+        rw.scale.set(B.w * widthK * waistK, 1, trunkZ);
+      }
+    } else if (topType === 'blouse') {
+      gBox('gplack2', 0.015, 0.140, 0.003, topDark, spine2, 0, 0.032, 0.1185);
+      [0.070, 0.032, -0.006].forEach(function (by2) {
+        part(spine2, GEO.btn(), topDarker, 0, by2, 0.1205 * trunkZ + 0.002, false);
+      });
+    } else if (!cfg.pattern) {
+      // plain tee / shirt: button placket. Patterned tops wear
+      // an open camp collar instead — no placket over a print.
+      gBox('gplack2', 0.015, 0.150, 0.003, topDark, spine2, 0, 0.030, 0.1185);
+      [0.072, 0.034, -0.004].forEach(function (by3) {
+        part(spine2, GEO.btn(), topDarker, 0, by3, 0.1205 * trunkZ + 0.002, false);
+      });
+    }
+    if (cfg.hair === 'hijab') {
+      // The drape: cloth over the shoulders and upper chest,
+      // in the same cloth colour as the head shell.
+      var drp = part(spine2, GEO.hijabDrape(), matFor(cfg.hairColor), 0, 0.148, 0, true);
+      drp.scale.set(B.shoulder * widthK, 1, 0.66);
+      part(spine2, box('drapefront2', 0.085, 0.125, 0.006), matFor(cfg.hairColor), 0, -0.008, 0.0625, false).rotation.x = 0.05;
+    }
     var neck = P.neck = new THREE.Group(); neck.position.y = M.neckY - M.spine2Y; spine2.add(neck);
     softPart(neck, GEO.neck(), skinM, 0, 0.008, 0, false);
     var head = P.head = new THREE.Group(); head.position.y = M.headY - M.neckY; neck.add(head);
@@ -1196,29 +1776,30 @@
     var armLong = cfg.sleeve === 'long';
     function arm(side, s) {
       var u = P['uArm' + s] = new THREE.Group();
-      u.position.set(side * M.shoulderX * B.shoulder, M.shoulderDY, 0); spine2.add(u);
+      u.position.set(side * M.shoulderX * B.shoulder * widthK, M.shoulderDY, 0); spine2.add(u);
       // BODYFIX2: the deltoid cap sphere is GONE — it read as a
       // round bump ball at the shoulder in the close-up. The
       // shoulder pivot sits INSIDE the chest lathe's shoulder
       // slope, so the tapered upper arm emerges straight from the
       // trunk: one smooth shoulder line, clean sleeve start.
       var um = part(u, GEO.uArm(), topM, 0, 0, 0, true);
-      um.scale.set(B.w, 1, 0.90 * B.d);
+      um.scale.set(B.w * widthK, 1, 0.90 * B.d);
       var f = P['fArm' + s] = new THREE.Group();
       f.position.y = M.elbowDY; u.add(f);
       var fm = part(f, GEO.fArm(), armLong ? topM : skinM, 0, 0, 0, true);
-      fm.scale.set(B.w, 1, 0.90 * B.d);
+      fm.scale.set(B.w * widthK, 1, 0.90 * B.d);
       if (armLong) {
-        // long sleeve ends in a THIN cuff ring at the wrist
-        // (re-seated for handDY -0.17: spans -0.146..-0.166)
-        var cf = part(f, GEO.cuff(), matFor(darken(cfg.topColor, 0.85)), 0, -0.156, 0, false);
-        cf.scale.set(B.w, 1, 0.90 * B.d);
+        // long sleeve ends in a cuff ring at the wrist — POLISH2B
+        // (item 6): the cuff band is now a full 0.03 m tall
+        // (re-seated: spans -0.136..-0.166, same bottom edge).
+        var cf = part(f, GEO.cuff(), matFor(darken(cfg.topColor, 0.85)), 0, -0.151, 0, false);
+        cf.scale.set(B.w * widthK, 1, 0.90 * B.d);
       } else {
         // short sleeve: thin hem band at the END of the upper arm
         // (rolled-sleeve read, bare forearm below). Round 3 put a
         // WIDE ring on the forearm top — a bulge, not a cuff.
         var sb = part(u, GEO.sleeveBand(), matFor(darken(cfg.topColor, 0.88)), 0, -0.143, 0, false);
-        sb.scale.set(B.w, 1, 0.90 * B.d);
+        sb.scale.set(B.w * widthK, 1, 0.90 * B.d);
       }
       var h = P['hand' + s] = new THREE.Group();
       h.position.y = M.handDY; f.add(h);
@@ -1228,50 +1809,117 @@
     }
     arm(1, 'L'); arm(-1, 'R');
     var bottomLong = cfg.bottomType !== 'shorts';
-    // BODYFIX2: stance width varies per character (seeded, ±6%) —
-    // one more clone-breaker in rows and crowds.
-    var stanceK = 0.94 + (((cfg.seed || 1) * 0.3183098861) % 1 + 1) % 1 * 0.12;
+    // STANCEFIX (Bos spec — REPLACES the PROPFIX stance system):
+    // the thigh pivots no longer ride at shoulder width. The old
+    // stack (hipX 0.104 x B.hip x stanceK 1.00-1.08 x gender
+    // factor 1.10/1.067) put the pivot pair at 0.21-0.29H — wider
+    // than the pelvis itself (margin -0.08..-0.13H by probe), so
+    // the thighs sprouted OUTSIDE the hip line and the crotch
+    // gap measured 0.11-0.17H. Now the pivot distance derives
+    // from THIS figure's real thigh-top diameter (same profile
+    // max diameter + the same scale factors the thigh mesh
+    // itself uses): the thighs hang nearly touching (gap target
+    // ~0.014H) and the pair is clamped into Bos's 0.115-0.130H
+    // band, inside the pelvis line for every build (pelvis >=
+    // pivot + thigh — probe-verified). No gender factor and no
+    // random factor on the pivot any more; seeded stance
+    // variation lives in the pose layer only (idle feet land in
+    // the 0.15-0.19H band, +-10%).
+    var thighDiaU = (male ? 0.0978 : 0.1006) * B.hip * hipK * widthK * thighK;
+    var pivotDistU = Math.min(0.130, Math.max(0.115, thighDiaU + 0.014));
     function leg(side, s) {
       var t = P['thigh' + s] = new THREE.Group();
-      // BODYFIX5: male stance — pivots ride ~10% wider (on the
-      // UN-narrowed hip width) while the male pelvis mesh itself
-      // narrows, so men's feet land apart instead of knee-close.
-      t.position.set(side * M.hipX * B.hip * stanceK * (male ? 1.10 : 1), -0.015, 0); pelvis.add(t);
+      t.position.set(side * pivotDistU * 0.5, -0.015 * legK, 0); pelvis.add(t);
       var tm = part(t, male ? GEO.thighM() : GEO.thigh(), botM, 0, 0, 0, true);
-      tm.scale.set(B.hip * hipK, 1, (male ? 0.92 : 0.95) * B.d);
-      if (isPolice && bottomLong) {
+      tm.scale.set(B.hip * hipK * widthK * thighK, 1, (male ? 0.92 : 0.95) * B.d * thighK);
+      if (bottomLong) {
         // trouser crease: a FLAT colour line down the thigh front
         // (spec: creases are shading, never modelled volume).
-        // BODYFIX3: re-seated on the fuller thigh6 profile.
-        // BODYFIX5: re-seated again on thighM for men (surface
-        // r 0.0503 at the crease height, front face kept proud).
-        part(tm, box('crease5', 0.007, 0.12, 0.002), matFor(darken(cfg.bottomColor, 0.55)), 0, -0.105, male ? 0.0515 : 0.0492, false);
+        // LEGFIX C: no longer police-only — every long trouser
+        // gets the line; the uniform crease stays darker.
+        part(tm, box('crease5', 0.007, 0.12, 0.002), matFor(darken(cfg.bottomColor, isPolice ? 0.55 : 0.78)), 0, -0.105, male ? 0.0515 : 0.0492, false);
       }
       var sh = P['shin' + s] = new THREE.Group();
-      sh.position.y = M.kneeY - M.pelvisY + 0.015; t.add(sh);
+      sh.position.y = (M.kneeY - M.pelvisY + 0.015) * legK; t.add(sh);
       var sm = part(sh, male ? GEO.shinM() : GEO.shin(), bottomLong ? botM : skinM, 0, 0, 0, true);
-      sm.scale.set(B.hip * hipK, 1, 0.92 * B.d);
+      sm.scale.set(B.hip * hipK * widthK, 1, 0.92 * B.d);
+      // LEGFIX B: the calf bulge on the back of the upper shin
+      // (trouser material under long pants, skin under shorts
+      // and skirts — same mesh the shin wears).
+      var cf7 = part(sh, GEO.calf(), bottomLong ? botM : skinM, 0, -0.060, -0.020, false);
+      cf7.scale.set(B.hip * hipK * widthK, 1, 0.92 * B.d);
       if (bottomLong) {
-        // thin ankle cuff ring (a detail line, not a bulge)
+        // LEGFIX C: shin crease, continuing the thigh line.
+        part(sm, box('creaseS7', 0.006, 0.10, 0.002), matFor(darken(cfg.bottomColor, isPolice ? 0.55 : 0.78)), 0, -0.10, 0.0335, false);
+        // LEGFIX C: the hem is a real STACK band now (taller and
+        // wider than the old detail ring) — the trouser falls
+        // over the shoe top instead of stopping at the ankle.
         var pc = part(sh, male ? GEO.pantCuffM() : GEO.pantCuff(), matFor(darken(cfg.bottomColor, 0.8)), 0, -0.185, 0, false);
-        pc.scale.set(B.hip * hipK, 1, 0.92 * B.d);
+        pc.scale.set(B.hip * hipK * widthK, 1, 0.92 * B.d);
       } else {
         // shorts: thin hem band at the thigh's lower edge
         var hb = part(t, male ? GEO.shortsBandM() : GEO.shortsBand(), matFor(darken(cfg.bottomColor, 0.85)), 0, -0.185, 0, false);
-        hb.scale.set(B.hip * hipK, 1, (male ? 0.92 : 0.95) * B.d);
+        hb.scale.set(B.hip * hipK * widthK * thighK, 1, (male ? 0.92 : 0.95) * B.d * thighK);
       }
       var ft = P['foot' + s] = new THREE.Group();
-      ft.position.y = M.ankleY - M.kneeY; sh.add(ft);
+      ft.position.y = (M.ankleY - M.kneeY) * legK; sh.add(ft);
       // BODYFIX4: shoe + sole are authored in foot-pivot space
       // (sole bottom at -0.055 = ground), so no offset here; the
       // sole shade drops to 0.32 — a dark wrap under every upper,
       // white sneakers included.
-      part(ft, GEO.shoe(), shoeM, 0, 0, 0, true);
-      part(ft, GEO.sole(), matFor(darken(cfg.shoeColor, 0.32)), 0, 0, 0, false);
+      // PROPFIX: shoe + sole scale per build so the footprint
+      // length tracks 1.6x THIS build's head width (the kid's
+      // unscaled shoe measured only 1.42x — Bos point 5). The
+      // pair rides up by 0.055 x (shoeK - 1) so the sole bottom
+      // stays exactly on the ground line at any shoeK.
+      var shoeK = (1.6 * 2 * M.headHW * B.head) / 0.1745;
+      var soleOff = 0.055 * (shoeK - 1);
+      // LEGFIX D: shoe families (factory picks cfg.shoeType).
+      // Every variant keeps the foot-pivot contract — sole
+      // bottom exactly on -0.055 — and the sole shade lifts
+      // from 0.32 to ~0.5: the old near-black wrap swallowed
+      // the shoe against dark trousers; the sole now reads as
+      // its own lighter band under the upper.
+      var st7 = cfg.shoeType || 'sneaker';
+      // POLISH (Bos point 7): the sole must READ as a different
+      // colour from the upper on every shoe — a 0.52 shade of a
+      // near-black upper is black on black, so dark uppers get
+      // a gum sole instead. (Size untouched: still 1.60x.)
+      var shoeLum = (((cfg.shoeColor >> 16) & 255) * 299 + ((cfg.shoeColor >> 8) & 255) * 587 + (cfg.shoeColor & 255) * 114) / 1000;
+      var soleHex = shoeLum < 70 ? 0x6a5a48 : darken(cfg.shoeColor, st7 === 'boot' ? 0.42 : 0.52);
+      var soleMsh = part(ft, GEO.sole(), matFor(soleHex), 0, soleOff, 0, false);
+      soleMsh.scale.setScalar(shoeK);
+      if (st7 === 'sandal') {
+        var toeM = part(ft, GEO.sandalToe(), skinM, 0, soleOff, 0, false);
+        toeM.scale.setScalar(shoeK);
+        var strapM = matFor(darken(cfg.shoeColor, 0.55));
+        var st1 = part(ft, box('strap7a', 0.058, 0.009, 0.015), strapM, 0, soleOff - 0.016 * shoeK, 0.036 * shoeK, false);
+        st1.scale.setScalar(shoeK);
+        var st2 = part(ft, box('strap7b', 0.056, 0.009, 0.013), strapM, 0, soleOff - 0.011 * shoeK, 0.002 * shoeK, false);
+        st2.scale.setScalar(shoeK);
+      } else {
+        var upGeo = st7 === 'boot' ? GEO.shoeBoot() : (st7 === 'heel' ? GEO.shoeHeel() : GEO.shoe());
+        var shoeMsh = part(ft, upGeo, shoeM, 0, soleOff, 0, true);
+        shoeMsh.scale.setScalar(shoeK);
+        if (st7 === 'sneaker') {
+          // lace/vamp band across the instep — the flat detail
+          // that stops the capsule reading as a blob.
+          var lc = part(shoeMsh, box('lace7', 0.056, 0.010, 0.036), matFor(darken(cfg.shoeColor, 0.72)), 0, 0.004, 0.016, false);
+          lc.rotation.x = -0.45;
+        }
+        if (st7 === 'heel') {
+          // the footprint sole serves the front two-thirds;
+          // the heel block carries the back.
+          soleMsh.scale.set(shoeK, shoeK, shoeK * 0.62);
+          soleMsh.position.z = 0.030 * shoeK;
+        }
+      }
     }
     leg(1, 'L'); leg(-1, 'R');
     if (cfg.bottomType === 'skirt') {
-      part(pelvis, GEO.skirt(), botM, 0, -0.075, 0, true);
+      // LEGFIX C: the handle is kept (P.skirt) so update() can
+      // sway the hem against the stride.
+      P.skirt = part(pelvis, GEO.skirt(), skirtM, 0, -0.075, 0, true);
     }
     var face = buildFace(head, cfg);
     var hair = buildHair(head, cfg);
@@ -1280,7 +1928,7 @@
     buildAccessories(api, cfg);
     var outlines = [];
     root.traverse(function (o) { if (o.userData && o.userData.isOutline) outlines.push(o); });
-    return { root: root, pivots: P, face: face, outlines: outlines, lod1Hide: api.lod1Hide, hairMesh: hair, hatMesh: hat, blob: blob };
+    return { root: root, pivots: P, face: face, outlines: outlines, lod1Hide: api.lod1Hide, hairMesh: hair, hatMesh: hat, blob: blob, pelvisBaseY: pelvisBaseY, pivotDist: pivotDistU };
   }
 
   // ---- createCharacter ------------------------------------------------------------
@@ -1314,6 +1962,11 @@
       hat: cfg.hat || 'none',
       hatColor: cfg.hatColor,
       sleeve: cfg.sleeve || 'short',
+      // POLISH2: garment construction inputs from the factory —
+      // the top's type (jacket / vest / tee / blazer / blouse)
+      // and its print pattern (hawaii / stripes / batik / null).
+      topType: cfg.topType || 'tee',
+      pattern: cfg.pattern || null,
       bottomType: cfg.bottomType || 'long',
       backpack: cfg.backpack != null ? cfg.backpack : null,
       accentColor: cfg.accent != null ? cfg.accent : null,
@@ -1322,12 +1975,31 @@
       // BODYFIX5: explicit gender signal for the male/female
       // pelvis-leg profiles (null = derive in isMaleCfg).
       female: cfg.female != null ? !!cfg.female : null,
+      // PROPFIX: proportion overrides forwarded by the factory
+      // from the archetype body block (dead inputs until now):
+      // waistK / thighK scale the trunk / thigh width, legFrac
+      // scales the leg chain, widthK is the per-seed +-4% width
+      // variation (crowd archetypes only).
+      waistK: cfg.waistK != null ? cfg.waistK : null,
+      thighK: cfg.thighK != null ? cfg.thighK : null,
+      legFrac: cfg.legFrac != null ? cfg.legFrac : null,
+      widthK: cfg.widthK != null ? cfg.widthK : null,
       face: cfg.face || null,
       expression: cfg.expression || null,
+      // LEGFIX D: shoe family from the factory (sneaker / boot /
+      // sandal / heel); null = sneaker.
+      shoeType: cfg.shoeType || null,
       seed: cfg.seed != null ? cfg.seed : 1
     };
-    c.skinDark = darken(c.skin, 0.86);
+    // POLISH (Bos point 1): 0.86 -> 0.90 — the nose bridge/tip
+    // sit closer to the skin tone, so the nose reads as a soft
+    // shade step instead of a pasted-on tan slab.
+    c.skinDark = darken(c.skin, 0.90);
     var rig = buildRig(c);
+    // STANCEFIX: this figure's thigh-pivot distance (unit space)
+    // — applyPose uses it to widen the gaits' inward angle on
+    // wide-pelvis builds, so the foot track stays in band.
+    var pivotDistC = rig.pivotDist || 0.115;
     rig.root.scale.setScalar(c.height);
     var face = rig.face;
     var exprCur = { browA: -3, browY: 0.001, eyeY: 1, mouth: 'flat', ms: 1.15 };
@@ -1338,9 +2010,47 @@
     var prev = null, fadeT = 1, fadeDur = 0.12;
     var outCur = newPoseBuffer(), outPrev = newPoseBuffer(), outBlend = newPoseBuffer();
     var lookYaw = 0, lookPitch = 0, lookYawT = 0, lookPitchT = 0, hunch = 0, hunchT = 0;
+    // PROPFIX: the rest of the posture record (Bos point 9) —
+    // slouch (a soft extra spine curve, head counter-pitched) and
+    // stiff (a military-straight spine that also damps the rest
+    // bias). Both were declared in archetypes and dropped by the
+    // animation adapter until now; they ride the same smoothing.
+    var slouch = 0, slouchT = 0, stiff = 0, stiffT = 0;
+    var pelvisBaseY = rig.pelvisBaseY != null ? rig.pelvisBaseY : M.pelvisY;
     var timeOverride = null; // adapter hook: absolute rate (panic speed)
     var stuckT = 0; // ROUND 3: finished-one-shot watchdog timer
+    // LEGFIX: foot-ground layer state (smoothed sole errors per
+    // foot + the pelvis drop) and a private clock for skirt sway.
+    // The error is measured on the SOLE's real world bounding
+    // box (the only ExtrudeGeometry on each foot), not on the
+    // foot pivot: the settled idle pose pitches and settles the
+    // feet 1.5-4 cm below the bind plane (probe-measured), and
+    // only the true lowest sole point tells contact honestly.
+    var fgVT = new THREE.Vector3(), fgBox = new THREE.Box3();
+    var fgErrL = 0, fgErrR = 0, fgPelv = 0, charT = 0;
+    function findSole(fp) {
+      for (var i = 0; i < fp.children.length; i++) {
+        var m = fp.children[i];
+        if (m.isMesh && m.geometry && m.geometry.type === 'ExtrudeGeometry') {
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          return m;
+        }
+      }
+      return null;
+    }
+    var fgSoleL = null, fgSoleR = null; // resolved after P exists (below)
+    function fgSoleError(soleMesh, footPivot) {
+      if (soleMesh) {
+        soleMesh.getWorldPosition(fgVT); // forces matrixWorld up the chain
+        fgBox.copy(soleMesh.geometry.boundingBox).applyMatrix4(soleMesh.matrixWorld);
+        var cx = (fgBox.min.x + fgBox.max.x) / 2, cz = (fgBox.min.z + fgBox.max.z) / 2;
+        return SH.World.groundHeightAt(cx, cz) - fgBox.min.y;
+      }
+      footPivot.getWorldPosition(fgVT);
+      return SH.World.groundHeightAt(fgVT.x, fgVT.z) - (fgVT.y - 0.055 * c.height);
+    }
     var P = rig.pivots;
+    fgSoleL = findSole(P.footL); fgSoleR = findSole(P.footR);
     var stoop = (BUILDS[c.build] || BUILDS.avg).stoop || 0;
     // BODYFIX (round 4): per-character REST bias, hashed from the
     // seed (deterministic — the same cast on every load): a slight
@@ -1362,6 +2072,13 @@
     var restKnee = 0.045 + (restH3 % 0.5) * 0.09;
     var restElbowSide = restH2 < 0.5 ? 'L' : 'R';
     var restElbow = 0.07 + (restH2 % 0.5) * 0.20;
+    // PROPFIX (Bos point 9): seeded IDLE VARIANT — not every
+    // standing figure rests the same way. 0 = free rest (the
+    // BODYFIX bias above), 1 = weight shift (pelvis rolled and
+    // pushed toward the straight leg, free knee softer),
+    // 2 = hands clasped low in front, 3 = one hand on the hip.
+    // Applied additively in update(), 'idle' clip only.
+    var idleVar = Math.floor(restH2 * 4) % 4;
     // BODYFIX2: config-level DEFAULT expression (the player's
     // 'warm' smile, wired from the archetype's face.expr through
     // the factory). Resolved through setExpression itself, then
@@ -1401,12 +2118,52 @@
       st.time += dt * rate;
       return sampleKeyframed(def, st.time, out);
     }
+    // Standing baseline (PROPFIX, stance re-based by STANCEFIX):
+    // every standing clip (idle family, talk, phone, aim,
+    // point...) gets the same small thigh splay + toe-out on top
+    // of the sampled pose, so the feet land in Bos's 0.15-0.19H
+    // idle band over the NEW narrow pivots (0.115-0.130H) for
+    // every clip and every crossfade. GAITS are exempt from the
+    // thigh term — they carry their own inward angle (zin) and
+    // must not have an outward degree stacked back on top.
+    // Seated / driving / falling clips own their legs — exempt.
+    var BASE_SKIP = { idle_sit: 1, drive: 1, enter_car: 1, exit_car: 1, death: 1 };
     function applyPose(out) {
       for (var i = 0; i < POSE_BONES.length; i++) {
         var bn = POSE_BONES[i], pv = P[bn], e = out.p[bn];
         pv.rotation.set(e[0] * DEG, e[1] * DEG, e[2] * DEG);
       }
-      P.pelvis.position.y = M.pelvisY + out.dy;
+      if (!BASE_SKIP[cur.name]) {
+        // 1 deg a side: with the idle clip's own 1.5 deg keys
+        // this puts the settled feet ~0.046H outside the pivot
+        // pair — over the 0.115-0.130H pivots that is exactly
+        // the 0.16-0.18H idle stance Bos specced (probe-checked
+        // per build). Gaits skip it (see above).
+        if (!GAITS[cur.name]) {
+          P.thighL.rotation.z += 1 * DEG; P.thighR.rotation.z -= 1 * DEG;
+        } else {
+          // STANCEFIX: wide-pelvis builds (stocky / heavy /
+          // wide-hip archetypes) carry wider pivots, so the same
+          // base zin would land their feet at pivot width —
+          // outside the walk/run lateral band. Add inward angle
+          // in proportion to the excess pivot width (~61 deg per
+          // unit H: the leg is 0.47H long, so 0.01H of excess
+          // pivot needs ~1.2 deg more inward tilt per side to
+          // land the foot on the same track).
+          var zc = (pivotDistC - 0.115) * 61;
+          if (zc > 0) { P.thighL.rotation.z -= zc * DEG; P.thighR.rotation.z += zc * DEG; }
+        }
+        P.footL.rotation.y += 7 * DEG; P.footR.rotation.y -= 7 * DEG;
+        // LEGFIX E: standing knees never lock straight — a soft
+        // shin bend (thigh countered) on every standing clip;
+        // gaits carry their own base bend, one-shots that leave
+        // the ground are exempt.
+        if (!GAITS[cur.name] && cur.name !== 'jump' && cur.name !== 'fall' && cur.name !== 'land') {
+          P.shinL.rotation.x += 2.2 * DEG; P.shinR.rotation.x += 2.2 * DEG;
+          P.thighL.rotation.x -= 0.8 * DEG; P.thighR.rotation.x -= 0.8 * DEG;
+        }
+      }
+      P.pelvis.position.y = pelvisBaseY + out.dy;
       P.pelvis.position.z = out.dz;
     }
     function setExpression(name) {
@@ -1414,8 +2171,17 @@
       exprTarget = EXPRESSIONS[key];
       c.expression = key;
     }
+    // PROPFIX: posture target setter shared by update() and the
+    // api's setPosture — accepts {hunch, slouch, stiff} or a
+    // legacy scalar (hunch only).
+    function applyPosture(p) {
+      if (p == null) { hunchT = 0; slouchT = 0; stiffT = 0; }
+      else if (typeof p === 'number') { hunchT = p; }
+      else { hunchT = p.hunch || 0; slouchT = p.slouch || 0; stiffT = p.stiff || 0; }
+    }
     function update(dt, state) {
       state = state || {};
+      charT += dt;
       // resolve the wanted clip: explicit action > locomotion speed
       var want = null;
       if (state.action && ACTION_MAP[state.action]) want = ACTION_MAP[state.action];
@@ -1468,27 +2234,181 @@
       // caller drove via setPosture() (the CharAnim adapter path) — the
       // posture layer was dead code. Only an explicit state.posture
       // overrides it now, mirroring the look layer above.
-      if (state.posture != null) hunchT = state.posture;
+      // PROPFIX: state.posture accepts the full posture record
+      // ({hunch, slouch, stiff}) as well as the legacy scalar
+      // (hunch only) — see setPosture below.
+      if (state.posture != null) applyPosture(state.posture);
       var lk = 1 - Math.exp(-dt * 10);
       lookYaw = lerp(lookYaw, lookYawT, lk); lookPitch = lerp(lookPitch, lookPitchT, lk);
       hunch = lerp(hunch, hunchT, lk);
+      slouch = lerp(slouch, slouchT, lk); stiff = lerp(stiff, stiffT, lk);
       P.neck.rotation.y += lookYaw * 0.45; P.neck.rotation.x += lookPitch * 0.45;
       P.head.rotation.y += lookYaw * 0.55; P.head.rotation.x += lookPitch * 0.55;
-      P.spine1.rotation.x += (hunch * 10 + stoop * 9) * DEG;
-      P.spine2.rotation.x += stoop * 3 * DEG;
-      P.head.rotation.x -= (hunch * 4 + stoop * 5) * DEG;
+      // slouch: a soft extra curve through both spine joints with
+      // a partial head counter-pitch (a tired slump, distinct from
+      // hunch's forward fold). stiff: straightens the spine chain
+      // a touch and damps the rest bias below (restK).
+      P.spine1.rotation.x += (hunch * 10 + slouch * 7 + stoop * 9) * DEG;
+      P.spine2.rotation.x += (slouch * 5 + stoop * 3 - stiff * 2) * DEG;
+      P.head.rotation.x -= (hunch * 4 + slouch * 3 + stoop * 5) * DEG;
+      var restK = 1 - 0.6 * stiff;
       // BODYFIX rest bias: idle-family poses only — never fights a
       // gait or a keyframed action (aim/shoot/melee stay exact).
       // BODYFIX2 extends it: head pitch + pelvis roll + free knee.
       if (cur.name === 'idle' || cur.name === 'idle_sit' || cur.name === 'idle_lean' || cur.name === 'idle_smoke' || cur.name === 'idle_phone') {
-        P.head.rotation.y += restYaw; P.neck.rotation.y += restYaw * 0.5;
-        P.head.rotation.x += restPitch;
-        P.pelvis.rotation.z += restPelvisRoll;
-        P.uArmL.rotation.z += restRoll; P.uArmR.rotation.z -= restRoll * 0.7;
+        P.head.rotation.y += restYaw * restK; P.neck.rotation.y += restYaw * 0.5 * restK;
+        P.head.rotation.x += restPitch * restK;
+        P.pelvis.rotation.z += restPelvisRoll * restK;
+        P.uArmL.rotation.z += restRoll * restK; P.uArmR.rotation.z -= restRoll * 0.7 * restK;
         if (cur.name === 'idle') {
-          P['fArm' + restElbowSide].rotation.x -= restElbow;
-          P['shin' + restKneeSide].rotation.x += restKnee;
-          P['thigh' + restKneeSide].rotation.x -= restKnee * 0.35;
+          P['fArm' + restElbowSide].rotation.x -= restElbow * restK;
+          P['shin' + restKneeSide].rotation.x += restKnee * restK;
+          P['thigh' + restKneeSide].rotation.x -= restKnee * 0.35 * restK;
+          // PROPFIX idle variants (seeded, see idleVar): a real
+          // crowd never rests in one symmetric parade stance.
+          if (idleVar === 1) {
+            // weight shift: pelvis rolls and pushes toward the
+            // straight (weight) leg; the free knee softens more.
+            P.pelvis.rotation.z += (restKneeSide === 'L' ? 1 : -1) * 0.055 * restK;
+            P.pelvis.position.x += (restKneeSide === 'L' ? -1 : 1) * 0.012 * restK;
+            P['shin' + restKneeSide].rotation.x += 0.05 * restK;
+          } else if (idleVar === 2) {
+            // hands clasped low in front
+            P.fArmL.rotation.x -= 0.55 * restK; P.fArmR.rotation.x -= 0.55 * restK;
+            P.uArmL.rotation.z += 0.06 * restK; P.uArmR.rotation.z -= 0.06 * restK;
+          } else if (idleVar === 3) {
+            // one hand on the hip: elbow out, forearm folded in
+            var hs = restElbowSide;
+            P['uArm' + hs].rotation.z += (hs === 'L' ? 1 : -1) * 0.30 * restK;
+            P['fArm' + hs].rotation.x -= 1.15 * restK;
+          }
+        }
+      }
+      // LEGFIX E: talk and phone poses carry the same weight
+      // shift + free knee as idle — a conversation is not a
+      // parade stance either. (Their arms stay with the clip.)
+      if (cur.name === 'talk' || cur.name === 'idle_phone') {
+        P['shin' + restKneeSide].rotation.x += restKnee * restK;
+        P['thigh' + restKneeSide].rotation.x -= restKnee * 0.35 * restK;
+        if (idleVar === 1) {
+          P.pelvis.rotation.z += (restKneeSide === 'L' ? 1 : -1) * 0.055 * restK;
+          P.pelvis.position.x += (restKneeSide === 'L' ? -1 : 1) * 0.012 * restK;
+          P['shin' + restKneeSide].rotation.x += 0.05 * restK;
+        }
+      }
+      // LEGFIX C: skirt sway — the hem swings gently against
+      // the stride and breathes at rest, instead of riding the
+      // pelvis like a lampshade.
+      if (P.skirt) {
+        var swPh = GAITS[cur.name] ? cur.phase * Math.PI * 2 : charT * 2.1 + seedPhase * 6.28;
+        var swAmt = GAITS[cur.name] ? 0.05 : 0.014;
+        P.skirt.rotation.x = Math.sin(swPh) * swAmt;
+        P.skirt.rotation.z = Math.cos(swPh) * swAmt * 0.6;
+      }
+      // LEGFIX A: FOOT-GROUND layer (IK-lite). The consumers
+      // lerp the ROOT toward groundHeightAt(root); this layer
+      // resolves the residual PER FOOT, read from the feet's
+      // real world positions after the pose is applied: a foot
+      // whose ground sits ABOVE its sole bends its leg (knee
+      // flexes, thigh counters, foot stays level) so the sole
+      // lands on the higher surface instead of sinking into
+      // it; standing, the pelvis also drops toward the LOWER
+      // foot so a curb straddle settles mid-way like a real
+      // stance. Smoothed, capped, and skipped for seated /
+      // driving / corpse / airborne clips and whenever the
+      // root itself is off the ground (player jump arc).
+      var FOOT_SKIP = { idle_sit: 1, drive: 1, enter_car: 1, exit_car: 1, death: 1, jump: 1, fall: 1, land: 1 };
+      if (!FOOT_SKIP[cur.name] && SH.World && SH.World.groundHeightAt) {
+        var rp = rig.root.position;
+        if (rp.y - SH.World.groundHeightAt(rp.x, rp.z) <= 0.07) {
+          var eL = fgSoleError(fgSoleL, P.footL);
+          var eR = fgSoleError(fgSoleR, P.footR);
+          var fk7 = 1 - Math.exp(-dt * 22);
+          fgErrL = lerp(fgErrL, clamp(eL, -0.17, 0.17), fk7);
+          fgErrR = lerp(fgErrR, clamp(eR, -0.17, 0.17), fk7);
+          var inGait = !!GAITS[cur.name];
+          var capBend = inGait ? 0.26 : 0.55;
+          // The foot term NEGATES the chain's pitch change
+          // (thigh -0.42 + shin +0.72 = +0.30), so the sole
+          // stays LEVEL while the leg folds — the first cut
+          // added +0.30 and pitched the toe down as fast as
+          // the bend lifted it (probe: right feet stuck ~2 cm
+          // under every surface).
+          // Lever, measured: one radian of this bend lifts the
+          // sole ~0.147 x H (the shin term dominates), so the
+          // divisor is 0.15-0.17 — the first cuts (0.30, then
+          // 0.26) under-lifted ~2x and left residuals.
+          // DROP VISIBILITY: applyPose resets pelvis.position.y
+          // every frame, so the readings above are taken at
+          // POSE height — last frame's pelvis drop is invisible
+          // to them. The DROP is therefore driven by the raw
+          // errors (how far the low foot dangles at pose
+          // height), while the BENDS use drop-corrected errors
+          // (raw - fgPelv x H): the high foot's true burial
+          // once the pelvis has settled toward the low foot.
+          var bendErrL = fgErrL - fgPelv * c.height;
+          var bendErrR = fgErrR - fgPelv * c.height;
+          if (bendErrL > 0.004) {
+            var bL = Math.min(capBend, (bendErrL / c.height) / 0.09);
+            P.shinL.rotation.x += bL * 0.72; P.thighL.rotation.x -= bL * 0.42; P.footL.rotation.x -= bL * 0.30;
+          }
+          if (bendErrR > 0.004) {
+            var bR = Math.min(capBend, (bendErrR / c.height) / 0.09);
+            P.shinR.rotation.x += bR * 0.72; P.thighR.rotation.x -= bR * 0.42; P.footR.rotation.x -= bR * 0.30;
+          }
+          if (!inGait) {
+            // PELVIS does the heavy lifting — measured fact:
+            // joint bends alone lift a sole only ~2 cm (the
+            // rise is second-order arc geometry), while a
+            // pelvis shift is exact and first-order. Both feet
+            // buried (pose settle, root lag) -> raise by the
+            // smaller burial; a foot dangling -> drop toward
+            // it, capped so the high foot's post-drop burial
+            // stays bendable (<= ~0.10 m). A standing split
+            // also gets a pelvis ROLL toward the low side —
+            // the weight-shift every real curb stance shows.
+            var eMin = Math.min(fgErrL, fgErrR);
+            var eMax = Math.max(fgErrL, fgErrR);
+            var pelvT = 0;
+            if (eMin < -0.004) pelvT = Math.max(eMin * 0.92, Math.min(0, eMax - 0.10), -0.11 * c.height) / c.height;
+            else if (eMin > 0.004) pelvT = Math.min(eMin * 0.92, 0.06 * c.height) / c.height;
+            fgPelv = lerp(fgPelv, pelvT, fk7);
+            if (fgPelv) P.pelvis.position.y += fgPelv;
+            var split = bendErrL - bendErrR;
+            if (Math.abs(split) > 0.05) {
+              P.pelvis.rotation.z += clamp(split * 1.1, -0.15, 0.15);
+            }
+          } else {
+            // GAIT pelvis: the gait's own dy drop sinks the
+            // STANCE foot under the plane together with the
+            // pelvis (measured on the run cycle: trough sole
+            // -0.068 m at bind height — far beyond the ~2 cm a
+            // knee bend can lift). When one foot is buried
+            // while the other is clearly airborne (swing),
+            // raise the pelvis by the burial: the stance sole
+            // rides back to the surface, the swing foot stays
+            // tucked, and the bob reads as spring, not sink.
+            // RAW errors, not the smoothed fgErr pair: with
+            // the smoothed pair in the loop the raise chased
+            // its own lag and floated the runner +0.03..0.07
+            // for most of the cycle (measured). No swing-foot
+            // condition either: at the drop trough BOTH feet
+            // sit near the plane (the cycle's crouch bottom)
+            // — in genuine flight both raw errors are
+            // negative, so the raise stays off there.
+            // Gain > 1 on purpose: the error is read WITH the
+            // raise already applied, so the fixed point of a
+            // 0.85 gain is only 46% correction (measured: the
+            // trough barely moved). 1.8 with a faster channel
+            // (32/s) lands ~64% inside the ~5-frame trough.
+            var eSt = Math.max(clamp(eL, -0.17, 0.17), clamp(eR, -0.17, 0.17));
+            // 1.2, not 1.8: at 1.8 the stance foot floated
+            // +0.03..0.05 (measured) — worse in a still than a
+            // slight trough sink, which reads as weight.
+            var pelvG = eSt > 0.008 ? Math.min(eSt * 1.2, 0.075 * c.height) / c.height : 0;
+            fgPelv = lerp(fgPelv, pelvG, 1 - Math.exp(-dt * 26));
+            if (fgPelv) P.pelvis.position.y += fgPelv;
+          }
         }
       }
       // expression + blink
@@ -1527,7 +2447,7 @@
       },
       setTimeScale: function (v) { timeOverride = v; },
       setLook: function (yaw, pitch) { lookYawT = yaw || 0; lookPitchT = pitch || 0; },
-      setPosture: function (p) { hunchT = p || 0; },
+      setPosture: function (p) { applyPosture(p); },
       current: function () { return cur.name; },
       poseTime: function () { return cur.time; },
       finished: function () {
@@ -1579,6 +2499,9 @@
       sleeve: r() < 0.5 ? 'long' : 'short',
       bottomType: female && r() < 0.3 ? 'skirt' : (r() < 0.25 ? 'shorts' : 'long'),
       accessories: pick(r, PED_ACCS),
+      // LEGFIX D: crowd shoe variety — heels for some women,
+      // sandals at the shore end of the palette, else sneakers.
+      shoeType: female ? (r() < 0.28 ? 'heel' : (r() < 0.30 ? 'sandal' : 'sneaker')) : (r() < 0.16 ? 'sandal' : 'sneaker'),
       seed: seed
     });
   }
@@ -1591,6 +2514,9 @@
     GAITS: GAITS,
     EXPRESSIONS: EXPRESSIONS,
     gradientMap: gradientMap,
+    // POLISH2: vehicles share the characters' body gradient so
+    // car paint bands like the cast (spec B10).
+    gradientMapBody: gradientMapBody,
     POSE_BONES: POSE_BONES
   };
 })(window.SH = window.SH || {});

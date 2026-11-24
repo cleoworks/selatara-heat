@@ -1204,6 +1204,63 @@
     });
   }
 
+  // POLISH2B (item 4): grass TUFTS — small crossed-plane blade
+  // clusters instanced over the open ground, so grass reads as
+  // vegetation with height, not a flat green blur. Placement is
+  // measured, not scattered blind: a point is kept only where
+  // groundHeightAt returns the raw grass level (-0.08 — every
+  // road, walk, plaza and pad is a registered surface ABOVE it),
+  // on land, clear of building footprints and colliders.
+  function buildGrassTufts(scene) {
+    var rng = SH.World.makeRng(9177);
+    var pts = [];
+    var cols = SH.World.colliders || [];
+    for (var tries = 0; tries < 26000 && pts.length < 900; tries++) {
+      var x = -580 + rng() * 1160, z = -580 + rng() * 1160;
+      if (SH.World.isLand && !SH.World.isLand(x, z)) continue;
+      var g = SH.World.groundHeightAt(x, z);
+      if (Math.abs(g + 0.08) > 0.001) continue;
+      if (!bldgClear(x, z, 0.7)) continue;
+      var inCol = false;
+      for (var ci = 0; ci < cols.length; ci++) {
+        var c = cols[ci];
+        if (Math.abs(x - c.x) < c.hx + 0.5 && Math.abs(z - c.z) < c.hz + 0.5) { inCol = true; break; }
+      }
+      if (inCol) continue;
+      pts.push({ x: x, z: z, r: rng() * Math.PI, s: 0.8 + rng() * 0.55 });
+    }
+    if (pts.length < 40) return;
+    var tc = document.createElement('canvas'); tc.width = 64; tc.height = 64;
+    var tg = tc.getContext('2d');
+    tg.clearRect(0, 0, 64, 64);
+    for (var b = 0; b < 9; b++) {
+      var bx = 10 + b * 5.5 + (rng() - 0.5) * 3, lean = (rng() - 0.5) * 16, h = 34 + rng() * 26;
+      var grad = tg.createLinearGradient(0, 64, 0, 64 - h);
+      grad.addColorStop(0, '#274d18'); grad.addColorStop(1, '#8fbc58');
+      tg.strokeStyle = grad; tg.lineWidth = 3.2; tg.lineCap = 'round';
+      tg.beginPath(); tg.moveTo(bx, 64); tg.quadraticCurveTo(bx + lean * 0.4, 64 - h * 0.6, bx + lean, 64 - h); tg.stroke();
+    }
+    var tex = new THREE.CanvasTexture(tc);
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    var pGeo = new THREE.PlaneGeometry(0.36, 0.27); pGeo.translate(0, 0.135, 0);
+    var merged = SH.World.mergeGeos([pGeo, pGeo.clone().rotateY(Math.PI / 2)]);
+    var mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.42, side: THREE.DoubleSide });
+    var im = new THREE.InstancedMesh(merged, mat, pts.length);
+    var dum = new THREE.Object3D();
+    var cA = new THREE.Color(0x9db877), cB = new THREE.Color(0x5d8140), cT = new THREE.Color();
+    for (var i = 0; i < pts.length; i++) {
+      dum.position.set(pts[i].x, -0.08, pts[i].z);
+      dum.rotation.set(0, pts[i].r, 0);
+      dum.scale.setScalar(pts[i].s);
+      dum.updateMatrix();
+      im.setMatrixAt(i, dum.matrix);
+      im.setColorAt(i, cT.copy(cA).lerp(cB, rng()));
+    }
+    im.name = 'grass-tufts';
+    scene.add(im);
+    SH.LandmarksTuftCount = pts.length;
+  }
+
   function buildDistrictFill(shared) {
     var stats = {
       karatTiles: 0, karatTilesTested: 0, karatClusters: 0,
@@ -1356,6 +1413,7 @@
       buildMonorel(scene, shared);
       buildDistrictFill(shared);
       buildMapAddons(shared);
+      buildGrassTufts(scene);
       var waterMesh = new THREE.Mesh(SH.World.mergeGeos(shared.water), mats.water);
       waterMesh.name = 'w1-water';
       scene.add(waterMesh);

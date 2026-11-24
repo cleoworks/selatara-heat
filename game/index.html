@@ -56,14 +56,14 @@
   :root {
     --ink: #f4efe6; --panel: rgba(10, 12, 20, .55); --line: rgba(255, 255, 255, .35);
     --pink: #ff4fa3; --cyan: #37e0ff; --yellow: #ffd23f; --danger: #e83a3a; --green: #51e07a;
-    --safe: 24px;
+    --safe: 28px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1030; color: var(--ink);
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 3;
-    background: radial-gradient(ellipse at center, transparent 52%, rgba(5, 4, 16, .52) 100%); }
+    background: radial-gradient(ellipse at center, transparent 58%, rgba(5, 4, 16, .15) 100%); }
   #grade { position: fixed; inset: 0; pointer-events: none; z-index: 3; mix-blend-mode: soft-light;
     background: linear-gradient(180deg, rgba(255, 138, 60, .09) 0%, transparent 34%, transparent 70%, rgba(16, 60, 72, .12) 100%); }
   #damage-flash { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
@@ -77,55 +77,51 @@
   #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     backdrop-filter: blur(4px); padding: 10px 14px; }
-  /* RESTAGE 2B HUD fix: at contact-sheet size (~0.3x) the .55-alpha
-     panel fill let the scene bleed through and the two left cards
-     merged into one dark blob. The in-game HUD cards now sit on a
-     near-opaque fill with a coloured 2px edge each (gold = mission,
-     blue = police), the separator language the top-ranked entry's
-     HUD uses. Menus keep the lighter shared panel. */
-  /* HUD OVERHAUL (hud2, 2026-11-21): the same card language now
-     covers EVERY in-game HUD surface — objective, police, weapon,
-     radio, subtitle: near-opaque fill, 10px radius, 2px semantic
-     edge (gold = mission/active, blue = police, cyan = weapon).
-     Researched from the #1 entry's HUD (see hud2.md): eyebrow +
-     oversized headline hierarchy, pill chips for state, numbers
-     as the largest glyphs on screen. */
-  #hud-objective, #hud-police, #hud-weapon { background: rgba(10, 12, 20, .85); border-radius: 10px; }
-  #hud-objective { border: 2px solid rgba(255, 210, 63, .55); }
-  #hud-police { border: 2px solid rgba(157, 184, 255, .6); }
-  #hud-weapon { border: 2px solid rgba(55, 224, 255, .55); padding: 10px 14px 11px; min-width: 224px; }
-  /* Hazard-stripe cap on the mission card — the #1 entry's
-     signature accent; pure CSS, clipped by the card radius. */
-  #hud-objective::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px;
-    background: repeating-linear-gradient(45deg, var(--yellow) 0 12px, #0d0f16 12px 24px); }
-  #hud-left { position: absolute; left: var(--safe); bottom: var(--safe); display: flex; align-items: flex-end; gap: 14px; }
-  #minimap { width: clamp(150px, 24vmin, 210px); height: clamp(150px, 24vmin, 210px); border-radius: 50%;
-    border: 3px solid rgba(255, 210, 63, .8); box-shadow: 0 0 0 2px rgba(8, 10, 18, .85), 0 4px 18px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
-  #hud-district { position: absolute; left: var(--safe); bottom: calc(var(--safe) + clamp(150px, 24vmin, 210px) + 10px);
-    font-weight: 800; letter-spacing: .14em; font-size: clamp(17px, 2.6vmin, 23px); color: var(--yellow); text-shadow: 0 2px 8px rgba(0,0,0,.85); }
-  #hud-district::after { content: ''; display: block; width: 64px; height: 4px; border-radius: 2px; background: var(--yellow); margin-top: 5px; box-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  /* HUD REDESIGN (2026-11-23, Bos spec): AAA open-world language —
+     no cards on the in-game HUD. Every element is bare text or a
+     thin shape over the scene, kept readable by text shadows alone:
+     white type, one accent (--accent #f5c542), red/blue reserved
+     for the police. Panels survive only in menus and the shop. */
+  :root { --accent: #f5c542; --hp: #e8453c; --ar: #3aa8ff; }
+  .hud-shadow { text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #hud-left { position: absolute; left: var(--safe); bottom: var(--safe); }
+  #minimap-wrap { position: relative; width: 170px; height: 170px; flex: none; }
+  #minimap { width: 170px; height: 170px; border-radius: 50%; display: block;
+    border: 2px solid rgba(255, 255, 255, .6); box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 12px rgba(0,0,0,.35); background: #22301f; }
+  /* HP / armour arcs hugging the minimap: HP centred on the right
+     edge, armour centred on the bottom edge (30% of the circle
+     each, 6px stroke; hud.js drives stroke-dasharray from the
+     live values, pathLength=100 keeps the maths in percent). */
+  #minimap-arcs { position: absolute; inset: 0; pointer-events: none; transition: opacity .5s; }
+  #minimap-arcs.dim { opacity: .35; }
+  #minimap-arcs circle { fill: none; stroke-width: 6; stroke-linecap: round; }
+  #minimap-arcs .track { stroke: rgba(255,255,255,.14); }
+  #arc-health { stroke: var(--hp); } #arc-armor { stroke: var(--ar); }
+  /* Pulsing radar ring on the minimap edge while wanted > 0
+     (hud.js toggles .active; police units themselves are the
+     red/blue blips minimap.js already draws). */
+  #minimap-ring { position: absolute; inset: -7px; border-radius: 50%; pointer-events: none;
+    border: 2px solid transparent; opacity: 0; }
+  #minimap-ring.active { animation: ringPulse 1s ease-out infinite; }
+  @keyframes ringPulse {
+    0% { opacity: 1; border-color: rgba(255, 59, 78, .85); transform: scale(1); }
+    50% { border-color: rgba(74, 125, 255, .85); }
+    100% { opacity: 0; border-color: rgba(255, 59, 78, .85); transform: scale(1.05); } }
+  #hud-district { position: absolute; left: var(--safe); bottom: calc(var(--safe) + 170px + 10px);
+    font-weight: 800; letter-spacing: .14em; font-size: clamp(17px, 2.6vmin, 23px); color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,.85); }
+  #hud-district::after { content: ''; display: block; width: 64px; height: 4px; border-radius: 2px; background: var(--accent); margin-top: 5px; box-shadow: 0 2px 6px rgba(0,0,0,.6); }
   #hud-district.fade { animation: districtFade 3.2s forwards; }
   @keyframes districtFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
-  #hud-bars { width: 188px; }
-  .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
-  .bar-row > span:last-child { font-size: 14px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-  .bar { flex: 1; height: 12px; background: rgba(255,255,255,.16); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 5px rgba(0,0,0,.45); }
-  .bar i { display: block; height: 100%; transition: width .18s; }
-  #bar-health { background: var(--danger); } #bar-armor { background: var(--cyan); }
-  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; display: flex; flex-direction: column; align-items: flex-end;
-    /* ROUND 3: the top-right cluster (clock / money / wanted stars)
-       sits on the same dark card as the other HUD panels — it used
-       to float on text-shadow only and washed out against bright sky. */
-    background: rgba(10, 12, 20, .85); border: 2px solid rgba(255, 255, 255, .22); border-radius: 10px; padding: 10px 14px 12px; }
-  #hud-cash { font-size: clamp(30px, 4.8vmin, 40px); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--cyan); text-shadow: 0 2px 8px rgba(0,0,0,.75); line-height: 1.05; }
-  #hud-clock { font-size: 13.5px; font-weight: 700; letter-spacing: .22em; opacity: .85; margin-bottom: 2px; display: flex; align-items: center; gap: 7px; }
-  #hud-clock-icon { display: inline-flex; color: var(--yellow); }
+  #hud-top { position: absolute; right: var(--safe); top: var(--safe); text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+  #hud-cash { font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.8); line-height: 1.05; }
+  #hud-clock { font-size: 14px; font-weight: 700; letter-spacing: .08em; opacity: .7; margin-bottom: 2px; display: flex; align-items: center; gap: 7px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #hud-clock-icon { display: inline-flex; color: var(--accent); }
   #hud-clock-icon svg { width: 15px; height: 15px; }
-  #hud-stars { font-size: clamp(24px, 3.6vmin, 32px); margin-top: 1px; line-height: 1.1; }
+  #hud-stars { margin-top: 3px; line-height: 1; }
   #hud-stars .star { color: rgba(255,255,255,.22); text-shadow: 0 1px 4px rgba(0,0,0,.6); margin-left: 3px; }
   #hud-stars .star:first-child { margin-left: 0; }
-  #hud-stars .star svg { width: .92em; height: .92em; display: inline-block; vertical-align: -.06em; }
-  #hud-stars .star.on { color: var(--yellow); }
+  #hud-stars .star svg { width: 22px; height: 22px; display: inline-block; vertical-align: -.06em; }
+  #hud-stars .star.on { color: #fff; }
   #hud-stars .star.searching { animation: starBlink .5s infinite alternate; }
   /* ROUND 3: short pop when the wanted level changes (hud.js adds
      .flash for ~0.6 s). */
@@ -133,104 +129,122 @@
   @keyframes starFlash { from { transform: scale(1); filter: brightness(1); } to { transform: scale(1.4); filter: brightness(2); } }
   #hud-hitmark svg { width: 30px; height: 30px; display: block; }
   @keyframes starBlink { from { color: #4a7dff; } to { color: #ff4a5e; } }
-  #hud-wanted-status { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: #ff9f43; margin-top: 4px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
-  #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; min-width: 200px; }
-  /* Weapon card (hud2 follow-up): the #1 entry's slot language brought
-     to the active-weapon card — small caps name + state chip on top,
-     the magazine count as the card's biggest glyph, the reserve as
-     its own labelled block, a segmented per-round magazine bar, a
-     gold reload progress bar, and the full arsenal as a slot strip
-     (active slot gold, owned dim, unowned faded). All values are
-     live Combat state; nothing here is decoration. */
-  #weapon-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  #weapon-name { font-weight: 800; letter-spacing: .14em; font-size: 13.5px; text-transform: uppercase; color: var(--cyan); white-space: nowrap; }
-  #weapon-state { font-size: 10.5px; font-weight: 800; letter-spacing: .14em; color: var(--yellow);
-    background: rgba(255, 210, 63, .14); border: 1px solid rgba(255, 210, 63, .55); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
-  #weapon-state.danger { color: #ff8f9d; background: rgba(255, 74, 94, .14); border-color: rgba(255, 74, 94, .6); }
-  #weapon-state.reloading { animation: weapPulse .45s infinite alternate; }
-  @keyframes weapPulse { from { opacity: 1; } to { opacity: .45; } }
-  #weapon-main { display: flex; align-items: center; justify-content: flex-end; gap: 11px; margin-top: 3px; }
-  #weapon-icon { color: #dfe6ee; display: inline-flex; }
-  #weapon-icon svg { width: 52px; height: 18px; display: block; }
+  /* One small line under the stars: live unit count from the same
+     police data the deleted panel used ("8 UNITS · AIR"). */
+  #hud-wanted-status { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #fff; opacity: .7; margin-top: 5px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  /* Police response list (RESTORED 2026-11-24, Bos order — the
+     redesign was a restyle, not a removal): the same live
+     SH.Police units/blocks/heli rows and format the pre-redesign
+     panel showed, rendered bare under the wanted line — no card,
+     no chip backgrounds; the role tag carries the semantic
+     colour as text (accent = pursuit/roadblock, red = ramming,
+     blue = searching/air), distance right-aligned tabular. */
+  #hud-police { margin-top: 9px; width: 268px; text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+  #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .08em; font-size: 12px; color: #9db8ff; margin-bottom: 2px; }
+  #hud-police .pol-head span { white-space: nowrap; }
+  #hud-police .pol-row { display: flex; align-items: baseline; gap: 10px; padding: 3.5px 0; border-top: 1px solid rgba(255,255,255,.14); font-size: 13.5px; }
+  #hud-police .pol-row .pol-name { font-weight: 700; white-space: nowrap; }
+  #hud-police .pol-row .pol-dist { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #hud-police .pol-tag { font-weight: 800; font-size: 11.5px; letter-spacing: .08em; color: var(--accent); white-space: nowrap; }
+  #hud-police .pol-tag.hot { color: #ff5a4e; }
+  #hud-police .pol-tag.cool { color: #7db4ff; }
+  #hud-right { position: absolute; right: var(--safe); bottom: var(--safe); text-align: right; }
+  /* Weapon cluster (redesign): no card — a bare white silhouette
+     under the stars with the mag / reserve count beside it. The
+     arsenal strip exists only for 2 s after a switch (hud.js
+     toggles .show); the whole cluster contextually fades to 35%
+     after 4 s without a change (hud.js toggles .dim). */
+  #hud-weapon { position: relative; margin-top: 12px; transition: opacity .5s; }
+  #hud-weapon.dim { opacity: .35; }
+  #weapon-main { display: flex; align-items: center; justify-content: flex-end; gap: 11px; }
+  #weapon-icon { color: #fff; display: inline-flex; filter: drop-shadow(0 2px 6px rgba(0,0,0,.8)); }
+  #weapon-icon svg { width: 56px; height: 19px; display: block; }
   #weapon-icon svg *, .wslot svg * { fill: currentColor; }
-  #weapon-ammo { font-size: clamp(34px, 5vmin, 42px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
-  #weapon-reserve-box { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border-left: 1px solid rgba(255,255,255,.18); padding-left: 10px; }
-  #weapon-reserve-label { font-size: 9.5px; font-weight: 800; letter-spacing: .2em; opacity: .65; }
-  #weapon-reserve { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; }
-  #weapon-magbar { display: flex; gap: 2px; margin-top: 8px; height: 5px; }
-  #weapon-magbar i { flex: 1; background: rgba(255,255,255,.16); border-radius: 2px; }
-  #weapon-magbar i.on { background: var(--cyan); }
-  #weapon-reload { height: 4px; background: rgba(255,255,255,.14); border-radius: 2px; margin-top: 5px; overflow: hidden; }
-  #weapon-reload-fill { display: block; height: 100%; background: var(--yellow); width: 0%; }
-  #weapon-slots { display: flex; gap: 5px; margin-top: 9px; }
-  .wslot { flex: 1; border: 1.5px solid rgba(255,255,255,.20); border-radius: 7px; padding: 4px 1px 3px; text-align: center; color: #dfe6ee; opacity: .72; }
+  #weapon-ammo { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.8); white-space: nowrap; }
+  #weapon-ammo svg { width: 20px; height: 20px; }
+  #weapon-slots { position: absolute; right: 0; top: calc(100% + 7px); display: flex; gap: 5px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #weapon-slots.show { opacity: 1; }
+  .wslot { width: 46px; border: 1.5px solid rgba(255,255,255,.25); border-radius: 7px; padding: 4px 1px 3px; text-align: center; color: #dfe6ee; opacity: .72; background: rgba(10,12,20,.45); }
   .wslot svg { width: 30px; height: 11px; display: block; margin: 0 auto; }
-  .wslot span { display: block; font-size: 8.5px; font-weight: 800; letter-spacing: .1em; margin-top: 2px; }
-  .wslot.active { border-color: rgba(255, 210, 63, .95); background: rgba(255, 210, 63, .12); color: var(--yellow); opacity: 1; }
+  .wslot span { display: block; font-size: 8.5px; font-weight: 800; letter-spacing: .08em; margin-top: 2px; }
+  .wslot.active { border-color: rgba(245, 197, 66, .95); background: rgba(245, 197, 66, .12); color: var(--accent); opacity: 1; }
   .wslot.locked { opacity: .30; }
-  #hud-speedo { text-align: right; width: 216px; margin-left: auto; }
-  #speed-num { font-size: clamp(46px, 7.2vmin, 62px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,.65); }
-  #hud-speedo .unit { font-size: 13px; letter-spacing: .2em; opacity: .85; font-weight: 700; }
+  #hud-speedo { text-align: right; margin-left: auto; }
+  #speed-num { font-size: 56px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #hud-speedo .unit { font-size: 14px; letter-spacing: .08em; opacity: .85; font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
   .gauge { height: 9px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 6px; overflow: hidden; }
   .gauge i { display: block; height: 100%; }
+  /* Redesign: no speed gauge, no VEHICLE label row — the vehicle
+     health is one thin 120x4 bar under the speed number. */
+  #speed-gauge { display: none; }
+  #veh-gauge { width: 120px; height: 4px; margin-left: auto; border-radius: 2px; }
   #veh-damage { background: var(--green); }
   #speed-bar { background: var(--cyan); width: 0%; }
-  #veh-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: .18em; margin-top: 8px; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
+  #veh-label { display: none; }
   #veh-hp { font-variant-numeric: tabular-nums; letter-spacing: .05em; }
-  #hud-radio { font-size: 11px; letter-spacing: .14em; color: var(--cyan); margin-top: 5px; }
-  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 340px; min-width: 280px; padding: 13px 16px 13px; overflow: hidden; }
-  /* RESTAGE 2B HUD fix: contact-sheet legibility floor — at the
-     ~0.3x judge scale a glyph needs ~5-6px to read, so HUD text
-     that matters is now >= ~17px at source (mission title 19px,
-     cash ~29px, ammo ~26px). Measured against the top-ranked
-     entry's HUD, whose headline and money run 1.5-2x our old size. */
-  /* HUD OVERHAUL (hud2): the legibility floor rises again to the
-     #1 entry's scale — eyebrow 11.5px caps over a 27px white
-     headline, stage as a pill chip, body 16px, distance 14px. */
-  #obj-eyebrow { color: var(--yellow); font-weight: 800; letter-spacing: .22em; font-size: 11.5px; text-transform: uppercase; margin: 5px 0 3px; }
-  #obj-title { color: #fff; font-weight: 800; letter-spacing: .05em; font-size: clamp(22px, 3.4vmin, 27px); display: flex; justify-content: space-between; align-items: center; gap: 12px; line-height: 1.12; }
-  #obj-timer { color: var(--yellow); font-variant-numeric: tabular-nums; font-size: 12.5px; letter-spacing: .08em;
-    background: rgba(255, 210, 63, .16); border: 1px solid rgba(255, 210, 63, .5); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+  /* Mission block (redesign): bare text at the top-left, one thin
+     accent rule at its left — no card, no hazard stripe, no chips.
+     The eyebrow and the step-progress strip are not part of the
+     new layout (hud.js still fills them; they stay display:none). */
+  #hud-objective { position: absolute; left: var(--safe); top: var(--safe); max-width: 360px;
+    border-left: 3px solid var(--accent); padding-left: 12px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #obj-eyebrow { display: none !important; }
+  #obj-title { color: #fff; font-weight: 800; letter-spacing: .05em; font-size: 22px; line-height: 1.15; text-transform: uppercase; }
+  #obj-timer { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 800; letter-spacing: .08em; margin-top: 4px; line-height: 1.1; white-space: nowrap; }
   #obj-timer:empty { display: none; }
-  #obj-text { font-size: 16px; margin-top: 3px; }
-  #obj-dist { font-size: 14px; opacity: .9; margin-top: 2px; font-variant-numeric: tabular-nums; font-weight: 700; }
-  #obj-progress { height: 8px; background: rgba(255,255,255,.14); border-radius: 4px; margin-top: 8px; overflow: hidden; display: flex; gap: 2px; }
-  #obj-progress i { display: block; height: 100%; background: rgba(255,255,255,.18); flex: 1; }
-  #obj-progress i.done { background: var(--yellow); }
-  #hud-police { position: absolute; left: var(--safe); top: 172px; width: 284px; font-size: 15px; }
-  #hud-police .pol-head { display: flex; justify-content: space-between; font-weight: 800; letter-spacing: .08em; font-size: 15px; color: #9db8ff; margin-bottom: 5px; }
-  #hud-police .pol-head span { white-space: nowrap; }
-  #hud-police .pol-row { display: flex; justify-content: space-between; gap: 8px; padding: 3.5px 0; border-top: 1px solid rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
-  #hud-police .pol-row > span:nth-child(2) { font-weight: 700; }
-  .pol-tag { font-weight: 800; font-size: 12.5px; letter-spacing: .08em; padding: 2px 7px; border-radius: 3px; background: #7a5a12; color: #ffd23f; }
-  .pol-tag.hot { background: #8c1f2f; color: #ffb3ba; }
-  .pol-tag.cool { background: #1f4d6b; color: #a8dcff; }
-  /* RESTAGE 2B HUD fix (research pass, 2026-11-20): the notes stack
-     used to start at top:118px while the police card sits at
-     top:128px — every notification rendered ON TOP of the police
-     panel (the v2 combat frame's flagged overlap was this CSS
-     collision, not a staging accident). The stack now starts below
-     the police card's full height. */
-  /* HUD OVERHAUL (hud2): police card moved to top:172px under the
-     taller objective card and grew (284px wide, up to 5 unit rows
-     + a status row ≈ 207px tall) — the notes stack now starts
-     below its worst-case bottom edge. */
-  #hud-notes { position: absolute; left: var(--safe); top: 392px; display: flex; flex-direction: column; gap: 6px; }
+  #obj-text { font-size: 15px; margin-top: 3px; }
+  #obj-dist { font-size: 13px; opacity: .75; margin-top: 2px; font-variant-numeric: tabular-nums; font-weight: 700; }
+  #obj-progress { display: none !important; }
+  /* The police table is GONE (redesign point 4): units live on the
+     minimap as blips, the count is the one line under the stars.
+     The notes stack now starts under the bare mission block. */
+  #hud-notes { position: absolute; left: var(--safe); top: 196px; display: flex; flex-direction: column; gap: 6px; }
   #hud-notes .note { background: rgba(10, 12, 20, .85); }
   .note { background: var(--panel); border-left: 3px solid var(--cyan); border-radius: 4px; padding: 8px 13px; font-size: 15px; animation: noteIn .25s; }
   @keyframes noteIn { from { transform: translateX(-8px); opacity: 0; } }
-  #hud-subtitle { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); max-width: 680px; width: max-content;
-    background: rgba(5, 6, 12, .9); border: 1px solid rgba(255, 255, 255, .16); border-radius: 10px; padding: 10px 16px; display: flex; align-items: center; gap: 13px;
-    font-size: clamp(16px, 2.4vmin, 20px); text-align: left; }
-  #sub-portrait { width: 54px; height: 54px; border-radius: 6px; border: 2px solid var(--pink); flex: none; background: #2a1b4a; }
-  #sub-name { color: var(--cyan); font-weight: 800; margin-right: 8px; }
-  #sub-role { color: var(--yellow); font-size: 12px; font-weight: 800; letter-spacing: .14em; }
-  #radio-card { margin-top: 8px; background: rgba(10, 12, 20, .85); border: 1px solid var(--line); border-left: 3px solid var(--pink);
-    border-radius: 8px; padding: 8px 12px; text-align: left; min-width: 190px; }
-  #radio-station { color: var(--pink); font-weight: 800; font-size: 13px; letter-spacing: .1em; }
-  #radio-track { font-size: 12.5px; opacity: .92; margin-top: 1px; white-space: nowrap; }
-  #hud-prompt { position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font-weight: 700; letter-spacing: .06em; font-size: 15px; }
+  /* Subtitle (redesign): bare shadowed text, the speaker name
+     coloured above it, the round 40px portrait at its left.
+     POLISH 01/02/04 (user order): a thin dark semi-transparent
+     panel now sits behind the text — over bright car paint in a
+     chase the bare shadow alone washed out; the panel is kept
+     as light as readability allows. */
+  #hud-subtitle { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); max-width: 640px; width: max-content;
+    display: flex; align-items: flex-start; gap: 11px; font-size: 20px; text-align: left;
+    background: rgba(8,10,16,.52); border-radius: 10px; padding: 10px 16px 11px 10px;
+    color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.85); line-height: 1.3; }
+  /* Speed lines (POLISH 01/02/04): radial streaks masked to the
+     frame edges, opacity driven by road speed in hud.js — the
+     cheap motion-blur read for the chase. Pointer-inert, and the
+     screenshot mode hides it with the rest of the HUD. */
+  #speed-lines { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 4;
+    background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.15) 0deg .8deg, transparent .8deg 7deg);
+    -webkit-mask-image: radial-gradient(ellipse at center, transparent 54%, #000 76%, #000 90%, transparent 99%);
+    mask-image: radial-gradient(ellipse at center, transparent 54%, #000 76%, #000 90%, transparent 99%); }
+  body.hud-clean #speed-lines { display: none !important; }
+  #sub-portrait { width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); flex: none; background: #2a1b4a; margin-top: 2px; }
+  #sub-name { color: var(--accent); font-weight: 800; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; margin-right: 8px; }
+  #sub-role { color: #fff; opacity: .65; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+  /* Radio (redesign): one bare 13px line under the speedo; hud.js
+     fades it out 4 s after the last track/station change. */
+  #radio-card { margin-top: 9px; display: flex; align-items: baseline; justify-content: flex-end; gap: 8px;
+    font-size: 13px; text-shadow: 0 2px 6px rgba(0,0,0,.8); transition: opacity .6s; white-space: nowrap; }
+  #radio-station { color: #fff; font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  #radio-track { font-size: 13px; opacity: .8; white-space: nowrap; }
+  /* Interaction prompt (redesign): a 30px pill with a round key
+     cap (hud.js builds the cap for "F — ..." style prompts). */
+  #hud-prompt { position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%); height: 30px;
+    display: flex; align-items: center; gap: 8px; background: rgba(10, 12, 20, .55); border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px; padding: 0 14px 0 5px; font-weight: 700; letter-spacing: .06em; font-size: 13.5px; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+  #hud-prompt .keycap { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff; color: #10131c; font-weight: 800; font-size: 12.5px; text-shadow: none; flex: none; }
+  /* SCREENSHOT MODE (redesign point: toggle P, hud.js flips the
+     body class): everything hides except the minimap itself, the
+     cash and the wanted stars — the clean frame for screenshots. */
+  body.hud-clean #hud-objective, body.hud-clean #hud-notes, body.hud-clean #hud-district,
+  body.hud-clean #hud-right, body.hud-clean #hud-clock, body.hud-clean #hud-wanted-status, body.hud-clean #hud-police,
+  body.hud-clean #hud-weapon, body.hud-clean #hud-subtitle, body.hud-clean #hud-prompt,
+  body.hud-clean #hud-marker, body.hud-clean #hud-crosshair, body.hud-clean #hud-hitmark,
+  body.hud-clean #hud-banner, body.hud-clean #minimap-arcs, body.hud-clean #minimap-ring { display: none !important; }
   #hud-marker { position: fixed; left: 0; top: 0; z-index: 5; color: var(--yellow); font-weight: 800; font-size: 13px;
     text-shadow: 0 1px 5px rgba(0,0,0,.85); pointer-events: none; }
   #hud-crosshair { position: fixed; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px;
@@ -250,6 +264,27 @@
   /* ---------- Screens ---------- */
   .screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 14px; background: linear-gradient(180deg, rgba(6,6,18,.25), rgba(6,6,18,.72)); }
+  /* POLISH2B (item 7): the TITLE screen's darkening eases ~30%
+     (alphas .25/.72 -> .18/.50) so the dusk city behind the menu
+     reads brighter; pause/map screens keep the shared .screen. */
+  #title-screen { background: linear-gradient(180deg, rgba(6,6,18,.18), rgba(6,6,18,.50)); }
+  /* TITLE REDESIGN (2026-11-24, Bos order): the title screen joins
+     the HUD redesign language — bigger bolder wordmark carried by
+     shadow alone, HEAT in the one accent (was pink), the menu as
+     bare text rows with a 3px accent underline marking the
+     hovered/focused item. No boxed buttons. Actions unchanged. */
+  #title-screen .logo { font-size: clamp(46px, 9.5vmin, 92px); letter-spacing: .1em;
+    text-shadow: 0 4px 28px rgba(0,0,0,.9), 0 2px 6px rgba(0,0,0,.85); }
+  #title-screen .logo span { color: var(--accent); }
+  #title-screen .tagline { text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+  #title-screen .menu-buttons { align-items: center; gap: 4px; }
+  #title-screen .menu-buttons button { background: transparent; border: none; border-radius: 0;
+    font-size: 19px; letter-spacing: .14em; padding: 9px 30px; position: relative;
+    text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+  #title-screen .menu-buttons button::after { content: ''; position: absolute; left: 50%; bottom: 2px;
+    transform: translateX(-50%); width: 34px; height: 3px; background: var(--accent); opacity: 0; }
+  #title-screen .menu-buttons button:hover, #title-screen .menu-buttons button:focus-visible { color: var(--accent); }
+  #title-screen .menu-buttons button:hover::after, #title-screen .menu-buttons button:focus-visible::after { opacity: 1; }
   .logo { font-size: clamp(36px, 8vmin, 76px); font-weight: 800; letter-spacing: .12em; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
   .logo span { color: var(--pink); }
   .tagline { letter-spacing: .3em; font-size: clamp(11px, 1.8vmin, 14px); opacity: .85; margin-top: -8px; }
@@ -262,40 +297,83 @@
   .panel-screen input[type="range"] { width: 180px; }
   .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; font-size: 14px; }
   .controls-grid b { color: var(--yellow); font-variant-numeric: tabular-nums; }
-  /* Pause career panel: live run stats + mission checklist (menus.js fills it). */
-  #pause-main { display: flex; gap: 18px; align-items: flex-start; justify-content: center; flex-wrap: wrap; max-width: 97vw; }
-  #pause-main .menu-buttons { margin-top: 0; }
-  #pause-stats { min-width: 860px; max-width: 900px; text-align: left; padding: 20px 26px; }
-  #pause-stats h2 { margin: 0 0 10px; letter-spacing: .2em; font-size: 19px; color: var(--cyan); }
-  .stat-hero { display: flex; gap: 14px; margin-bottom: 14px; }
-  .hero-tile { flex: 1 1 0; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
-    border-radius: 8px; padding: 11px 16px 10px; }
-  .hero-tile span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .18em; opacity: .75; }
-  .hero-tile b { display: block; font-size: 40px; font-weight: 800; line-height: 1.08; font-variant-numeric: tabular-nums; }
-  .hero-tile b.cash { color: var(--green); }
+  /* Pause career screen (menus.js fills #pause-stats).
+     REDESIGN (2026-11-24, Bos order): the career screen joins the
+     HUD redesign language — the big card, the hero tiles and the
+     boxed side buttons are gone; every line menus.js already
+     builds now sits as bare typography over the dimmed scene,
+     carried by text shadow: big glyphs for the three hero stats,
+     hairline row dividers, accent section heads, and the side
+     buttons as bare text rows with a 3px accent bar marking the
+     hovered/focused one. Every data item and action is unchanged.
+     Palette follows the redesign: white + the one accent; the old
+     green/cyan state colours fold into white (done/owned) and the
+     accent (current/price). */
+  #pause-menu { background: linear-gradient(180deg, rgba(5,5,14,.52), rgba(5,5,14,.80)); }
+  #pause-menu .logo { letter-spacing: .3em; text-shadow: 0 4px 22px rgba(0,0,0,.9), 0 2px 6px rgba(0,0,0,.85); }
+  #pause-main { display: flex; gap: 36px; align-items: flex-start; justify-content: center; flex-wrap: wrap; max-width: 97vw; }
+  #pause-main .menu-buttons { margin-top: 2px; min-width: 208px; gap: 4px; }
+  #pause-menu .menu-buttons button { background: transparent; border: none; border-left: 3px solid transparent;
+    border-radius: 0; text-align: left; font-size: 16.5px; letter-spacing: .1em; padding: 9px 16px 9px 14px;
+    text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+  #pause-menu .menu-buttons button:hover, #pause-menu .menu-buttons button:focus-visible { color: var(--accent); border-left-color: var(--accent); }
+  /* POLISH 01/02/04 (user order, pause screen only): the panel
+     comes BACK — a dark semi-transparent card with a light blur
+     behind the career content, so the text holds over the bright
+     lighthouse backdrop. The bare-typography redesign stands
+     everywhere else; this screen is the named exception. */
+  #pause-stats { min-width: 860px; max-width: 900px; text-align: left; padding: 20px 24px 22px;
+    background: rgba(7,9,16,.78); border: 1px solid rgba(255,255,255,.10); border-radius: 12px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    max-height: none; overflow: visible;
+    text-shadow: 0 2px 6px rgba(0,0,0,.88); }
+  /* Right column: buttons over the character card (POLISH
+     01/02/04) — the portrait canvas is painted by menus.js via
+     HUD.drawPortrait('Raka'). */
+  #pause-right { display: flex; flex-direction: column; gap: 16px; min-width: 208px; }
+  #pause-side { background: rgba(7,9,16,.78); border: 1px solid rgba(255,255,255,.10); border-radius: 12px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    padding: 14px; text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+  #pause-portrait { width: 148px; height: 148px; border-radius: 8px; display: block; margin: 0 auto; background: #22303e; }
+  .ps-name { margin-top: 10px; font-weight: 800; letter-spacing: .1em; font-size: 14.5px; color: #fff; }
+  .ps-role { margin-top: 2px; font-size: 10.5px; font-weight: 800; letter-spacing: .16em; opacity: .65; }
+  /* Career row icons (menus.js ICONS): one consistent 14px slot. */
+  .ric { display: inline-block; width: 14px; height: 14px; margin-right: 7px; vertical-align: -2.5px; opacity: .85; }
+  .ric svg { display: block; width: 100%; height: 100%; }
+  #pause-stats h2 { margin: 0 0 12px; letter-spacing: .08em; font-size: 20px; color: #fff;
+    border-left: 3px solid var(--accent); padding-left: 12px; line-height: 1.2; }
+  .stat-hero { display: flex; gap: 0; margin-bottom: 16px; }
+  .hero-tile { flex: 1 1 0; padding: 2px 18px 2px 0; }
+  .hero-tile + .hero-tile { border-left: 1px solid rgba(255,255,255,.16); padding-left: 18px; }
+  .hero-tile span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .08em; opacity: .75; }
+  .hero-tile b { display: block; font-size: 46px; font-weight: 800; line-height: 1.08; font-variant-numeric: tabular-nums; }
+  .hero-tile b.cash { color: #fff; }
   .hero-tile em { display: block; font-style: normal; font-size: 12.5px; opacity: .85; margin-top: 2px; }
-  .hero-tile .pbar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.13); margin: 7px 0 5px; overflow: hidden; }
-  .hero-tile .pbar i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
+  .hero-tile .pbar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.15); margin: 8px 0 6px; overflow: hidden; }
+  .hero-tile .pbar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
   .stat-cols { display: flex; gap: 28px; }
   .stat-cols .stat-rows { flex: 1 1 0; }
   .stat-cols .stat-rows:first-child { flex: 1.3 1 0; }
-  .stat-head { font-weight: 800; letter-spacing: .15em; font-size: 13.5px; color: var(--cyan); padding: 2px 0 5px; }
+  .stat-head { font-weight: 800; letter-spacing: .08em; font-size: 13.5px; color: var(--accent); padding: 2px 0 5px; }
   .stat-head.rec { margin-top: 12px; }
   .stat-row { display: flex; justify-content: space-between; gap: 16px; padding: 5.5px 0;
-    border-top: 1px solid rgba(255,255,255,.08); font-size: 15px; }
+    border-top: 1px solid rgba(255,255,255,.14); font-size: 15px; }
   .stat-row span { opacity: .85; }
   .stat-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .stat-row b.own { color: var(--green); }
-  .stat-row b.price { color: var(--yellow); }
+  .stat-row b.own { color: #fff; }
+  .stat-row b.price { color: var(--accent); }
   .stat-row b.lock { opacity: .55; }
   .msn { display: flex; justify-content: space-between; gap: 14px; padding: 5.5px 0;
-    border-top: 1px solid rgba(255,255,255,.08); font-size: 15.5px; }
+    border-top: 1px solid rgba(255,255,255,.14); font-size: 15.5px; }
   .msn .t { font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
   .msn i { font-style: normal; opacity: .85; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .msn i b { opacity: 1; color: #fff; font-weight: 800; }
-  .msn.done .t { color: var(--green); }
-  .msn.cur .t { color: var(--yellow); }
-  .msn.todo { opacity: .55; }
+  .msn.done .t { color: #fff; }
+  .msn.cur .t { color: var(--accent); }
+  /* POLISH 01/02/04: locked/upcoming missions get a contrast
+     lift (.55 -> .76) — still visibly dimmer than done/current,
+     no longer washed out over the bright backdrop. */
+  .msn.todo { opacity: .76; }
   #bigmap { width: min(78vmin, 860px); height: min(78vmin, 860px); border: 2px solid var(--line); border-radius: 8px; cursor: crosshair; }
   .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
@@ -332,21 +410,27 @@
 
 <!-- ================= HUD ================= -->
 <div id="hud" class="hidden">
-  <div id="hud-objective" class="panel hidden">
+  <div id="speed-lines"></div>
+  <div id="hud-objective" class="hidden">
     <div id="obj-eyebrow"></div>
-    <div id="obj-title"><span id="obj-title-text">FIRST RUN</span><span id="obj-timer"></span></div>
+    <div id="obj-title"><span id="obj-title-text">FIRST RUN</span></div>
     <div id="obj-text">Meet Mami Ratna</div>
     <div id="obj-dist">0 m</div>
+    <div id="obj-timer"></div>
     <div id="obj-progress"></div>
   </div>
-  <div id="hud-police" class="panel hidden"></div>
   <div id="hud-notes"></div>
   <div id="hud-district" class="hidden">SELATARA</div>
   <div id="hud-left">
-    <canvas id="minimap" width="380" height="380"></canvas>
-    <div id="hud-bars">
-      <div class="bar-row"><span>HP</span><div class="bar"><i id="bar-health"></i></div><span id="bar-health-num">100</span></div>
-      <div class="bar-row"><span>AR</span><div class="bar"><i id="bar-armor"></i></div><span id="bar-armor-num">0</span></div>
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="380" height="380"></canvas>
+      <svg id="minimap-arcs" viewBox="0 0 170 170" aria-hidden="true">
+        <circle class="track" cx="85" cy="85" r="80" pathLength="100" stroke-dasharray="15 70 15" stroke-dashoffset="0"/>
+        <circle class="track" cx="85" cy="85" r="80" pathLength="100" stroke-dasharray="30 100" stroke-dashoffset="-10"/>
+        <circle id="arc-health" cx="85" cy="85" r="80" pathLength="100" stroke-dasharray="15 70 15" stroke-dashoffset="0"/>
+        <circle id="arc-armor" cx="85" cy="85" r="80" pathLength="100" stroke-dasharray="30 100" stroke-dashoffset="-10"/>
+      </svg>
+      <div id="minimap-ring"></div>
     </div>
   </div>
   <div id="hud-top">
@@ -354,27 +438,21 @@
     <div id="hud-cash">$0</div>
     <div id="hud-stars"></div>
     <div id="hud-wanted-status" class="hidden"></div>
-  </div>
-  <div id="hud-right">
-    <div id="hud-weapon" class="panel">
-      <div id="weapon-head">
-        <span id="weapon-name">Fists</span>
-        <span id="weapon-state" class="hidden"></span>
-      </div>
+    <div id="hud-police" class="hidden"></div>
+    <div id="hud-weapon">
       <div id="weapon-main">
         <span id="weapon-icon"></span>
         <span id="weapon-ammo">—</span>
-        <span id="weapon-reserve-box"><span id="weapon-reserve-label">RESERVE</span><span id="weapon-reserve">0</span></span>
       </div>
-      <div id="weapon-magbar"></div>
-      <div id="weapon-reload" class="hidden"><i id="weapon-reload-fill"></i></div>
       <div id="weapon-slots"></div>
     </div>
+  </div>
+  <div id="hud-right">
     <div id="hud-speedo" class="hidden">
       <div><span id="speed-num">0</span> <span class="unit">KM/H</span></div>
-      <div class="gauge"><i id="speed-bar"></i></div>
+      <div class="gauge" id="speed-gauge"><i id="speed-bar"></i></div>
       <div id="veh-label"><span>VEHICLE</span><span id="veh-hp"></span></div>
-      <div class="gauge"><i id="veh-damage"></i></div>
+      <div class="gauge" id="veh-gauge"><i id="veh-damage"></i></div>
       <div id="radio-card">
         <div id="radio-station">RADIO SELATARA FM</div>
         <div id="radio-track">Senja di Selat — Arus Band</div>
@@ -448,11 +526,18 @@
   <div class="logo" style="font-size:clamp(28px,5vmin,48px)">PAUSED</div>
   <div id="pause-main">
     <div id="pause-stats" class="panel-screen"></div>
-    <div class="menu-buttons">
-      <button id="btn-resume">RESUME</button>
-      <button id="btn-openmap">CITY MAP</button>
-      <button id="btn-save">SAVE GAME</button>
-      <button id="btn-quit-title">QUIT TO TITLE</button>
+    <div id="pause-right">
+      <div class="menu-buttons">
+        <button id="btn-resume">RESUME</button>
+        <button id="btn-openmap">CITY MAP</button>
+        <button id="btn-save">SAVE GAME</button>
+        <button id="btn-quit-title">QUIT TO TITLE</button>
+      </div>
+      <div id="pause-side">
+        <canvas id="pause-portrait" width="216" height="216"></canvas>
+        <div class="ps-name">RAKA PRAMUDYA</div>
+        <div class="ps-role">GETAWAY DRIVER</div>
+      </div>
     </div>
   </div>
 </div>

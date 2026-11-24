@@ -103,6 +103,16 @@
     if (!headGlowMatShared) headGlowMatShared = new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xffe9b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     return headGlowMatShared;
   }
+  // POLISH 01/02/04: the rear gets the same treatment as the front —
+  // a shared red glow sprite behind the tail band. Until now the
+  // band alone carried the rear (a thin basic-material strip), so
+  // from the chase camera — the game's money angle — no car ever
+  // showed a glowing taillight.
+  var tailGlowMatShared = null;
+  function getTailGlowMat() {
+    if (!tailGlowMatShared) tailGlowMatShared = new THREE.SpriteMaterial({ map: getGlowTex(), color: 0xff3524, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    return tailGlowMatShared;
+  }
 
   function buildMesh(type, colorHex) {
     var spec = SH.Config.vehicleTypes[type];
@@ -113,7 +123,14 @@
     // OVERHAUL: envMapIntensity 0.9 -> 1.2 — the sky reflection is
     // what separates paint from coloured plastic at photo distance;
     // the PMREM sky was already there, the paint just under-used it.
-    var paint = new THREE.MeshPhysicalMaterial({ color: colorHex, metalness: 0.72, roughness: 0.3, clearcoat: 0.9, clearcoatRoughness: 0.28, envMapIntensity: 1.2, flatShading: true });
+    // POLISH2 (spec B10): paint joins the cast's shading family —
+    // a toon material on the characters' body gradient (2-3 hard
+    // bands, flat facets) plus a BackSide outline hull over the
+    // merged paint mesh below, so cars stop reading as glossy
+    // imports from another game next to the toon crowd. A whisper
+    // of env feed stays so panels still catch the sky.
+    var paint = new THREE.MeshToonMaterial({ color: colorHex, gradientMap: SH.ToonChar.gradientMapBody, flatShading: true });
+    paint.envMapIntensity = 0.55;
     var dark = new THREE.MeshLambertMaterial({ color: 0x14151a, flatShading: true });
     var tireMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0, roughness: 0.94 });
     // OVERHAUL: glass lightens (0x18242f -> 0x22384c) and thins
@@ -383,7 +400,9 @@
       box(0.04, 0.52, 0.85, glass, 1.13, 1.86, L * 0.5 - 0.85);
       box(W * 0.70, 0.34, 0.05, dark, 0, 0.62, L / 2 + 0.02, 'dark');        // grille
       box(W * 0.66, 0.03, 0.02, chromeMat, 0, 0.62, L / 2 + 0.05, 'chrome'); // grille slat
-      box(W * 1.0, 0.3, 0.22, dark, 0, 0.32, L * 0.47, 'dark');              // front bumper
+      // POLISH2B (item 6): bumpers wear the BODY colour now, not the
+      // black trim tone — the black blocks read as unpainted plastic.
+      box(W * 1.0, 0.3, 0.22, paint, 0, 0.32, L * 0.47, 'paint');            // front bumper
       box(0.16, 0.03, 0.03, dark, -1.20, 1.98, L * 0.36, 'dark');            // mirror stalks + heads
       box(0.16, 0.03, 0.03, dark, 1.20, 1.98, L * 0.36, 'dark');
       box(0.05, 0.20, 0.12, dark, -1.29, 1.94, L * 0.36, 'dark');
@@ -542,15 +561,16 @@
       if (isSport) box(W * 0.72, 0.028, 0.024, seamMat, 0, 0.745, -L * 0.445, 'dark');
       else box(W * 0.66, 0.018, 0.02, seamMat, 0, 0.90, -L * 0.345, 'dark');
       var roofY = isSport ? 1.17 : 1.44;   // glass crown + roof skin (Rev 9)
-      box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, L / 2 + 0.05, 'dark');       // front bumper
+      // POLISH2B (item 6): front bumper in body colour (see truck note).
+      box(W * 1.01, 0.24, 0.28, paint, 0, 0.3, L / 2 + 0.05, 'paint');     // front bumper
       // Rev 9.2: the sport gets a DEEP dark valance (0.08-0.42 m) so
       // the pink tail panel ends decisively and the road takes over;
       // the sedan keeps its slimmer bumper (it already reads).
       // Polish c2: the valance slims with the narrowed tail (W*0.94,
       // 0.26 tall) — the Rev 9.2 full-width block read oversized in
       // daylight.
-      if (isSport) box(W * 0.94, 0.26, 0.22, dark, 0, 0.27, -L / 2 - 0.05, 'dark');
-      else box(W * 1.01, 0.24, 0.28, dark, 0, 0.3, -L / 2 - 0.05, 'dark'); // rear bumper
+      if (isSport) box(W * 0.94, 0.26, 0.22, paint, 0, 0.27, -L / 2 - 0.05, 'paint');
+      else box(W * 1.01, 0.24, 0.28, paint, 0, 0.3, -L / 2 - 0.05, 'paint'); // rear bumper
       // Rev 9: dark side skirts / lower cladding on EVERY car (the
       // two-tone break at the rocker line) + mirrors on thin stalks.
       box(0.07, 0.15, L * 0.52, dark, -(W * 0.489 - 0.015), 0.235, 0, 'dark');
@@ -624,6 +644,8 @@
       var th1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), headMat); th1.position.set(-0.78, 0.80, L / 2 + 0.03); th1.userData.mergeKey = 'head'; g.add(th1);
       var th2 = th1.clone(); th2.position.x = 0.78; g.add(th2);
       var tband = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.05), tailMat); tband.position.set(0, 0.72, -L / 2 - 0.02); tband.userData.mergeKey = 'tail'; g.add(tband);
+      var ttg = new THREE.Sprite(getTailGlowMat());
+      ttg.scale.set(1.9, 0.55, 1); ttg.position.set(0, 0.72, -L / 2 - 0.22); g.add(ttg);
     } else if (type === 'boat' || type === 'ferry') {
       var bh1 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.05), headMat); bh1.position.set(-0.55, 0.82, L * 0.30); bh1.rotation.y = 0.3; bh1.userData.mergeKey = 'head'; g.add(bh1);
       var bh2 = bh1.clone(); bh2.position.x = 0.55; bh2.rotation.y = -0.3; g.add(bh2);
@@ -646,6 +668,11 @@
       var band = new THREE.Mesh(new THREE.BoxGeometry(W * 0.76, 0.085, 0.045), tailMat);
       band.position.set(0, type === 'sport' ? 0.52 : 0.74, -L / 2 - 0.025);
       band.userData.mergeKey = 'tail'; g.add(band);
+      // Tail glow sprite hugging the band (see getTailGlowMat).
+      var tg = new THREE.Sprite(getTailGlowMat());
+      tg.scale.set(W * 0.92, 0.5, 1);
+      tg.position.set(0, type === 'sport' ? 0.52 : 0.74, -L / 2 - 0.22);
+      g.add(tg);
     }
     // Headlight glow sprites + a fake light cone (opacity driven globally by
     // the time of day via Vehicles.setLightLevel). No cone on the motor.
@@ -663,6 +690,7 @@
     // static part into ONE mesh per material family. A dressed sedan
     // drops from ~40 meshes to ~19 (wheels, glass, glows and the light
     // cone stay separate because they spin, glow or switch material).
+    var mergedPaintMesh = null;
     (function mergeStatics() {
       var mats = { paint: paint, dark: dark, chrome: chromeMat, head: headMat, tail: tailMat };
       var buckets = {}, items = [];
@@ -677,8 +705,21 @@
         var merged = new THREE.Mesh(SH.World.mergeGeos(buckets[key]), mats[key]);
         merged.castShadow = key === 'paint';
         g.add(merged);
+        if (key === 'paint') mergedPaintMesh = merged;
       }
     })();
+
+    // POLISH2 (spec B10): the outline hull — the merged paint
+    // shell re-rendered BackSide, a few cm proud, in the paint's
+    // own darkened shade: the same ink the characters wear. The
+    // bike skips it (its paint parts are thin shells; a hull
+    // would blob them).
+    if (mergedPaintMesh && type !== 'motor') {
+      var hullMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex).multiplyScalar(0.35), side: THREE.BackSide });
+      var paintHull = new THREE.Mesh(mergedPaintMesh.geometry, hullMat);
+      paintHull.scale.set(1.025, 1.03, 1.015);
+      g.add(paintHull);
+    }
 
     return { group: g, wheels: wheels, tailMat: tailMat, brakeMat: brakeMat, headMat: headMat, paintMat: paint, glassMat: glass };
   }
@@ -926,9 +967,115 @@
       if (SH.Audio && SH.Audio.radio) SH.Audio.radio(false);
     },
 
+    // ================= POLISH2B item 1 + the sunken-feet fix ========
+    // Diagnosis (measured, probe-carjack-bug): the live enter/exit
+    // NEVER moved the root wrongly — idle at the door measures sole
+    // -0.004 m over ground 0, and exit() settles to +0.005 m in 4
+    // frames (a kerb-climb transient of the LEGFIX ground smoothing,
+    // max 0.098 m deep for ~3 frames on a 0.14 m kerb). The carjack
+    // photo's "waist-up Raka, legs gone" was the SEATED half of the
+    // enter_car clip (pelvis -0.47 m, soles 0.142 m UNDER the road)
+    // played while he stood OUTSIDE the car, with the car body
+    // occluding the fold. The sequence below therefore keeps every
+    // standing figure's root at ground height (the walking rule) and
+    // only lets the pelvis drop once the body is over the seat.
+    _carjack: null,
+
+    // Vehicle-local point -> world (same transform as the cover
+    // freeze's seat math; car forward is +z local).
+    localToWorld: function (veh, lx, lz) {
+      var ch = Math.cos(veh.heading), sh = Math.sin(veh.heading);
+      return { x: veh.x + lx * ch + lz * sh, z: veh.z - lx * sh + lz * ch };
+    },
+    seatWorld: function (veh) { return this.localToWorld(veh, -0.47, 0.15); },
+    // Where the thief stands: driver-door side, 0.75 m clear of the
+    // body flank (spec) — the body never swallows him.
+    doorSpotWorld: function (veh) {
+      var spec = SH.Config.vehicleTypes[veh.type];
+      var halfW = spec ? spec.width / 2 : 0.91;
+      return this.localToWorld(veh, -(halfW + 0.75), 0.15);
+    },
+    // Seat a figure group into the driver seat (group y rides at the
+    // seat base, -0.22 over the ground under the car — the cover
+    // freeze's proven offset).
+    seatFigure: function (veh, group) {
+      var sw = this.seatWorld(veh);
+      var gy = SH.World.groundHeightAt(veh.x, veh.z);
+      group.position.set(sw.x, gy - 0.22, sw.z);
+      group.rotation.y = veh.heading;
+    },
+    // The driver door as real geometry: a paint-matched panel on a
+    // hinge pivot at its front edge, so it can swing 70 degrees.
+    attachDoor: function (veh) {
+      if (veh._door) return veh._door;
+      if (!veh.mesh || !veh.paintMat) return null;
+      var spec = SH.Config.vehicleTypes[veh.type];
+      if (!spec) return null;
+      var pivot = new THREE.Group();
+      pivot.position.set(-(spec.width / 2) - 0.004, 0, 0.98);
+      var darkM = new THREE.MeshLambertMaterial({ color: 0x14151a, flatShading: true });
+      function dbox(w, h, d, mat, x, y, z) {
+        var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        m.position.set(x, y, z); m.castShadow = true; pivot.add(m); return m;
+      }
+      dbox(0.035, 0.60, 1.06, veh.paintMat, 0, 0.57, -0.53);        // lower panel
+      dbox(0.02, 0.38, 0.96, veh.glassMat, 0, 1.10, -0.53);        // window
+      dbox(0.03, 0.05, 1.06, veh.paintMat, 0, 1.315, -0.53);       // top rail
+      dbox(0.03, 0.36, 0.05, veh.paintMat, 0, 1.12, -0.04);        // A pillar
+      dbox(0.03, 0.36, 0.05, veh.paintMat, 0, 1.12, -1.02);        // B pillar
+      dbox(0.02, 0.03, 0.14, darkM, -0.032, 0.84, -0.86);          // handle
+      veh.mesh.add(pivot);
+      veh._door = { pivot: pivot, angle: 0 };
+      return veh._door;
+    },
+    setDoorAngle: function (veh, deg) {
+      if (!veh._door) return;
+      veh._door.angle = deg;
+      // Positive rotation swings the panel's rear edge outward
+      // (local -x), away from the body — verified against the
+      // heading transform, not eyeballed.
+      veh._door.pivot.rotation.y = deg * Math.PI / 180;
+    },
+    // Start the pull-out: `char` is a factory character currently
+    // seated in the driver seat (see seatFigure). 0.7 s total: the
+    // door swings to 70 degrees while the driver climbs out onto
+    // the ground at the door, then backs 1.0 m further out with his
+    // hands up. His group y is the GROUND at every step after the
+    // seat — the sunken-feet rule.
+    beginCarjack: function (veh, char) {
+      this.attachDoor(veh);
+      var gy = SH.World.groundHeightAt(veh.x, veh.z);
+      this._carjack = {
+        veh: veh, char: char, t: 0, done: false, gy: gy,
+        seat: this.seatWorld(veh),
+        out: this.localToWorld(veh, -1.5, 0.15),
+        back: this.localToWorld(veh, -2.5, 0.15)
+      };
+      char.ctrl.play('exit_car', 0.03, false);
+      return this._carjack;
+    },
+    updateCarjack: function (dt) {
+      var cj = this._carjack;
+      if (!cj || cj.done) return;
+      cj.t += dt;
+      var veh = cj.veh, g = cj.char.group;
+      var open = Math.min(1, cj.t / 0.45);
+      this.setDoorAngle(veh, 70 * (1 - (1 - open) * (1 - open)));
+      var k1 = Math.min(1, cj.t / 0.42);                          // seat -> doorstep
+      var k2 = Math.max(0, Math.min(1, (cj.t - 0.42) / 0.28));    // doorstep -> backed off
+      var x = cj.seat.x + (cj.out.x - cj.seat.x) * k1 + (cj.back.x - cj.out.x) * k2;
+      var z = cj.seat.z + (cj.out.z - cj.seat.z) * k1 + (cj.back.z - cj.out.z) * k2;
+      var y = (cj.gy - 0.22) + (0.225) * Math.min(1, cj.t / 0.35); // seat base -> ground + 0.005
+      g.position.set(x, y, z);
+      g.rotation.y = veh.heading + Math.PI / 2;   // face the thief at the door
+      cj.char.ctrl.update(dt);
+      if (cj.t >= 0.7) { cj.done = true; cj.char.ctrl.play('hands_up', 0.12, false); }
+    },
+
     updateInteractions: function (dt) {
       var st = SH.State, input = SH.Input;
       if (st.mode !== 'playing') return;
+      this.updateCarjack(dt);   // POLISH2B: an active pull-out beats on
       if (!st.driving) {
         var near = this.nearestUsable();
         if (SH.HUD) SH.HUD.setPrompt(near ? 'F — Enter ' + near.spec.label : null);
@@ -1013,6 +1160,54 @@
     damage: function (v, amount) {
       if (v.dead) return;
       v.hp -= amount;
+      // POLISH2 (spec D5): damage shows BEFORE the wreck — the
+      // paint dulls and darkens progressively as hp falls (the
+      // smoke column at hp<45 already existed in updateVisuals).
+      // Pure material response: no stats, no behaviour change.
+      if (v.paintMat && v.hp > 0) {
+        if (v._paintHex == null) v._paintHex = v.paintMat.color.getHex();
+        var dmgK = Math.min(1, Math.max(0, 1 - v.hp / 100)) * 0.68;
+        v.paintMat.color.setHex(v._paintHex).lerp(new THREE.Color(0x2a2320), dmgK);
+        // The glass smokes over with the same curve (a wreck's
+        // cabin never stays showroom-clear).
+        if (v.glassMat) {
+          if (v._glassHex == null) v._glassHex = v.glassMat.color.getHex();
+          v.glassMat.color.setHex(v._glassHex).lerp(new THREE.Color(0x0b0d10), dmgK * 0.8);
+        }
+        // POLISH2B (item 6): past half health the damage gets
+        // GEOMETRY, not just colour — a caved front fender panel
+        // and a cracked driver window, attached once. Visual only:
+        // no stat, no behaviour reads these meshes.
+        if (v.hp < 55 && !v._dmgKit && v.mesh && v.spec) {
+          var kit = new THREE.Group();
+          var dent = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.20, 0.52),
+            new THREE.MeshLambertMaterial({ color: 0x191612, flatShading: true }));
+          dent.position.set(-(v.spec.width / 2) - 0.005, 0.60, v.spec.length * 0.30);
+          dent.rotation.set(0.08, 0.18, 0.22);
+          kit.add(dent);
+          if (!Vehicles._crackTex) {
+            var cc = document.createElement('canvas'); cc.width = cc.height = 128;
+            var cg = cc.getContext('2d');
+            cg.strokeStyle = 'rgba(235,242,248,0.85)'; cg.lineWidth = 2;
+            for (var ci = 0; ci < 9; ci++) {
+              var ca = ci / 9 * Math.PI * 2 + 0.35;
+              cg.beginPath(); cg.moveTo(64, 64);
+              cg.lineTo(64 + Math.cos(ca) * (26 + (ci % 3) * 14), 64 + Math.sin(ca) * (26 + (ci % 3) * 14));
+              cg.stroke();
+            }
+            cg.lineWidth = 1.2;
+            for (var cj = 0; cj < 3; cj++) { cg.beginPath(); cg.arc(64, 64, 12 + cj * 13, 0, Math.PI * 2); cg.stroke(); }
+            Vehicles._crackTex = new THREE.CanvasTexture(cc);
+          }
+          var crack = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.40),
+            new THREE.MeshBasicMaterial({ map: Vehicles._crackTex, transparent: true, depthWrite: false, opacity: 0.9 }));
+          crack.position.set(-(v.spec.width / 2) - 0.035, 1.06, 0.42);
+          crack.rotation.y = -Math.PI / 2;
+          kit.add(crack);
+          v.mesh.add(kit);
+          v._dmgKit = kit;
+        }
+      }
       if (v.hp <= 0) {
         v.hp = 0; v.dead = true;
         // A wreck reads as a wreck: the paint chars the moment the
@@ -1146,9 +1341,16 @@
     // cones + glows on every car at once through the shared materials.
     setLightLevel: function (level) {
       this._lightLevel = level;
-      if (coneMatShared) coneMatShared.opacity = level * level * 0.045;
-      if (this.playerConeMat) this.playerConeMat.opacity = level * level * 0.03;
-      if (headGlowMatShared) headGlowMatShared.opacity = level * 0.38;
+      // POLISH 01/02/04: the old curves kept dusk (level ~0.5)
+      // nearly dark — cone opacity was level^2 x 0.045 (~0.01 at
+      // the cover's golden hour) and the head glow 0.19. The
+      // curves are now linear and hotter so lamps READ at dusk;
+      // the player's own cone stays the faint one (a full wedge
+      // from the chase camera still reads as a solid slab).
+      if (coneMatShared) coneMatShared.opacity = level * 0.055;
+      if (this.playerConeMat) this.playerConeMat.opacity = level * 0.026;
+      if (headGlowMatShared) headGlowMatShared.opacity = level * 0.55;
+      if (tailGlowMatShared) tailGlowMatShared.opacity = level * 0.5;
       if (this.headlight) this.headlight.intensity = level * 1.6;
     },
 

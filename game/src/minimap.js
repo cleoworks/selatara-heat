@@ -175,6 +175,13 @@
     }
     for (i = 0; i < parkZones.length; i++) {
       var pz2 = parkZones[i];
+      // POLISH 01/02/04: the northern farm patchwork is NOT drawn on
+      // the 2D maps — as flat per-field colour rects it read as a
+      // stray row of UI squares along the top of the pause map.
+      // The fields still stand in the 3D world and stay registered
+      // in CityData.parks (the fill audit reads the registry, not
+      // this sheet); only the map drawing skips them.
+      if (pz2.kind === 'farm') continue;
       g.fillStyle = pz2.color || (pz2.kind === 'track' ? 'rgba(168,95,54,0.85)' : pz2.kind === 'garden' ? 'rgba(110,160,80,0.55)' : 'rgba(226,214,178,0.9)');
       if (pz2.circle) {
         g.beginPath();
@@ -472,20 +479,112 @@
       function px(x) { return ox + w2mx(x) * s; }
       function pz(z) { return oy + w2my(z) * s; }
       var st = SH.State;
+      var focus = st.driving ? st.vehiclePos : st.player;
+      // POLISH 01/02/04 — route line: the shortest road path over
+      // the shared graph from the player to the live objective (or
+      // waypoint), drawn under the markers: a dark casing with a
+      // dashed yellow core, the way the HUD legend promises.
+      (function drawRoute() {
+        var target = st.objective || st.waypoint;
+        var graph = SH.World && SH.World.graph;
+        if (!target || !graph || !graph.nodes || !graph.edges) return;
+        var nodes = graph.nodes, edges = graph.edges, i2, e2;
+        function nearest(x, z) {
+          var bi = -1, bd = Infinity;
+          for (i2 = 0; i2 < nodes.length; i2++) {
+            var dx = nodes[i2].x - x, dz = nodes[i2].z - z, d = dx * dx + dz * dz;
+            if (d < bd) { bd = d; bi = i2; }
+          }
+          return bi;
+        }
+        var src = nearest(focus.x, focus.z), dst = nearest(target.x, target.z);
+        if (src < 0 || dst < 0 || src === dst) return;
+        var adj = {};
+        for (e2 = 0; e2 < edges.length; e2++) {
+          var a = edges[e2].a, b = edges[e2].b;
+          var wgt = Math.hypot(nodes[a].x - nodes[b].x, nodes[a].z - nodes[b].z);
+          (adj[a] = adj[a] || []).push([b, wgt]);
+          (adj[b] = adj[b] || []).push([a, wgt]);
+        }
+        var dist = {}, prev = {}, seen = {};
+        dist[src] = 0;
+        for (;;) {
+          var u = -1, ud = Infinity;
+          for (var k in dist) { if (!seen[k] && dist[k] < ud) { ud = dist[k]; u = +k; } }
+          if (u < 0 || u === dst) break;
+          seen[u] = 1;
+          var ns = adj[u] || [];
+          for (var j = 0; j < ns.length; j++) {
+            var nd = ud + ns[j][1];
+            if (dist[ns[j][0]] === undefined || nd < dist[ns[j][0]]) { dist[ns[j][0]] = nd; prev[ns[j][0]] = u; }
+          }
+        }
+        if (dist[dst] === undefined) return;
+        var path = [dst];
+        while (path[path.length - 1] !== src) path.push(prev[path[path.length - 1]]);
+        path.reverse();
+        g.beginPath();
+        g.moveTo(px(focus.x), pz(focus.z));
+        for (var p = 0; p < path.length; p++) g.lineTo(px(nodes[path[p]].x), pz(nodes[path[p]].z));
+        g.lineTo(px(target.x), pz(target.z));
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.setLineDash([]);
+        g.strokeStyle = 'rgba(10,12,24,0.6)'; g.lineWidth = 6.5; g.stroke();
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 3.4; g.setLineDash([13, 9]); g.stroke();
+        g.setLineDash([]);
+      })();
+      // Shops & safehouses (POLISH 01/02/04: bigger, dark-outlined
+      // so they survive the downscale; safehouses are squares with
+      // a white house glyph, shops stay round with a white core).
       var places = SH.Economy ? SH.Economy.places : [];
       for (var i = 0; i < places.length; i++) {
-        g.fillStyle = '#51e07a';
-        g.beginPath(); g.arc(px(places[i].x), pz(places[i].z), 5, 0, Math.PI * 2); g.fill();
+        var pcx = px(places[i].x), pcy = pz(places[i].z);
+        g.lineWidth = 2; g.strokeStyle = 'rgba(8,20,12,0.85)';
+        if (places[i].kind === 'safehouse') {
+          g.fillStyle = '#51e07a';
+          g.beginPath();
+          if (g.roundRect) g.roundRect(pcx - 8, pcy - 8, 16, 16, 3.5); else g.rect(pcx - 8, pcy - 8, 16, 16);
+          g.fill(); g.stroke();
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.moveTo(pcx - 5, pcy + 0.5); g.lineTo(pcx, pcy - 4.6); g.lineTo(pcx + 5, pcy + 0.5); g.closePath(); g.fill();
+          g.fillRect(pcx - 3.1, pcy + 0.2, 6.2, 4.6);
+        } else {
+          g.fillStyle = '#51e07a';
+          g.beginPath(); g.arc(pcx, pcy, 6.8, 0, Math.PI * 2); g.fill(); g.stroke();
+          g.fillStyle = '#ffffff';
+          g.beginPath(); g.arc(pcx, pcy, 2.3, 0, Math.PI * 2); g.fill();
+        }
       }
       if (st.objective) {
-        g.fillStyle = '#ffd23f';
-        g.beginPath(); g.arc(px(st.objective.x), pz(st.objective.z), 7, 0, Math.PI * 2); g.fill();
+        // POLISH 01/02/04 — the objective is a PIN, not a dot: a
+        // yellow diamond in a dark-outlined ring, with the mission
+        // title lettered beside it in yellow.
+        var oxp = px(st.objective.x), ozp = pz(st.objective.z);
+        g.beginPath(); g.arc(oxp, ozp, 12.5, 0, Math.PI * 2);
+        g.strokeStyle = 'rgba(10,12,24,0.55)'; g.lineWidth = 5.5; g.stroke();
+        g.beginPath(); g.arc(oxp, ozp, 12.5, 0, Math.PI * 2);
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.stroke();
+        g.save();
+        g.translate(oxp, ozp); g.rotate(Math.PI / 4);
+        g.fillStyle = '#ffd23f'; g.fillRect(-6.4, -6.4, 12.8, 12.8);
+        g.lineWidth = 2.4; g.strokeStyle = 'rgba(10,12,24,0.9)'; g.strokeRect(-6.4, -6.4, 12.8, 12.8);
+        g.restore();
+        if (st.objective.title) {
+          g.font = 'bold 13.5px sans-serif';
+          g.textAlign = 'left'; g.textBaseline = 'middle';
+          g.lineJoin = 'round';
+          g.lineWidth = 4; g.strokeStyle = 'rgba(10,12,24,0.88)';
+          g.strokeText(st.objective.title, oxp + 19, ozp - 1);
+          g.fillStyle = '#ffd23f';
+          g.fillText(st.objective.title, oxp + 19, ozp - 1);
+          g.textAlign = 'center';
+        }
       }
       if (st.waypoint) {
         g.fillStyle = '#fff';
         g.beginPath(); g.arc(px(st.waypoint.x), pz(st.waypoint.z), 6, 0, Math.PI * 2); g.fill();
       }
-      var focus = st.driving ? st.vehiclePos : st.player;
       g.fillStyle = '#fff';
       g.strokeStyle = '#000'; g.lineWidth = 2;
       g.beginPath(); g.arc(px(focus.x), pz(focus.z), 6, 0, Math.PI * 2); g.fill(); g.stroke();
@@ -509,13 +608,21 @@
         g.fillStyle = '#ffffff';
         g.fillText(districts[i].name, lx, ly);
       }
-      g.font = 'bold 12px sans-serif';
+      g.font = 'bold 14px sans-serif';
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(10,12,24,0.85)';
       g.strokeText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
       g.fillStyle = '#ffffff';
       g.fillText(SH.Config.island.name, px(SH.Config.island.x), pz(SH.Config.island.z));
+      // POLISH 01/02/04: the western islet (Pulau Karang Kecil) has
+      // carried a name in Config all along — letter it too, a touch
+      // smaller than Seberang's: it is the smaller island.
+      if (SH.Config.island2) {
+        g.font = 'bold 12.5px sans-serif';
+        g.strokeText(SH.Config.island2.name, px(SH.Config.island2.x), pz(SH.Config.island2.z));
+        g.fillText(SH.Config.island2.name, px(SH.Config.island2.x), pz(SH.Config.island2.z));
+      }
       // W1 water names, lettered on the water itself.
-      g.font = 'italic bold 12px sans-serif';
+      g.font = 'italic bold 13px sans-serif';
       g.lineWidth = 3; g.strokeStyle = 'rgba(8,20,32,0.7)';
       g.fillStyle = '#dff2ff';
       g.strokeText('Danau Cermin', px(-12), pz(30));
@@ -523,14 +630,16 @@
       g.strokeText('Kali Arus', px(-62), pz(-6));
       g.fillText('Kali Arus', px(-62), pz(-6));
       // Monorail station names beside their squares (full map only).
+      // POLISH 01/02/04: 10px -> 13px — at the entry downscale the
+      // old size fell under the legibility floor.
       if (SH.CityData && SH.CityData.mono) {
-        g.font = 'bold 10px sans-serif';
+        g.font = 'bold 13px sans-serif';
         g.lineWidth = 3; g.strokeStyle = 'rgba(8,20,32,0.7)';
         g.fillStyle = '#c8f4ee';
         for (i = 0; i < SH.CityData.mono.stations.length; i++) {
           var stn2 = SH.CityData.mono.stations[i];
-          g.strokeText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 15);
-          g.fillText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 15);
+          g.strokeText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 17);
+          g.fillText('Stasiun ' + stn2.name, px(stn2.x), pz(stn2.z) + 17);
         }
       }
       // Expose the transform so menus can map clicks back to world coords.
