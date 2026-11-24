@@ -497,6 +497,9 @@
 
     if (SH.Minimap && State.mode !== 'loading') SH.Minimap.render();
     if (SH.HUD) SH.HUD.refresh();
+    if (SH.Races) SH.Races.update(dt);
+    if (SH.Radio) SH.Radio.update(dt);
+    if (SH.Collect) SH.Collect.update(dt);
     input.endFrame();
   }
 
@@ -573,6 +576,9 @@
     if (SH.Minimap) SH.Minimap.init();
     if (SH.HUD) SH.HUD.init();
     if (SH.Menus) SH.Menus.init();
+    if (SH.Races) SH.Races.init();
+    if (SH.Radio) SH.Radio.init();
+    if (SH.Collect) SH.Collect.init();
     if (SH.Shots) SH.Shots.apply();
     if (State.mode === 'loading') State.mode = (SH.Shots && SH.Shots.active) || !SH.Menus ? 'playing' : 'title';
     if (!SH.Menus) { var lo = document.getElementById('loading'); if (lo) lo.classList.add('hidden'); }
