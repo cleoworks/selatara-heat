@@ -500,6 +500,11 @@
     if (SH.Races) SH.Races.update(dt);
     if (SH.Radio) SH.Radio.update(dt);
     if (SH.Collect) SH.Collect.update(dt);
+    if (SH.Jobs) SH.Jobs.update(dt);
+    if (SH.Bounties) SH.Bounties.update(dt);
+    if (SH.Taxi) SH.Taxi.update(dt);
+    if (SH.Property) SH.Property.update(dt);
+    if (SH.Fishing) SH.Fishing.update(dt);
     input.endFrame();
   }
 
@@ -579,6 +584,11 @@
     if (SH.Races) SH.Races.init();
     if (SH.Radio) SH.Radio.init();
     if (SH.Collect) SH.Collect.init();
+    if (SH.Jobs) SH.Jobs.init();
+    if (SH.Bounties) SH.Bounties.init();
+    if (SH.Taxi) SH.Taxi.init();
+    if (SH.Property) SH.Property.init();
+    if (SH.Fishing) SH.Fishing.init();
     if (SH.Shots) SH.Shots.apply();
     if (State.mode === 'loading') State.mode = (SH.Shots && SH.Shots.active) || !SH.Menus ? 'playing' : 'title';
     if (!SH.Menus) { var lo = document.getElementById('loading'); if (lo) lo.classList.add('hidden'); }
